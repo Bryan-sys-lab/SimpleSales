@@ -5,7 +5,9 @@ export type Tenant = {
   _count?: { profiles: number; sales: number };
   activeProfiles?: number;
   salesCount?: number;
+  lastSaleAt?: string | null;
   lastActivity?: string | null;
+  activity30d?: { salesCount: number; lastSaleAt: string | null };
   settings?: { mpesa?: boolean; etims?: boolean; payhero?: boolean } | null;
 };
 
@@ -116,7 +118,7 @@ export type ExchangeAdmin = {
   tenant?: { id: string; shopName: string; businessProfile: string };
 };
 
-export type AppSession = {
+export type TelemetrySession = {
   id: string;
   tenantId: string;
   tenant?: { id: string; shopName: string };

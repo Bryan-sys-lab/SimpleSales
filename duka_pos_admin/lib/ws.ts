@@ -1,4 +1,5 @@
 export type WsMessageHandler = (data: unknown) => void;
+export type WsStatusHandler = (connected: boolean) => void;
 
 function liveUrl(configured: string, ticket: string): string {
   const url = new URL(configured);
@@ -11,9 +12,9 @@ function liveUrl(configured: string, ticket: string): string {
 export class WebSocketClient {
   private ws: WebSocket | null = null;
   private handlers = new Set<WsMessageHandler>();
+  private statusHandlers = new Set<WsStatusHandler>();
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 6;
   private manuallyClosed = false;
   private connecting = false;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
@@ -29,11 +30,20 @@ export class WebSocketClient {
         const [data, address] = await Promise.all([ticketResponse.json(), urlResponse.json()]) as [{ ticket?: string }, { url?: string }];
         if (!data.ticket || !address.url || this.manuallyClosed) throw new Error('Live ticket unavailable');
         this.ws = new WebSocket(liveUrl(address.url, data.ticket));
-        this.ws.onopen = () => { this.reconnectAttempts = 0; this.startPing(); };
+        this.ws.onopen = () => {
+          this.reconnectAttempts = 0;
+          this.startPing();
+          this.notifyStatus(true);
+        };
         this.ws.onmessage = event => {
           try { const data = JSON.parse(event.data); this.handlers.forEach(handler => handler(data)); } catch { /* Ignore malformed optional signals. */ }
         };
-        this.ws.onclose = () => { this.stopPing(); this.ws = null; if (!this.manuallyClosed) this.scheduleReconnect(); };
+        this.ws.onclose = () => {
+          this.stopPing();
+          this.ws = null;
+          this.notifyStatus(false);
+          if (!this.manuallyClosed) this.scheduleReconnect();
+        };
         this.ws.onerror = () => this.ws?.close();
       })
       .catch(() => this.scheduleReconnect())
@@ -41,9 +51,14 @@ export class WebSocketClient {
   }
 
   private scheduleReconnect(): void {
-    if (this.manuallyClosed || this.reconnectAttempts >= this.maxReconnectAttempts || this.reconnectTimeout) return;
+    if (this.manuallyClosed || this.reconnectTimeout) return;
+    const delay = Math.min(1000 * 2 ** Math.min(this.reconnectAttempts, 5), 30000);
     this.reconnectAttempts += 1;
-    this.reconnectTimeout = setTimeout(() => { this.reconnectTimeout = null; this.connect(); }, Math.min(1000 * 2 ** (this.reconnectAttempts - 1), 30000));
+    this.reconnectTimeout = setTimeout(() => {
+      this.reconnectTimeout = null;
+      if (typeof navigator === 'undefined' || navigator.onLine) this.connect();
+      else this.scheduleReconnect();
+    }, delay);
   }
   private startPing(): void {
     this.stopPing();
@@ -54,11 +69,19 @@ export class WebSocketClient {
     this.manuallyClosed = false; this.handlers.add(handler); this.connect();
     return () => { this.handlers.delete(handler); if (!this.handlers.size) this.disconnect(); };
   }
+  subscribeStatus(handler: WsStatusHandler): () => void {
+    this.statusHandlers.add(handler);
+    handler(this.isConnected());
+    return () => this.statusHandlers.delete(handler);
+  }
+  private notifyStatus(connected: boolean): void {
+    this.statusHandlers.forEach((handler) => handler(connected));
+  }
   send(message: unknown): void { if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(message)); }
   disconnect(): void {
     this.manuallyClosed = true; this.stopPing();
     if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
-    this.reconnectTimeout = null; this.ws?.close(); this.ws = null;
+    this.reconnectTimeout = null; this.ws?.close(); this.ws = null; this.notifyStatus(false);
   }
   isConnected(): boolean { return this.ws?.readyState === WebSocket.OPEN; }
 }

@@ -5,14 +5,13 @@ import { fetchJson } from '@/lib/api';
 import { SupportTicket } from '@/lib/types';
 import { ShellLayout } from '@/components/layout';
 import { DataTable } from '@/components/data-table';
-import { useWebSocket } from '@/components/websocket-provider';
+import { useAdminLiveRefresh } from '@/components/websocket-provider';
 
 export default function SupportPage() {
   const [data, setData] = useState<SupportTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('');
-  const { lastMessage } = useWebSocket();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -30,17 +29,11 @@ export default function SupportPage() {
       setLoading(false);
     }
   }, [statusFilter]);
+  useAdminLiveRefresh(load, ['support']);
 
   useEffect(() => {
     void load();
   }, [load]);
-
-  useEffect(() => {
-    if (lastMessage && typeof lastMessage === 'object' &&
-        (lastMessage as { type?: unknown }).type === 'subscription_quote_requested') {
-      void load();
-    }
-  }, [lastMessage, load]);
 
   const filtered = useMemo(
     () => data.filter((t) => !statusFilter || t.status === statusFilter),

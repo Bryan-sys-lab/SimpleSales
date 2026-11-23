@@ -5,6 +5,7 @@ import { fetchJson } from '@/lib/api';
 import { AuditLog } from '@/lib/types';
 import { ShellLayout } from '@/components/layout';
 import { DataTable } from '@/components/data-table';
+import { useAdminLiveRefresh } from '@/components/websocket-provider';
 
 export default function AuditPage() {
   const [data, setData] = useState<AuditLog[]>([]);
@@ -13,22 +14,20 @@ export default function AuditPage() {
   const [running, setRunning] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetchJson<{ logs: AuditLog[] }>('/api/admin/audit?limit=100');
-        if (!cancelled) setData(res.logs);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load audit log');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetchJson<{ logs: AuditLog[] }>('/api/admin/audit?limit=100');
+      setData(res.logs);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load audit log');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+  useAdminLiveRefresh(load, ['audit']);
+  useEffect(() => { void load(); }, [load]);
 
   const runRetention = async () => {
     setRunning(true); setMsg(null);

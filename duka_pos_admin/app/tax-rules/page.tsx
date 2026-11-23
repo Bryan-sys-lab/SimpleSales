@@ -5,6 +5,7 @@ import { fetchJson } from '@/lib/api';
 import { TaxEntityAdmin, TaxRuleAdmin } from '@/lib/types';
 import { ShellLayout } from '@/components/layout';
 import { EmptyState } from '@/components/empty-state';
+import { useAdminLiveRefresh } from '@/components/websocket-provider';
 
 const inputClass = 'w-full rounded-md border border-base-300 bg-white px-3 py-2 text-sm text-base-900 shadow-sm focus:border-accent-600 focus:outline-none focus:ring-2 focus:ring-accent-100';
 
@@ -50,6 +51,7 @@ export default function TaxRulesPage() {
       setLoading(false);
     }
   }, []);
+  useAdminLiveRefresh(load, ['tax-rules']);
 
   useEffect(() => { void load(); }, [load]);
 

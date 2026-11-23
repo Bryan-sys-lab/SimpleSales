@@ -5,6 +5,7 @@ import { fetchJson } from '@/lib/api';
 import { ExchangeAdmin } from '@/lib/types';
 import { ShellLayout } from '@/components/layout';
 import { DataTable } from '@/components/data-table';
+import { useAdminLiveRefresh } from '@/components/websocket-provider';
 
 export default function ExchangesPage() {
   const [data, setData] = useState<ExchangeAdmin[]>([]);
@@ -20,6 +21,7 @@ export default function ExchangesPage() {
     } catch (err) { setError(err instanceof Error ? err.message : 'Failed to load exchanges'); }
     finally { setLoading(false); }
   }, [tenantId]);
+  useAdminLiveRefresh(load, ['exchanges']);
   useEffect(() => { load(); }, [load]);
   const fmt = (minor: number) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES' }).format(minor / 100);
   return <ShellLayout><div className="space-y-6">

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { fetchJson } from '@/lib/api';
 import { ShellLayout } from '@/components/layout';
 import { EmptyState } from '@/components/empty-state';
+import { useAdminLiveRefresh } from '@/components/websocket-provider';
 
 type ExpenseItem = { id: string; category: string; description: string; amount: number; date: string };
 
@@ -30,6 +31,7 @@ export default function ExpensesPage() {
     }
   };
 
+  useAdminLiveRefresh(load, ['expenses']);
   useEffect(() => { load(); }, []);
 
   const add = async (e: React.FormEvent) => {

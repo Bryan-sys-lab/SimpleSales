@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { fetchJson } from '@/lib/api';
 import { ShellLayout, useAdminAccess } from '@/components/layout';
 import { EmptyState } from '@/components/empty-state';
+import { useAdminLiveRefresh } from '@/components/websocket-provider';
 
 type Subscription = { tenantId: string; status: string; priceMinor: number | null; discountPercent: number; currency: string; billingInterval: string; currentPeriodEnd: string | null; tenant?: { id: string; shopName: string; profiles?: Array<{ id: string; name: string; email: string | null; user?: { email: string } | null }> } };
 type Voucher = { id: string; codePrefix: string; tenantId: string | null; issuedToEmail: string | null; voucherType: 'access' | 'discount'; durationMonths: number; discountPercent: number; expiresAt: string | null; redeemedAt: string | null; revokedAt: string | null; pausedAt: string | null; deletedAt: string | null; autoIssued: boolean };
@@ -58,6 +59,7 @@ export default function BillingPage() {
       setAccountNumber(provider.provider.accountNumber ?? '');
     }
   }, [canReadProvider]);
+  useAdminLiveRefresh(load, ['billing', 'financials']);
   useEffect(() => {
     if (!access) return;
     void load().catch(cause => setError(getErrorMessage(cause)));

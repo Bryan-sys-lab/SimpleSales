@@ -5,6 +5,7 @@ import { fetchJson } from '@/lib/api';
 import { ShellLayout, useAdminAccess } from '@/components/layout';
 import { DataTable } from '@/components/data-table';
 import { showToast } from '@/lib/toast';
+import { useAdminLiveRefresh } from '@/components/websocket-provider';
 
 type AdminPackage = { id: string; name: string; department: string; permissions: string[] };
 type AccessCatalog = {
@@ -51,6 +52,7 @@ export default function AdminsPage() {
     }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not load administrators'); }
   }, []);
+  useAdminLiveRefresh(load, ['admins']);
   useEffect(() => { void load(); }, [load]);
   async function createKey(event: FormEvent) {
     event.preventDefault(); setBusy(true); setError(''); setIssuedKey('');

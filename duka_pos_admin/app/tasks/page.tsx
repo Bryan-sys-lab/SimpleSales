@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { fetchJson } from '@/lib/api';
 import { ShellLayout, useAdminAccess } from '@/components/layout';
 import { DataTable } from '@/components/data-table';
+import { useAdminLiveRefresh } from '@/components/websocket-provider';
 
 type Report = { id: string; email: string; department: string; role: string; parentKeyId: string | null; revokedAt: string | null; expiresAt: string };
 type Task = { id: string; title: string; description: string | null; department: string; status: string; createdBy: string; assigneeKeyId: string; dueAt: string | null; createdAt: string; assignee: Report };
@@ -22,6 +23,7 @@ export default function TasksPage() {
       setError('');
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not load team work'); }
   }, []);
+  useAdminLiveRefresh(load, ['tasks']);
   useEffect(() => { void load(); }, [load]);
   async function create(event: FormEvent) {
     event.preventDefault(); setBusy(true); setError('');

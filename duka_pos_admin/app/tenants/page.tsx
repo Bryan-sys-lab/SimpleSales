@@ -6,6 +6,7 @@ import { Tenant } from '@/lib/types';
 import { ShellLayout, useAdminAccess } from '@/components/layout';
 import { DataTable } from '@/components/data-table';
 import Link from 'next/link';
+import { useAdminLiveRefresh } from '@/components/websocket-provider';
 
 export default function TenantsPage() {
   const { can } = useAdminAccess(); const canManageTenants = can('tenants:manage');
@@ -29,6 +30,7 @@ export default function TenantsPage() {
       setLoading(false);
     }
   }, []);
+  useAdminLiveRefresh(load, ['tenants', 'business-context']);
 
   useEffect(() => { load(); }, [load]);
 

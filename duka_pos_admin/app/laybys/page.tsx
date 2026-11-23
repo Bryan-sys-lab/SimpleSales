@@ -5,6 +5,7 @@ import { fetchJson } from '@/lib/api';
 import { LaybyAdmin } from '@/lib/types';
 import { ShellLayout } from '@/components/layout';
 import { DataTable } from '@/components/data-table';
+import { useAdminLiveRefresh } from '@/components/websocket-provider';
 
 const STATUS_STYLES: Record<string, string> = {
   open: 'bg-electric-50 text-electric-800 border-electric-200',
@@ -34,6 +35,7 @@ export default function LaybysPage() {
       setLoading(false);
     }
   }, [tenantId]);
+  useAdminLiveRefresh(load, ['laybys']);
 
   useEffect(() => { load(); }, [load]);
 

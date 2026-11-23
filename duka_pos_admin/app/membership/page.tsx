@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { fetchJson } from '@/lib/api';
 import { ShellLayout, useAdminAccess } from '@/components/layout';
+import { useAdminLiveRefresh } from '@/components/websocket-provider';
 
 type MembershipOffer = {
   id: string;
@@ -96,6 +97,7 @@ export default function MembershipPage() {
       setLoading(false);
     }
   }, []);
+  useAdminLiveRefresh(load, ['membership']);
 
   useEffect(() => { void load(); }, [load]);
 

@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { fetchJson } from '@/lib/api';
 import { ShellLayout } from '@/components/layout';
+import { useAdminLiveRefresh } from '@/components/websocket-provider';
 
 type Policy = {
   policyId: string;
@@ -19,19 +20,17 @@ export default function CommercialPolicyPage() {
   const [policy, setPolicy] = useState<Policy | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    fetchJson<{ policy: Policy }>('/api/admin/commercial/policy')
-      .then((response) => {
-        if (!cancelled) setPolicy(response.policy);
-      })
-      .catch((cause) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : 'Failed to load policy');
-      });
-    return () => {
-      cancelled = true;
-    };
+  const load = useCallback(async () => {
+    try {
+      const response = await fetchJson<{ policy: Policy }>('/api/admin/commercial/policy');
+      setPolicy(response.policy);
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to load policy');
+    }
   }, []);
+  useAdminLiveRefresh(load, ['commercial-policy']);
+  useEffect(() => { void load(); }, [load]);
 
   return (
     <ShellLayout>

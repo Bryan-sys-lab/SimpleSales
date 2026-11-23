@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { fetchJson } from '@/lib/api';
 import { ShellLayout } from '@/components/layout';
 import { MetricCard } from '@/components/metric-card';
 import { EmptyState } from '@/components/empty-state';
+import { useAdminLiveRefresh } from '@/components/websocket-provider';
 
 type Financials = {
   revenue: number;
@@ -61,10 +62,9 @@ export default function FinancialsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
         const [subsRes, expRes] = await Promise.all([
           fetchJson<{ subscriptions: SubscriptionRow[] }>('/api/admin/billing/subscriptions'),
           fetchJson<{ items: ExpenseRow[] }>('/api/admin/expenses'),
@@ -90,7 +90,7 @@ export default function FinancialsPage() {
           amount: item.amount,
           date: item.date ?? '',
         }));
-        if (!cancelled) setData({
+        setData({
           revenue,
           expenses,
           net: revenue - expenses,
@@ -100,14 +100,15 @@ export default function FinancialsPage() {
           expensesByCategory,
           expenseItems,
         });
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load financials');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
+        setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load financials');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+  useAdminLiveRefresh(load, ['financials']);
+  useEffect(() => { void load(); }, [load]);
 
   const margin = data && data.revenue > 0
     ? `${Math.round((data.net / data.revenue) * 100)}%`

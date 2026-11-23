@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { fetchJson } from '@/lib/api';
 import { ShellLayout } from '@/components/layout';
 import { DataTable } from '@/components/data-table';
+import { useAdminLiveRefresh } from '@/components/websocket-provider';
 
 type AggProduct = {
   key: string;
@@ -30,20 +31,21 @@ export default function ProductsPage() {
   const [error, setError] = useState<string | null>(null);
   const [coverage, setCoverage] = useState<Coverage | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetchJson<{ products: AggProduct[]; total: number; identityCoverage?: Coverage }>('/api/admin/products');
-        if (!cancelled) { setProducts(res.products); setCoverage(res.identityCoverage ?? null); }
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load products');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetchJson<{ products: AggProduct[]; total: number; identityCoverage?: Coverage }>('/api/admin/products');
+      setProducts(res.products);
+      setCoverage(res.identityCoverage ?? null);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load products');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+  useAdminLiveRefresh(load, ['products']);
+  useEffect(() => { void load(); }, [load]);
 
   return (
     <ShellLayout>

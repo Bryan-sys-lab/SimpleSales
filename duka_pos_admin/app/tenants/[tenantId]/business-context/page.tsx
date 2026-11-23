@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ShellLayout } from '@/components/layout';
+import { useAdminLiveRefresh } from '@/components/websocket-provider';
 import { fetchJson } from '@/lib/api';
 import { EmptyState } from '@/components/empty-state';
 
@@ -38,13 +39,16 @@ export default function BusinessContextPage() {
   const [data, setData] = useState<ResponseData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let active = true;
-    fetchJson<ResponseData>(`/api/admin/tenants/${encodeURIComponent(params.tenantId)}/business-context`)
-      .then((response) => { if (active) setData(response); })
-      .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : 'Could not load business details'); });
-    return () => { active = false; };
+  const load = useCallback(async () => {
+    try {
+      setData(await fetchJson<ResponseData>(`/api/admin/tenants/${encodeURIComponent(params.tenantId)}/business-context`));
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not load business details');
+    }
   }, [params.tenantId]);
+  useAdminLiveRefresh(load, ['business-context']);
+  useEffect(() => { void load(); }, [load]);
 
   const context = data?.tenant.businessContext;
   return <ShellLayout>

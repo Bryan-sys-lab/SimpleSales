@@ -5,6 +5,7 @@ import { fetchJson } from '@/lib/api';
 import { ChurnSnapshot } from '@/lib/types';
 import { ShellLayout } from '@/components/layout';
 import { DataTable } from '@/components/data-table';
+import { useAdminLiveRefresh } from '@/components/websocket-provider';
 
 const RISK_ORDER: Record<string, number> = { none: 0, low: 1, medium: 2, high: 3 };
 
@@ -25,6 +26,7 @@ export default function ChurnPage() {
       setLoading(false);
     }
   }, []);
+  useAdminLiveRefresh(load, ['churn']);
 
   useEffect(() => {
     load();

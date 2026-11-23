@@ -13,6 +13,7 @@ const NAV_ITEMS: import('./nav').NavItem[] = [
   { href: '/churn', label: 'Churn', icon: 'churn' },
   { href: '/sales', label: 'Sales', icon: 'sales' },
   { href: '/sessions', label: 'Sessions', icon: 'sessions' },
+  { href: '/telemetry', label: 'App telemetry', icon: 'sessions' },
   { href: '/tenants', label: 'Tenants', icon: 'tenants' },
   { href: '/users', label: 'Shop users', icon: 'sessions' },
   { href: '/admins', label: 'Admin accounts & keys', icon: 'audit' },
@@ -33,7 +34,7 @@ const NAV_ITEMS: import('./nav').NavItem[] = [
 
 const MOBILE_PRIMARY = ['/dashboard', '/tenants', '/admins', '/tasks'];
 const NAV_SCOPE: Record<string, string> = {
-  '/dashboard':'analytics:read','/churn':'analytics:read','/sales':'analytics:read','/sessions':'sessions:read',
+  '/dashboard':'analytics:read','/churn':'analytics:read','/sales':'analytics:read','/sessions':'sessions:read','/telemetry':'sessions:read',
   '/tenants':'tenants:read','/users':'users:read','/admins':'keys:read','/tasks':'tasks:read','/products':'analytics:read',
   '/billing':'configuration:read','/financials':'analytics:read','/expenses':'analytics:read',
   '/membership':'membership:read',

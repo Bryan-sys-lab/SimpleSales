@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { fetchJson } from '@/lib/api';
 import { ShellLayout } from '@/components/layout';
 import { DataTable } from '@/components/data-table';
+import { useAdminLiveRefresh } from '@/components/websocket-provider';
 
 type Contribution = {
   recordId: string;
@@ -81,6 +82,7 @@ export default function CommercialLedgerPage() {
       if (!cancelledRef?.current) setLoading(false);
     }
   }, [profile, status]);
+  useAdminLiveRefresh(() => load(), ['commercial-ledger']);
 
   useEffect(() => {
     const cancelled = { current: false };

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { fetchJson } from '@/lib/api';
 import { ShellLayout } from '@/components/layout';
+import { useAdminLiveRefresh } from '@/components/websocket-provider';
 
 type Announcement = { id: string; title: string; body: string; active?: boolean } | null;
 
@@ -34,6 +35,7 @@ export default function AnnouncementsPage() {
     }
   };
 
+  useAdminLiveRefresh(load, ['announcements']);
   useEffect(() => { void load(); }, []);
 
   const save = async (e: React.FormEvent) => {

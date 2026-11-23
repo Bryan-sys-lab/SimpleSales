@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { fetchJson } from '@/lib/api';
 import { ShellLayout } from '@/components/layout';
+import { useAdminLiveRefresh } from '@/components/websocket-provider';
 
 type QualityReport = {
   sourceRowCount: number;
@@ -25,24 +26,21 @@ export default function CommercialQualityPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    void fetchJson<{ report: QualityReport; definitions: Record<string, unknown> }>('/api/admin/commercial/quality')
-      .then((response) => {
-        if (!cancelled) {
-          setReport(response.report);
-          setDefinitions(response.definitions);
-          setLoading(false);
-        }
-      })
-      .catch((cause) => {
-        if (!cancelled) {
-          setError(cause instanceof Error ? cause.message : 'Failed to load data quality');
-          setLoading(false);
-        }
-      });
-    return () => { cancelled = true; };
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await fetchJson<{ report: QualityReport; definitions: Record<string, unknown> }>('/api/admin/commercial/quality');
+      setReport(response.report);
+      setDefinitions(response.definitions);
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to load data quality');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+  useAdminLiveRefresh(load, ['commercial-quality']);
+  useEffect(() => { void load(); }, [load]);
 
   return (
     <ShellLayout>

@@ -5,7 +5,7 @@ import { fetchJson } from '@/lib/api';
 import { DeviceDiagnostic } from '@/lib/types';
 import { ShellLayout } from '@/components/layout';
 import { DataTable } from '@/components/data-table';
-import { useWebSocket } from '@/components/websocket-provider';
+import { useAdminLiveRefresh } from '@/components/websocket-provider';
 import { EmptyState } from '@/components/empty-state';
 
 type DiagnosticsListItem = {
@@ -29,36 +29,35 @@ type DiagnosticsListItem = {
 export default function DiagnosticsPage() {
   const [items, setItems] = useState<DiagnosticsListItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<DeviceDiagnostic | null>(null);
-  const { subscribe } = useWebSocket();
-
-  const load = useCallback(async () => {
+  const load = useCallback(async (cursor?: string, append = false, silent = false) => {
+      if (append) setLoadingMore(true);
+      else if (!silent) setLoading(true);
       try {
-        const res = await fetchJson<{ diagnostics: DeviceDiagnostic[] }>('/api/admin/diagnostics?limit=100');
-        setItems(res.diagnostics.map((d) => ({
+        const params = new URLSearchParams({ limit: '100' });
+        if (cursor) params.set('cursor', cursor);
+        const res = await fetchJson<{ diagnostics: DeviceDiagnostic[]; nextCursor: string | null }>(`/api/admin/diagnostics?${params.toString()}`);
+        const page = res.diagnostics.map((d) => ({
           id: d.id, deviceId: d.deviceId, tenantName: d.tenant?.shopName ?? '(unlinked)',
           platform: d.platform, osVersion: d.osVersion, appVersion: d.appVersion,
           buildNumber: d.buildNumber, locale: d.locale, manufacturer: d.manufacturer,
           model: d.model, crashCount: d.crashCount, errorCount: d.errorCount,
           warningCount: d.warningCount, firstSeen: d.firstSeen, lastSeen: d.lastSeen,
-        })));
+        }));
+        setItems((current) => append ? [...current, ...page] : page);
+        setNextCursor(res.nextCursor);
         setError(null);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load diagnostics');
-      } finally { setLoading(false); }
+      } finally {
+        if (!silent) setLoading(false);
+        setLoadingMore(false);
+      }
   }, []);
-
-  useEffect(() => {
-    void load();
-    const unsubscribe = subscribe((message) => {
-      if (message && typeof message === 'object' && (message as { type?: unknown }).type === 'device_diagnostic_reported') void load();
-    });
-    const interval = setInterval(() => void load(), 30000);
-    return () => { unsubscribe(); clearInterval(interval); };
-  }, [load, subscribe]);
-
-  async function openDiagnostic(id: string) {
+  const openDiagnostic = useCallback(async (id: string) => {
     try {
       const res = await fetchJson<DeviceDiagnostic>(
         `/api/admin/diagnostics/${id}`,
@@ -69,7 +68,14 @@ export default function DiagnosticsPage() {
         err instanceof Error ? err.message : 'Failed to load diagnostic',
       );
     }
-  }
+  }, []);
+
+  const refresh = useCallback(async () => {
+    await load(undefined, false, true);
+    if (selected?.id) await openDiagnostic(selected.id);
+  }, [load, openDiagnostic, selected?.id]);
+  useAdminLiveRefresh(refresh, ['diagnostics']);
+  useEffect(() => { void load(); }, [load]);
 
   const kindColors: Record<string, string> = {
     crash: 'bg-coral-100 text-coral-900 border-coral-300',
@@ -87,7 +93,8 @@ export default function DiagnosticsPage() {
           </h2>
           <p className="text-sm text-base-500">
             Failure reports pushed from till phones. See what broke, on what
-            phone, under what conditions.
+            phone, under what conditions. Reports appear only after a device is
+            online, signed in, and able to upload its local diagnostics.
           </p>
         </div>
 
@@ -106,41 +113,50 @@ export default function DiagnosticsPage() {
           ) : items.length === 0 ? (
             <EmptyState message="No devices have reported diagnostics yet. A till pushes its failure log from the Diagnostics screen." />
           ) : (
-            <DataTable
-              columns={[
-                { key: 'deviceId', label: 'Device id', sortable: true },
-                { key: 'tenantName', label: 'Shop', sortable: true },
-                { key: 'platform', label: 'Platform', sortable: true },
-                { key: 'appVersion', label: 'App version', sortable: true },
-                { key: 'buildNumber', label: 'Build', sortable: true },
-                { key: 'crashCount', label: 'Crashes', sortable: true },
-                { key: 'errorCount', label: 'Errors', sortable: true },
-                { key: 'warningCount', label: 'Warnings', sortable: true },
-                { key: 'lastSeen', label: 'Last seen', sortable: true },
-              ]}
-              data={items}
-              rowKey={(r) => r.id}
-              renderCell={(row, key) => {
-                const value = row[key as keyof DiagnosticsListItem];
-                if (key === 'lastSeen') {
+            <>
+              <DataTable
+                columns={[
+                  { key: 'deviceId', label: 'Device id', sortable: true },
+                  { key: 'tenantName', label: 'Shop', sortable: true },
+                  { key: 'platform', label: 'Platform', sortable: true },
+                  { key: 'appVersion', label: 'App version', sortable: true },
+                  { key: 'buildNumber', label: 'Build', sortable: true },
+                  { key: 'crashCount', label: 'Crashes', sortable: true },
+                  { key: 'errorCount', label: 'Errors', sortable: true },
+                  { key: 'warningCount', label: 'Warnings', sortable: true },
+                  { key: 'lastSeen', label: 'Last seen', sortable: true },
+                ]}
+                data={items}
+                rowKey={(r) => r.id}
+                renderCell={(row, key) => {
+                  const value = row[key as keyof DiagnosticsListItem];
+                  if (key === 'lastSeen') {
+                    return (
+                      <span className="text-base-500 font-mono text-xs">
+                        {new Date(value as string).toLocaleString()}
+                      </span>
+                    );
+                  }
+                  if (key === 'platform') {
+                    return (
+                      <span className="badge border-base-200 bg-base-100 text-base-700">{String(value)}</span>
+                    );
+                  }
                   return (
-                    <span className="text-base-500 font-mono text-xs">
-                      {new Date(value as string).toLocaleString()}
-                    </span>
+                    <span className="text-base-600">{String(value)}</span>
                   );
-                }
-                if (key === 'platform') {
-                  return (
-                    <span className="badge border-base-200 bg-base-100 text-base-700">{String(value)}</span>
-                  );
-                }
-                return (
-                  <span className="text-base-600">{String(value)}</span>
-                );
-              }}
-              onRowClick={(row) => openDiagnostic(row.id as string)}
-              emptyMessage="No devices"
-            />
+                }}
+                onRowClick={(row) => openDiagnostic(row.id as string)}
+                emptyMessage="No devices"
+              />
+              {nextCursor && (
+                <div className="mt-4 flex justify-center">
+                  <button type="button" className="button-secondary min-h-10" disabled={loadingMore} onClick={() => void load(nextCursor, true)}>
+                    {loadingMore ? 'Loading…' : 'Load more devices'}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
 

@@ -5,6 +5,7 @@ import { fetchJson } from '@/lib/api';
 import { Sale } from '@/lib/types';
 import { ShellLayout } from '@/components/layout';
 import { DataTable } from '@/components/data-table';
+import { useAdminLiveRefresh } from '@/components/websocket-provider';
 
 export default function SalesPage() {
   const [data, setData] = useState<Sale[]>([]);
@@ -32,6 +33,7 @@ export default function SalesPage() {
       setLoading(false);
     }
   }, [filter]);
+  useAdminLiveRefresh(load, ['sales']);
 
   useEffect(() => {
     load();
