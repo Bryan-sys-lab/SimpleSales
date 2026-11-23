@@ -14,16 +14,23 @@ type Policy = {
   disclosure: string;
   allowlist: string[];
   prohibited: string[];
+  scopes: string[];
+  legalGates: Record<string, string>;
 };
 
 export default function CommercialPolicyPage() {
   const [policy, setPolicy] = useState<Policy | null>(null);
+  const [consentStatus, setConsentStatus] = useState<{ collectionEnabled: boolean; statusCounts: Record<string, number> } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const response = await fetchJson<{ policy: Policy }>('/api/admin/commercial/policy');
+      const [response, consentResponse] = await Promise.all([
+        fetchJson<{ policy: Policy }>('/api/admin/commercial/policy'),
+        fetchJson<{ collectionEnabled: boolean; statusCounts: Record<string, number> }>('/api/admin/commercial/consent-status'),
+      ]);
       setPolicy(response.policy);
+      setConsentStatus(consentResponse);
       setError(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Failed to load policy');
@@ -55,8 +62,31 @@ export default function CommercialPolicyPage() {
               </div>
               <p className="text-sm leading-6 text-base-700">{policy.purpose}</p>
               <p className="rounded-lg bg-base-50 p-3 text-sm leading-6 text-base-600">{policy.disclosure}</p>
+              {consentStatus && (
+                <dl className="grid gap-3 text-sm sm:grid-cols-3">
+                  <div className="rounded bg-base-50 p-3"><dt className="text-base-500">Active grants</dt><dd className="mt-1 text-lg font-semibold text-base-900">{consentStatus.statusCounts.active ?? 0}</dd></div>
+                  <div className="rounded bg-base-50 p-3"><dt className="text-base-500">Withdrawn grants</dt><dd className="mt-1 text-lg font-semibold text-base-900">{consentStatus.statusCounts.withdrawn ?? 0}</dd></div>
+                  <div className="rounded bg-base-50 p-3"><dt className="text-base-500">Production collection</dt><dd className="mt-1 text-lg font-semibold text-amber-800">{consentStatus.collectionEnabled ? 'enabled' : 'disabled'}</dd></div>
+                </dl>
+              )}
             </div>
             <div className="grid gap-4 lg:grid-cols-2">
+              <section className="card p-5">
+                <h3 className="mb-3 text-sm font-semibold text-base-900">Granular consent scopes</h3>
+                <ul className="space-y-2 text-sm text-base-700">
+                  {(policy.scopes ?? []).map((scope) => <li key={scope} className="rounded bg-base-50 px-3 py-2">{scope}</li>)}
+                </ul>
+              </section>
+              <section className="card p-5">
+                <h3 className="mb-3 text-sm font-semibold text-base-900">Legal release gates</h3>
+                <dl className="space-y-2 text-sm">
+                  {Object.entries(policy.legalGates ?? {}).map(([key, value]) => (
+                    <div key={key} className="flex items-start justify-between gap-3 rounded bg-amber-50 px-3 py-2">
+                      <dt className="text-base-700">{key}</dt><dd className="text-right font-medium text-amber-800">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
               <section className="card p-5">
                 <h3 className="mb-3 text-sm font-semibold text-base-900">Approved aggregate fields</h3>
                 <ul className="space-y-2 text-sm text-base-700">
