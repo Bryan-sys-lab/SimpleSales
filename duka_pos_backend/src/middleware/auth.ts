@@ -239,7 +239,10 @@ export const systemAdminMiddleware = async (req: express.Request, res: express.R
   const path = req.originalUrl.split('?')[0].replace(/^\/api/, '');
   // The signed-in caller may read their own access descriptor so the UI can
   // hide screens and controls they cannot use.
-  if (method === 'GET' && path === '/admin/auth/session') return next();
+  if (
+    (method === 'GET' && path === '/admin/auth/session') ||
+    (method === 'POST' && path === '/admin/auth/refresh')
+  ) return next();
   const permission = adminPermissionFor(method, path);
   if (!permission || !permissions.includes(permission)) return res.status(403).json({ error: 'Administrator permission required', permission, requestId: req.requestId });
   if (method === 'POST' && /\/keys(?:\/mint)?$/.test(path) && !canMintKeys) return res.status(403).json({ error: 'Key minting is not permitted', requestId: req.requestId });

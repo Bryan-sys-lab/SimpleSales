@@ -13,6 +13,7 @@ import { issueAdminWebSocketTicket } from '../services/admin_ws_tickets';
 
 const router = Router();
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 8, standardHeaders: 'draft-7', legacyHeaders: false, skipSuccessfulRequests: true });
+const refreshLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false });
 const permissionOptions = [
   'system:read', 'keys:read', 'keys:manage', 'users:read', 'users:manage',
   'tenants:read', 'tenants:manage', 'sessions:read', 'sessions:manage',
@@ -82,6 +83,21 @@ router.post('/login', loginLimiter, asyncHandler(async (req: Request, res: Respo
   log('info', 'admin.auth.login', { subject: `admin:${key.id}` });
   return res.json({ access_token: token, token_type: 'Bearer', expires_in: expiresIn, email: input.email, role: 'department_admin' });
 }));
+
+router.post('/refresh', refreshLimiter, systemAdminMiddleware, (req: Request, res: Response) => {
+  const auth = req.auth;
+  if (!auth || auth.token_use !== 'admin' || typeof auth.sub !== 'string' || typeof auth.email !== 'string') {
+    return res.status(401).json({ error: 'Active administrator session required' });
+  }
+  const { token, expiresIn } = issueAccessToken({
+    userId: auth.sub,
+    email: auth.email,
+    emailVerified: auth.email_verified === true,
+    tier: 'admin',
+  });
+  res.setHeader('cache-control', 'no-store');
+  return res.json({ access_token: token, token_type: 'Bearer', expires_in: expiresIn });
+});
 
 router.get('/session', systemAdminMiddleware, (req, res) => res.json({
   email: req.auth?.email,
