@@ -107,6 +107,18 @@ class AppColors extends ThemeExtension<AppColors> {
   /// Text and icons on [accentContainer].
   final Color onAccentContainer;
 
+  /// Coral used to make a chosen option unmistakable.
+  Color get selection => warning;
+
+  /// Text and icons on [selection].
+  Color get onSelection => onAccent;
+
+  /// A quiet coral surface behind a chosen option.
+  Color get selectionContainer => warningContainer;
+
+  /// Text and icons on [selectionContainer].
+  Color get onSelectionContainer => onWarningContainer;
+
   /// Success semantic color.
   final Color success;
   final Color successContainer;

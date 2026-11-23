@@ -146,10 +146,15 @@ class _ProfileCard extends StatelessWidget {
       selected: selected,
       label: '$_title. $_subtitle',
       child: Material(
-        color: selected
-            ? colors.accentContainer.withValues(alpha: 0.15)
-            : colors.surface,
-        borderRadius: shapes.cardRadius,
+        color: selected ? colors.selectionContainer : colors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: shapes.cardRadius,
+          side: BorderSide(
+            color: selected ? colors.selection : colors.outline,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
         child: InkWell(
           borderRadius: shapes.cardRadius,
           onTap: () => onSelected(profile),
@@ -182,10 +187,22 @@ class _ProfileCard extends StatelessWidget {
                           Positioned(
                             top: spacing.xs,
                             right: spacing.xs,
-                            child: Icon(
-                              Icons.check_circle,
-                              color: colors.onAccent,
-                              size: 20,
+                            child: Container(
+                              width: 26,
+                              height: 26,
+                              decoration: BoxDecoration(
+                                color: colors.selection,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: colors.surface,
+                                  width: 2,
+                                ),
+                              ),
+                              child: Icon(
+                                Icons.check,
+                                color: colors.onSelection,
+                                size: 16,
+                              ),
                             ),
                           ),
                       ],

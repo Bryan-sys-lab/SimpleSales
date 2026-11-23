@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/intl.dart' as intl;
-import 'package:material_ui/material_ui.dart' show GlobalMaterialLocalizations;
 
 import 'app_localizations_en.dart';
 import 'app_localizations_sw.dart';
@@ -78,7 +78,8 @@ abstract class AppLocalizations {
   /// delegates.
   ///
   /// Returns a list of localizations delegates containing this delegate along with
-  /// the Material and Widgets delegates.
+  /// GlobalMaterialLocalizations.delegate, GlobalCupertinoLocalizations.delegate,
+  /// and GlobalWidgetsLocalizations.delegate.
   ///
   /// Additional delegates can be added by appending to this list in
   /// MaterialApp. This list does not have to be used at all if a custom list
@@ -86,7 +87,9 @@ abstract class AppLocalizations {
   static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
       <LocalizationsDelegate<dynamic>>[
     delegate,
-    ...GlobalMaterialLocalizations.delegates,
+    GlobalMaterialLocalizations.delegate,
+    GlobalCupertinoLocalizations.delegate,
+    GlobalWidgetsLocalizations.delegate,
   ];
 
   /// A list of this localizations delegate's supported locales.
@@ -3793,6 +3796,24 @@ abstract class AppLocalizations {
   /// **'An administrator-issued {duration}-month voucher is ready to claim.'**
   String paywallVoucherReady(int duration);
 
+  /// No description provided for @paywallAvailableDiscountVoucher.
+  ///
+  /// In en, this message translates to:
+  /// **'An administrator-issued {percent}% discount for the {duration}-month plan is ready to claim.'**
+  String paywallAvailableDiscountVoucher(int percent, int duration);
+
+  /// No description provided for @paywallDiscountVoucherClaimed.
+  ///
+  /// In en, this message translates to:
+  /// **'Your {percent}% discount is saved for the {duration}-month plan. Complete payment to activate access.'**
+  String paywallDiscountVoucherClaimed(int percent, int duration);
+
+  /// No description provided for @paywallDiscountVoucherHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'This no-expiry voucher applies once to the matching plan checkout. It does not grant free access.'**
+  String get paywallDiscountVoucherHelp;
+
   /// No description provided for @paywallDuration.
   ///
   /// In en, this message translates to:
@@ -3906,6 +3927,372 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Payment prompt: {currency} {amount} for {duration} months'**
   String paywallPaymentPrompt(String currency, String amount, int duration);
+
+  /// No description provided for @membershipTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Membership'**
+  String get membershipTitle;
+
+  /// No description provided for @membershipPlans.
+  ///
+  /// In en, this message translates to:
+  /// **'Plans'**
+  String get membershipPlans;
+
+  /// No description provided for @membershipQuote.
+  ///
+  /// In en, this message translates to:
+  /// **'Quote'**
+  String get membershipQuote;
+
+  /// No description provided for @membershipVouchers.
+  ///
+  /// In en, this message translates to:
+  /// **'Vouchers'**
+  String get membershipVouchers;
+
+  /// No description provided for @membershipHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Help'**
+  String get membershipHelp;
+
+  /// No description provided for @membershipHeroTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Your plan, your way.'**
+  String get membershipHeroTitle;
+
+  /// No description provided for @membershipHeroDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Tell us what you need. We’ll put together a membership that works for you.'**
+  String get membershipHeroDescription;
+
+  /// No description provided for @membershipGetStarted.
+  ///
+  /// In en, this message translates to:
+  /// **'Get started'**
+  String get membershipGetStarted;
+
+  /// No description provided for @membershipAvailableFeatures.
+  ///
+  /// In en, this message translates to:
+  /// **'Available features'**
+  String get membershipAvailableFeatures;
+
+  /// No description provided for @membershipAvailableFeaturesDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Explore the tools available for your membership.'**
+  String get membershipAvailableFeaturesDescription;
+
+  /// No description provided for @membershipMemberRewards.
+  ///
+  /// In en, this message translates to:
+  /// **'Member rewards'**
+  String get membershipMemberRewards;
+
+  /// No description provided for @membershipMemberRewardsDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'See offers and vouchers available to you.'**
+  String get membershipMemberRewardsDescription;
+
+  /// No description provided for @membershipStepLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'BUILD YOUR PLAN · STEP 1'**
+  String get membershipStepLabel;
+
+  /// No description provided for @membershipWhatDoYouNeed.
+  ///
+  /// In en, this message translates to:
+  /// **'What do you need?'**
+  String get membershipWhatDoYouNeed;
+
+  /// No description provided for @membershipChooseFeatures.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose what you’d like included. You can change your selections before sending your request.'**
+  String get membershipChooseFeatures;
+
+  /// No description provided for @membershipCoreFeatures.
+  ///
+  /// In en, this message translates to:
+  /// **'Core features'**
+  String get membershipCoreFeatures;
+
+  /// No description provided for @membershipCoreDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'The essentials for running your shop.'**
+  String get membershipCoreDescription;
+
+  /// No description provided for @membershipAdditionalFeatures.
+  ///
+  /// In en, this message translates to:
+  /// **'Additional features'**
+  String get membershipAdditionalFeatures;
+
+  /// No description provided for @membershipAdditionalDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Add more tools to your membership.'**
+  String get membershipAdditionalDescription;
+
+  /// No description provided for @membershipExtraSupport.
+  ///
+  /// In en, this message translates to:
+  /// **'Extra support'**
+  String get membershipExtraSupport;
+
+  /// No description provided for @membershipSupportDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose the help your team needs.'**
+  String get membershipSupportDescription;
+
+  /// No description provided for @membershipCustomRequirements.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom requirements'**
+  String get membershipCustomRequirements;
+
+  /// No description provided for @membershipCustomRequirementsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Tell us anything else you’d like included.'**
+  String get membershipCustomRequirementsHint;
+
+  /// No description provided for @membershipRequestOffer.
+  ///
+  /// In en, this message translates to:
+  /// **'Request a personal offer'**
+  String get membershipRequestOffer;
+
+  /// No description provided for @membershipBackToExplore.
+  ///
+  /// In en, this message translates to:
+  /// **'Back to explore'**
+  String get membershipBackToExplore;
+
+  /// No description provided for @membershipFeatureSales.
+  ///
+  /// In en, this message translates to:
+  /// **'Sales and checkout'**
+  String get membershipFeatureSales;
+
+  /// No description provided for @membershipFeatureInventory.
+  ///
+  /// In en, this message translates to:
+  /// **'Inventory management'**
+  String get membershipFeatureInventory;
+
+  /// No description provided for @membershipFeatureReports.
+  ///
+  /// In en, this message translates to:
+  /// **'Business reports'**
+  String get membershipFeatureReports;
+
+  /// No description provided for @membershipFeatureStaff.
+  ///
+  /// In en, this message translates to:
+  /// **'Staff accounts'**
+  String get membershipFeatureStaff;
+
+  /// No description provided for @membershipFeatureProductTools.
+  ///
+  /// In en, this message translates to:
+  /// **'Product and stock tools'**
+  String get membershipFeatureProductTools;
+
+  /// No description provided for @membershipFeatureCustomers.
+  ///
+  /// In en, this message translates to:
+  /// **'Customer records'**
+  String get membershipFeatureCustomers;
+
+  /// No description provided for @membershipFeatureSetupHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Setup assistance'**
+  String get membershipFeatureSetupHelp;
+
+  /// No description provided for @membershipFeatureTraining.
+  ///
+  /// In en, this message translates to:
+  /// **'Team training'**
+  String get membershipFeatureTraining;
+
+  /// No description provided for @membershipFeaturePrioritySupport.
+  ///
+  /// In en, this message translates to:
+  /// **'Priority support'**
+  String get membershipFeaturePrioritySupport;
+
+  /// No description provided for @membershipChooseSomething.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a feature or tell us what you need.'**
+  String get membershipChooseSomething;
+
+  /// No description provided for @membershipRequestFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Your request could not be sent. Check your connection and try again.'**
+  String get membershipRequestFailed;
+
+  /// No description provided for @membershipActiveDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Your membership is active.'**
+  String get membershipActiveDescription;
+
+  /// No description provided for @membershipRenewalDate.
+  ///
+  /// In en, this message translates to:
+  /// **'Next renewal: {date}'**
+  String membershipRenewalDate(String date);
+
+  /// No description provided for @membershipMySubscription.
+  ///
+  /// In en, this message translates to:
+  /// **'My subscription'**
+  String get membershipMySubscription;
+
+  /// No description provided for @membershipExistingOffer.
+  ///
+  /// In en, this message translates to:
+  /// **'Already have an offer?'**
+  String get membershipExistingOffer;
+
+  /// No description provided for @membershipExistingOfferDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'View the payment details set for this shop.'**
+  String get membershipExistingOfferDescription;
+
+  /// No description provided for @membershipConfiguredPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'Shop subscription price'**
+  String get membershipConfiguredPrice;
+
+  /// No description provided for @membershipMpesaPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'M-Pesa phone number'**
+  String get membershipMpesaPhone;
+
+  /// No description provided for @membershipCheckPayment.
+  ///
+  /// In en, this message translates to:
+  /// **'Check payment status'**
+  String get membershipCheckPayment;
+
+  /// No description provided for @membershipMpesaReceipt.
+  ///
+  /// In en, this message translates to:
+  /// **'M-Pesa receipt code (if needed)'**
+  String get membershipMpesaReceipt;
+
+  /// No description provided for @membershipVerifyReceipt.
+  ///
+  /// In en, this message translates to:
+  /// **'Verify receipt code'**
+  String get membershipVerifyReceipt;
+
+  /// No description provided for @membershipVoucherDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a code, claim an offer, or view a discount already saved for this shop.'**
+  String get membershipVoucherDescription;
+
+  /// No description provided for @membershipHelpDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose the right team and start a WhatsApp conversation.'**
+  String get membershipHelpDescription;
+
+  /// No description provided for @membershipSales.
+  ///
+  /// In en, this message translates to:
+  /// **'Sales'**
+  String get membershipSales;
+
+  /// No description provided for @membershipSalesDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Talk about your membership request or offer.'**
+  String get membershipSalesDescription;
+
+  /// No description provided for @membershipContactSales.
+  ///
+  /// In en, this message translates to:
+  /// **'Contact Sales on WhatsApp'**
+  String get membershipContactSales;
+
+  /// No description provided for @membershipSupport.
+  ///
+  /// In en, this message translates to:
+  /// **'Support'**
+  String get membershipSupport;
+
+  /// No description provided for @membershipSupportContactDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Get help using or setting up the app.'**
+  String get membershipSupportContactDescription;
+
+  /// No description provided for @membershipContactSupport.
+  ///
+  /// In en, this message translates to:
+  /// **'Contact Support on WhatsApp'**
+  String get membershipContactSupport;
+
+  /// No description provided for @membershipContactUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'This WhatsApp contact is not available right now.'**
+  String get membershipContactUnavailable;
+
+  /// No description provided for @membershipQuoteDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Your personal offer, all in one place.'**
+  String get membershipQuoteDescription;
+
+  /// No description provided for @membershipRequestSentTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Your request has been sent.'**
+  String get membershipRequestSentTitle;
+
+  /// No description provided for @membershipRequestSentDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Our team has your request. Contact Sales on WhatsApp if you’d like to discuss it.'**
+  String get membershipRequestSentDescription;
+
+  /// No description provided for @membershipQuoteEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Start with what you need.'**
+  String get membershipQuoteEmptyTitle;
+
+  /// No description provided for @membershipQuoteEmptyDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Tell us what to include and our team will prepare a personal offer.'**
+  String get membershipQuoteEmptyDescription;
+
+  /// No description provided for @membershipDiscussOnWhatsApp.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue on WhatsApp'**
+  String get membershipDiscussOnWhatsApp;
 
   /// No description provided for @diagnosticsTitle.
   ///

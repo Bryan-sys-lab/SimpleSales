@@ -169,7 +169,13 @@ class SubscriptionEntitlement {
       this.billingInterval = 'monthly',
       this.currentPeriodEnd,
       this.whatsappUrl,
-      this.availableVoucherDurationMonths});
+      this.discountVoucherDurationMonths,
+      this.availableVoucherType,
+      this.availableVoucherDurationMonths,
+      this.availableVoucherDiscountPercent,
+      this.claimedVoucherType,
+      this.claimedVoucherDurationMonths,
+      this.claimedVoucherDiscountPercent});
   factory SubscriptionEntitlement.fromJson(Map<String, dynamic> json) =>
       SubscriptionEntitlement(
         allowed: json['allowed'] == true,
@@ -181,8 +187,41 @@ class SubscriptionEntitlement {
         billingInterval: json['billingInterval'] as String? ?? 'monthly',
         currentPeriodEnd: json['currentPeriodEnd'] as String?,
         whatsappUrl: json['whatsappUrl'] as String?,
+        discountVoucherDurationMonths:
+            (json['discountVoucherDurationMonths'] as num?)?.toInt(),
         availableVoucherDurationMonths:
             (json['availableVoucherDurationMonths'] as num?)?.toInt(),
+      );
+  SubscriptionEntitlement copyWith({
+    String? whatsappUrl,
+    String? availableVoucherType,
+    int? availableVoucherDurationMonths,
+    int? availableVoucherDiscountPercent,
+    String? claimedVoucherType,
+    int? claimedVoucherDurationMonths,
+    int? claimedVoucherDiscountPercent,
+  }) =>
+      SubscriptionEntitlement(
+        allowed: allowed,
+        status: status,
+        reason: reason,
+        priceMinor: priceMinor,
+        discountPercent: discountPercent,
+        currency: currency,
+        billingInterval: billingInterval,
+        currentPeriodEnd: currentPeriodEnd,
+        whatsappUrl: whatsappUrl ?? this.whatsappUrl,
+        discountVoucherDurationMonths: discountVoucherDurationMonths,
+        availableVoucherType: availableVoucherType ?? this.availableVoucherType,
+        availableVoucherDurationMonths: availableVoucherDurationMonths ??
+            this.availableVoucherDurationMonths,
+        availableVoucherDiscountPercent: availableVoucherDiscountPercent ??
+            this.availableVoucherDiscountPercent,
+        claimedVoucherType: claimedVoucherType ?? this.claimedVoucherType,
+        claimedVoucherDurationMonths:
+            claimedVoucherDurationMonths ?? this.claimedVoucherDurationMonths,
+        claimedVoucherDiscountPercent:
+            claimedVoucherDiscountPercent ?? this.claimedVoucherDiscountPercent,
       );
   final bool allowed;
   final String status;
@@ -193,7 +232,13 @@ class SubscriptionEntitlement {
   final String billingInterval;
   final String? currentPeriodEnd;
   final String? whatsappUrl;
+  final int? discountVoucherDurationMonths;
+  final String? availableVoucherType;
   final int? availableVoucherDurationMonths;
+  final int? availableVoucherDiscountPercent;
+  final String? claimedVoucherType;
+  final int? claimedVoucherDurationMonths;
+  final int? claimedVoucherDiscountPercent;
 }
 
 class SubscriptionPaymentQuote {
@@ -872,8 +917,26 @@ class BackendService {
   static Future<String?> get tenantId async =>
       WorkspaceService.activeTenantId();
 
-  static Future<SubscriptionEntitlement?> redeemAccessVoucher(
-      String code) async {
+  static SubscriptionEntitlement? _voucherEntitlementFromResponse(
+      dynamic data) {
+    if (data is! Map) return null;
+    final rawEntitlement = data['entitlement'];
+    if (rawEntitlement is! Map) return null;
+    final entitlement = SubscriptionEntitlement.fromJson(
+      Map<String, dynamic>.from(rawEntitlement),
+    );
+    final rawVoucher = data['voucher'];
+    if (rawVoucher is! Map) return entitlement;
+    return entitlement.copyWith(
+      claimedVoucherType: rawVoucher['voucherType'] as String?,
+      claimedVoucherDurationMonths:
+          (rawVoucher['durationMonths'] as num?)?.toInt(),
+      claimedVoucherDiscountPercent:
+          (rawVoucher['discountPercent'] as num?)?.toInt(),
+    );
+  }
+
+  static Future<SubscriptionEntitlement?> redeemVoucher(String code) async {
     final tid = await tenantId;
     if (tid == null || tid.isEmpty) return null;
     final response = await _dio.post(
@@ -881,18 +944,12 @@ class BackendService {
       data: <String, dynamic>{'code': code.trim()},
       options: Options(extra: <String, Object>{'staffTenantOverride': tid}),
     );
-    final raw = response.data is Map ? response.data['entitlement'] : null;
-    return raw is Map
-        ? SubscriptionEntitlement.fromJson(Map<String, dynamic>.from(raw))
-        : null;
+    return _voucherEntitlementFromResponse(response.data);
   }
 
   static Future<SubscriptionEntitlement?> claimAvailableVoucher() async {
     final response = await _dio.post('$backendUrl/auth/voucher/claim');
-    final raw = response.data is Map ? response.data['entitlement'] : null;
-    return raw is Map
-        ? SubscriptionEntitlement.fromJson(Map<String, dynamic>.from(raw))
-        : null;
+    return _voucherEntitlementFromResponse(response.data);
   }
 
   static Future<SubscriptionEntitlement?> fetchSubscriptionEntitlement() async {
@@ -916,24 +973,44 @@ class BackendService {
       billingInterval: entitlement.billingInterval,
       currentPeriodEnd: entitlement.currentPeriodEnd,
       whatsappUrl: whatsappUrl,
+      discountVoucherDurationMonths: entitlement.discountVoucherDurationMonths,
+      availableVoucherType: availableVoucher is Map
+          ? availableVoucher['voucherType'] as String?
+          : null,
       availableVoucherDurationMonths: availableVoucher is Map
           ? (availableVoucher['durationMonths'] as num?)?.toInt()
+          : null,
+      availableVoucherDiscountPercent: availableVoucher is Map
+          ? (availableVoucher['discountPercent'] as num?)?.toInt()
           : null,
     );
   }
 
   /// Persists a quote request in the system-admin Support screen and broadcasts
   /// it over the existing live channel. Billing remains reachable after expiry.
-  static Future<void> requestSubscriptionQuote() async {
+  static Future<void> requestSubscriptionQuote({
+    required List<String> features,
+    required String requirements,
+  }) async {
     final tid = await tenantId;
-    if (tid == null || tid.isEmpty) return;
+    if (tid == null || tid.isEmpty) {
+      throw StateError('A shop must be selected before requesting an offer.');
+    }
+    final details = <String>[
+      if (features.isNotEmpty) 'Requested features: ${features.join(', ')}',
+      if (requirements.trim().isNotEmpty)
+        'Additional requirements: ${requirements.trim()}',
+    ];
+    if (details.isEmpty) {
+      throw ArgumentError('Select a feature or describe a requirement.');
+    }
     await _dio.post('$backendUrl/telemetry/support', data: <String, dynamic>{
       'items': <Map<String, dynamic>>[
         <String, dynamic>{
           'type': 'request',
-          'title': 'Subscription price request',
+          'title': 'Personal membership quote request',
           'description':
-              'This shop is requesting its negotiated monthly subscription price so it can activate or renew access.',
+              'This shop is requesting a tailored membership offer.\n${details.join('\n')}',
           'status': 'open',
           'deviceId': tid,
         },

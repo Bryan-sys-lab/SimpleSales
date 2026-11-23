@@ -731,6 +731,29 @@
       }
     }
   },
+  "paywallAvailableDiscountVoucher": "Punguzo la {percent}% lililotolewa na msimamizi kwa mpango wa miezi {duration} liko tayari kudaiwa.",
+  "@paywallAvailableDiscountVoucher": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "int"
+      }
+    }
+  },
+  "paywallDiscountVoucherClaimed": "Punguzo lako la {percent}% limehifadhiwa kwa mpango wa miezi {duration}. Kamilisha malipo ili kuwasha ufikiaji.",
+  "@paywallDiscountVoucherClaimed": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "int"
+      }
+    }
+  },
+  "paywallDiscountVoucherHelp": "Vocha hii isiyo na tarehe ya mwisho hutumika mara moja kwa mpango unaolingana. Haitoi ufikiaji bila malipo.",
   "paywallDuration": "Muda wa usajili",
   "paywallOneMonth": "Mwezi 1",
   "paywallThreeMonths": "Miezi 3",
@@ -770,5 +793,73 @@
       }
     }
   },
+  "membershipTitle": "Uanachama",
+  "membershipPlans": "Mipango",
+  "membershipQuote": "Bei yako",
+  "membershipVouchers": "Vocha",
+  "membershipHelp": "Msaada",
+  "membershipHeroTitle": "Mpango wako, kwa njia yako.",
+  "membershipHeroDescription": "Tuambie unachohitaji. Tutakuandalia uanachama unaokufaa.",
+  "membershipGetStarted": "Anza",
+  "membershipAvailableFeatures": "Vipengele vinavyopatikana",
+  "membershipAvailableFeaturesDescription": "Angalia zana zinazopatikana kwenye uanachama wako.",
+  "membershipMemberRewards": "Zawadi za wanachama",
+  "membershipMemberRewardsDescription": "Angalia ofa na vocha unazoweza kutumia.",
+  "membershipStepLabel": "JENGA MPANGO WAKO · HATUA YA 1",
+  "membershipWhatDoYouNeed": "Unahitaji nini?",
+  "membershipChooseFeatures": "Chagua unachotaka kujumuisha. Unaweza kubadilisha chaguo zako kabla ya kutuma ombi.",
+  "membershipCoreFeatures": "Vipengele vya msingi",
+  "membershipCoreDescription": "Mambo muhimu ya kuendesha duka lako.",
+  "membershipAdditionalFeatures": "Vipengele vya ziada",
+  "membershipAdditionalDescription": "Ongeza zana zaidi kwenye uanachama wako.",
+  "membershipExtraSupport": "Msaada wa ziada",
+  "membershipSupportDescription": "Chagua msaada ambao timu yako inahitaji.",
+  "membershipCustomRequirements": "Mahitaji maalum",
+  "membershipCustomRequirementsHint": "Tuambie jambo lingine ungependa kujumuisha.",
+  "membershipRequestOffer": "Omba ofa yako",
+  "membershipBackToExplore": "Rudi kutazama",
+  "membershipFeatureSales": "Mauzo na malipo",
+  "membershipFeatureInventory": "Usimamizi wa bidhaa",
+  "membershipFeatureReports": "Ripoti za biashara",
+  "membershipFeatureStaff": "Akaunti za wafanyakazi",
+  "membershipFeatureProductTools": "Zana za bidhaa na stoo",
+  "membershipFeatureCustomers": "Rekodi za wateja",
+  "membershipFeatureSetupHelp": "Msaada wa kuanzisha",
+  "membershipFeatureTraining": "Mafunzo ya timu",
+  "membershipFeaturePrioritySupport": "Msaada wa kipaumbele",
+  "membershipChooseSomething": "Chagua kipengele au tuambie unachohitaji.",
+  "membershipRequestFailed": "Ombi lako halikutumwa. Angalia mtandao kisha ujaribu tena.",
+  "membershipActiveDescription": "Uanachama wako unatumika.",
+  "membershipRenewalDate": "Usasishaji unaofuata: {date}",
+  "@membershipRenewalDate": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "membershipMySubscription": "Uanachama wangu",
+  "membershipExistingOffer": "Tayari una ofa?",
+  "membershipExistingOfferDescription": "Tazama maelezo ya malipo yaliyowekwa kwa duka hili.",
+  "membershipConfiguredPrice": "Bei ya uanachama wa duka",
+  "membershipMpesaPhone": "Nambari ya simu ya M-Pesa",
+  "membershipCheckPayment": "Angalia hali ya malipo",
+  "membershipMpesaReceipt": "Msimbo wa risiti ya M-Pesa (ikihitajika)",
+  "membershipVerifyReceipt": "Thibitisha msimbo wa risiti",
+  "membershipVoucherDescription": "Weka msimbo, dai ofa, au tazama punguzo lililohifadhiwa kwa duka hili.",
+  "membershipHelpDescription": "Chagua timu unayohitaji na uanze mazungumzo ya WhatsApp.",
+  "membershipSales": "Mauzo",
+  "membershipSalesDescription": "Zungumza kuhusu ombi au ofa yako ya uanachama.",
+  "membershipContactSales": "Wasiliana na Mauzo kwa WhatsApp",
+  "membershipSupport": "Usaidizi",
+  "membershipSupportContactDescription": "Pata msaada wa kutumia au kusanidi programu.",
+  "membershipContactSupport": "Wasiliana na Usaidizi kwa WhatsApp",
+  "membershipContactUnavailable": "Mawasiliano haya ya WhatsApp hayapatikani kwa sasa.",
+  "membershipQuoteDescription": "Ofa yako binafsi, sehemu moja.",
+  "membershipRequestSentTitle": "Ombi lako limetumwa.",
+  "membershipRequestSentDescription": "Timu yetu imepokea ombi lako. Wasiliana na Mauzo kwa WhatsApp ikiwa ungependa kulijadili.",
+  "membershipQuoteEmptyTitle": "Anza na unachohitaji.",
+  "membershipQuoteEmptyDescription": "Tuambie cha kujumuisha na timu yetu itakuandalia ofa binafsi.",
+  "membershipDiscussOnWhatsApp": "Endelea kwa WhatsApp",
   "supportContactOpenFailed": "WhatsApp haikufunguka. Tafadhali jaribu tena."
 }

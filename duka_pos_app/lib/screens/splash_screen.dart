@@ -74,30 +74,9 @@ class _SplashScreenState extends State<SplashScreen>
         child: Stack(
           fit: StackFit.expand,
           children: <Widget>[
-            if (!reduceMotion)
-              Image.asset(
-                'assets/branding/simple_sales_startup_animation.gif',
-                fit: BoxFit.cover,
-                gaplessPlayback: true,
-                excludeFromSemantics: true,
-              )
-            else
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: AppGradients.primary,
-                ),
-              ),
-            const DecoratedBox(
+            DecoratedBox(
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: <Color>[
-                    Color(0x33000000),
-                    Color(0x66000000),
-                    Color(0xCC000000),
-                  ],
-                ),
+                gradient: AppGradients.primary,
               ),
             ),
             SafeArea(
@@ -110,9 +89,9 @@ class _SplashScreenState extends State<SplashScreen>
                       final double progress =
                           reduceMotion ? 1 : _animation.value;
                       return Opacity(
-                        opacity: 0.86 + progress * 0.14,
+                        opacity: 0.72 + progress * 0.28,
                         child: Transform.scale(
-                          scale: 0.94 + progress * 0.06,
+                          scale: 0.84 + progress * 0.16,
                           child: child,
                         ),
                       );
@@ -120,10 +99,14 @@ class _SplashScreenState extends State<SplashScreen>
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
-                        const SimplePosMark(size: 88),
-                        const SizedBox(height: 20),
+                        SimplePosMark(
+                          size: 76,
+                          screen: colors.electric,
+                          decorative: true,
+                        ),
+                        const SizedBox(height: 16),
                         SimplePosWordmark(
-                          fontSize: 26,
+                          fontSize: 24,
                           color: colors.onMediaScrim,
                         ),
                       ],
@@ -143,10 +126,10 @@ class _SplashScreenState extends State<SplashScreen>
                             )
                           : SizedBox(
                               width: 28,
-                              height: 28,
+                              height: 24,
                               child: CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                color: colors.accent,
+                                strokeWidth: 2,
+                                color: colors.electric,
                                 backgroundColor:
                                     colors.onMediaScrim.withValues(alpha: 0.18),
                               ),

@@ -732,6 +732,22 @@ void main() {
   });
 
   group('dark is designed, not flipped', () {
+    test('coral selection colors stay readable on both surfaces', () {
+      const AppColors light = AppColors.light();
+      const AppColors dark = AppColors.dark();
+
+      expect(wcagContrast(light.onSelection, light.selection),
+          greaterThanOrEqualTo(4.5));
+      expect(wcagContrast(light.onSelectionContainer, light.selectionContainer),
+          greaterThanOrEqualTo(4.5));
+      expect(wcagContrast(dark.onSelection, dark.selection),
+          greaterThanOrEqualTo(4.5));
+      expect(wcagContrast(dark.onSelectionContainer, dark.selectionContainer),
+          greaterThanOrEqualTo(4.5));
+      expect(light.selection, light.warning);
+      expect(dark.selection, dark.warning);
+    });
+
     test('the selected-state accent moves to electric green for dark surfaces',
         () {
       const AppColors light = AppColors.light();

@@ -2233,6 +2233,20 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String paywallAvailableDiscountVoucher(int percent, int duration) {
+    return 'An administrator-issued $percent% discount for the $duration-month plan is ready to claim.';
+  }
+
+  @override
+  String paywallDiscountVoucherClaimed(int percent, int duration) {
+    return 'Your $percent% discount is saved for the $duration-month plan. Complete payment to activate access.';
+  }
+
+  @override
+  String get paywallDiscountVoucherHelp =>
+      'This no-expiry voucher applies once to the matching plan checkout. It does not grant free access.';
+
+  @override
   String get paywallDuration => 'Subscription duration';
 
   @override
@@ -2295,6 +2309,209 @@ class AppLocalizationsEn extends AppLocalizations {
   String paywallPaymentPrompt(String currency, String amount, int duration) {
     return 'Payment prompt: $currency $amount for $duration months';
   }
+
+  @override
+  String get membershipTitle => 'Membership';
+
+  @override
+  String get membershipPlans => 'Plans';
+
+  @override
+  String get membershipQuote => 'Quote';
+
+  @override
+  String get membershipVouchers => 'Vouchers';
+
+  @override
+  String get membershipHelp => 'Help';
+
+  @override
+  String get membershipHeroTitle => 'Your plan, your way.';
+
+  @override
+  String get membershipHeroDescription =>
+      'Tell us what you need. We’ll put together a membership that works for you.';
+
+  @override
+  String get membershipGetStarted => 'Get started';
+
+  @override
+  String get membershipAvailableFeatures => 'Available features';
+
+  @override
+  String get membershipAvailableFeaturesDescription =>
+      'Explore the tools available for your membership.';
+
+  @override
+  String get membershipMemberRewards => 'Member rewards';
+
+  @override
+  String get membershipMemberRewardsDescription =>
+      'See offers and vouchers available to you.';
+
+  @override
+  String get membershipStepLabel => 'BUILD YOUR PLAN · STEP 1';
+
+  @override
+  String get membershipWhatDoYouNeed => 'What do you need?';
+
+  @override
+  String get membershipChooseFeatures =>
+      'Choose what you’d like included. You can change your selections before sending your request.';
+
+  @override
+  String get membershipCoreFeatures => 'Core features';
+
+  @override
+  String get membershipCoreDescription =>
+      'The essentials for running your shop.';
+
+  @override
+  String get membershipAdditionalFeatures => 'Additional features';
+
+  @override
+  String get membershipAdditionalDescription =>
+      'Add more tools to your membership.';
+
+  @override
+  String get membershipExtraSupport => 'Extra support';
+
+  @override
+  String get membershipSupportDescription => 'Choose the help your team needs.';
+
+  @override
+  String get membershipCustomRequirements => 'Custom requirements';
+
+  @override
+  String get membershipCustomRequirementsHint =>
+      'Tell us anything else you’d like included.';
+
+  @override
+  String get membershipRequestOffer => 'Request a personal offer';
+
+  @override
+  String get membershipBackToExplore => 'Back to explore';
+
+  @override
+  String get membershipFeatureSales => 'Sales and checkout';
+
+  @override
+  String get membershipFeatureInventory => 'Inventory management';
+
+  @override
+  String get membershipFeatureReports => 'Business reports';
+
+  @override
+  String get membershipFeatureStaff => 'Staff accounts';
+
+  @override
+  String get membershipFeatureProductTools => 'Product and stock tools';
+
+  @override
+  String get membershipFeatureCustomers => 'Customer records';
+
+  @override
+  String get membershipFeatureSetupHelp => 'Setup assistance';
+
+  @override
+  String get membershipFeatureTraining => 'Team training';
+
+  @override
+  String get membershipFeaturePrioritySupport => 'Priority support';
+
+  @override
+  String get membershipChooseSomething =>
+      'Choose a feature or tell us what you need.';
+
+  @override
+  String get membershipRequestFailed =>
+      'Your request could not be sent. Check your connection and try again.';
+
+  @override
+  String get membershipActiveDescription => 'Your membership is active.';
+
+  @override
+  String membershipRenewalDate(String date) {
+    return 'Next renewal: $date';
+  }
+
+  @override
+  String get membershipMySubscription => 'My subscription';
+
+  @override
+  String get membershipExistingOffer => 'Already have an offer?';
+
+  @override
+  String get membershipExistingOfferDescription =>
+      'View the payment details set for this shop.';
+
+  @override
+  String get membershipConfiguredPrice => 'Shop subscription price';
+
+  @override
+  String get membershipMpesaPhone => 'M-Pesa phone number';
+
+  @override
+  String get membershipCheckPayment => 'Check payment status';
+
+  @override
+  String get membershipMpesaReceipt => 'M-Pesa receipt code (if needed)';
+
+  @override
+  String get membershipVerifyReceipt => 'Verify receipt code';
+
+  @override
+  String get membershipVoucherDescription =>
+      'Enter a code, claim an offer, or view a discount already saved for this shop.';
+
+  @override
+  String get membershipHelpDescription =>
+      'Choose the right team and start a WhatsApp conversation.';
+
+  @override
+  String get membershipSales => 'Sales';
+
+  @override
+  String get membershipSalesDescription =>
+      'Talk about your membership request or offer.';
+
+  @override
+  String get membershipContactSales => 'Contact Sales on WhatsApp';
+
+  @override
+  String get membershipSupport => 'Support';
+
+  @override
+  String get membershipSupportContactDescription =>
+      'Get help using or setting up the app.';
+
+  @override
+  String get membershipContactSupport => 'Contact Support on WhatsApp';
+
+  @override
+  String get membershipContactUnavailable =>
+      'This WhatsApp contact is not available right now.';
+
+  @override
+  String get membershipQuoteDescription =>
+      'Your personal offer, all in one place.';
+
+  @override
+  String get membershipRequestSentTitle => 'Your request has been sent.';
+
+  @override
+  String get membershipRequestSentDescription =>
+      'Our team has your request. Contact Sales on WhatsApp if you’d like to discuss it.';
+
+  @override
+  String get membershipQuoteEmptyTitle => 'Start with what you need.';
+
+  @override
+  String get membershipQuoteEmptyDescription =>
+      'Tell us what to include and our team will prepare a personal offer.';
+
+  @override
+  String get membershipDiscussOnWhatsApp => 'Continue on WhatsApp';
 
   @override
   String get diagnosticsTitle => 'Diagnostics';

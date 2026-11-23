@@ -623,6 +623,29 @@
       }
     }
   },
+  "paywallAvailableDiscountVoucher": "An administrator-issued {percent}% discount for the {duration}-month plan is ready to claim.",
+  "@paywallAvailableDiscountVoucher": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "int"
+      }
+    }
+  },
+  "paywallDiscountVoucherClaimed": "Your {percent}% discount is saved for the {duration}-month plan. Complete payment to activate access.",
+  "@paywallDiscountVoucherClaimed": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "int"
+      }
+    }
+  },
+  "paywallDiscountVoucherHelp": "This no-expiry voucher applies once to the matching plan checkout. It does not grant free access.",
   "paywallDuration": "Subscription duration",
   "paywallOneMonth": "1 month",
   "paywallThreeMonths": "3 months",
@@ -662,6 +685,74 @@
       }
     }
   },
+  "membershipTitle": "Membership",
+  "membershipPlans": "Plans",
+  "membershipQuote": "Quote",
+  "membershipVouchers": "Vouchers",
+  "membershipHelp": "Help",
+  "membershipHeroTitle": "Your plan, your way.",
+  "membershipHeroDescription": "Tell us what you need. We’ll put together a membership that works for you.",
+  "membershipGetStarted": "Get started",
+  "membershipAvailableFeatures": "Available features",
+  "membershipAvailableFeaturesDescription": "Explore the tools available for your membership.",
+  "membershipMemberRewards": "Member rewards",
+  "membershipMemberRewardsDescription": "See offers and vouchers available to you.",
+  "membershipStepLabel": "BUILD YOUR PLAN · STEP 1",
+  "membershipWhatDoYouNeed": "What do you need?",
+  "membershipChooseFeatures": "Choose what you’d like included. You can change your selections before sending your request.",
+  "membershipCoreFeatures": "Core features",
+  "membershipCoreDescription": "The essentials for running your shop.",
+  "membershipAdditionalFeatures": "Additional features",
+  "membershipAdditionalDescription": "Add more tools to your membership.",
+  "membershipExtraSupport": "Extra support",
+  "membershipSupportDescription": "Choose the help your team needs.",
+  "membershipCustomRequirements": "Custom requirements",
+  "membershipCustomRequirementsHint": "Tell us anything else you’d like included.",
+  "membershipRequestOffer": "Request a personal offer",
+  "membershipBackToExplore": "Back to explore",
+  "membershipFeatureSales": "Sales and checkout",
+  "membershipFeatureInventory": "Inventory management",
+  "membershipFeatureReports": "Business reports",
+  "membershipFeatureStaff": "Staff accounts",
+  "membershipFeatureProductTools": "Product and stock tools",
+  "membershipFeatureCustomers": "Customer records",
+  "membershipFeatureSetupHelp": "Setup assistance",
+  "membershipFeatureTraining": "Team training",
+  "membershipFeaturePrioritySupport": "Priority support",
+  "membershipChooseSomething": "Choose a feature or tell us what you need.",
+  "membershipRequestFailed": "Your request could not be sent. Check your connection and try again.",
+  "membershipActiveDescription": "Your membership is active.",
+  "membershipRenewalDate": "Next renewal: {date}",
+  "@membershipRenewalDate": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "membershipMySubscription": "My subscription",
+  "membershipExistingOffer": "Already have an offer?",
+  "membershipExistingOfferDescription": "View the payment details set for this shop.",
+  "membershipConfiguredPrice": "Shop subscription price",
+  "membershipMpesaPhone": "M-Pesa phone number",
+  "membershipCheckPayment": "Check payment status",
+  "membershipMpesaReceipt": "M-Pesa receipt code (if needed)",
+  "membershipVerifyReceipt": "Verify receipt code",
+  "membershipVoucherDescription": "Enter a code, claim an offer, or view a discount already saved for this shop.",
+  "membershipHelpDescription": "Choose the right team and start a WhatsApp conversation.",
+  "membershipSales": "Sales",
+  "membershipSalesDescription": "Talk about your membership request or offer.",
+  "membershipContactSales": "Contact Sales on WhatsApp",
+  "membershipSupport": "Support",
+  "membershipSupportContactDescription": "Get help using or setting up the app.",
+  "membershipContactSupport": "Contact Support on WhatsApp",
+  "membershipContactUnavailable": "This WhatsApp contact is not available right now.",
+  "membershipQuoteDescription": "Your personal offer, all in one place.",
+  "membershipRequestSentTitle": "Your request has been sent.",
+  "membershipRequestSentDescription": "Our team has your request. Contact Sales on WhatsApp if you’d like to discuss it.",
+  "membershipQuoteEmptyTitle": "Start with what you need.",
+  "membershipQuoteEmptyDescription": "Tell us what to include and our team will prepare a personal offer.",
+  "membershipDiscussOnWhatsApp": "Continue on WhatsApp",
   "diagnosticsTitle": "Diagnostics",
   "diagnosticsRecentTitle": "Recent failures",
   "diagnosticsRecentCount": "{count, plural, =1{1 failure kept} other{{count} failures kept}} — the last {days} weeks, newer than {cap} rows are not kept",

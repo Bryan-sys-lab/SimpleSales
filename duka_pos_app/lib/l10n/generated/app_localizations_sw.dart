@@ -2233,6 +2233,20 @@ class AppLocalizationsSw extends AppLocalizations {
   }
 
   @override
+  String paywallAvailableDiscountVoucher(int percent, int duration) {
+    return 'Punguzo la $percent% lililotolewa na msimamizi kwa mpango wa miezi $duration liko tayari kudaiwa.';
+  }
+
+  @override
+  String paywallDiscountVoucherClaimed(int percent, int duration) {
+    return 'Punguzo lako la $percent% limehifadhiwa kwa mpango wa miezi $duration. Kamilisha malipo ili kuwasha ufikiaji.';
+  }
+
+  @override
+  String get paywallDiscountVoucherHelp =>
+      'Vocha hii isiyo na tarehe ya mwisho hutumika mara moja kwa mpango unaolingana. Haitoi ufikiaji bila malipo.';
+
+  @override
   String get paywallDuration => 'Muda wa usajili';
 
   @override
@@ -2295,6 +2309,210 @@ class AppLocalizationsSw extends AppLocalizations {
   String paywallPaymentPrompt(String currency, String amount, int duration) {
     return 'Ombi la malipo: $currency $amount kwa miezi $duration';
   }
+
+  @override
+  String get membershipTitle => 'Uanachama';
+
+  @override
+  String get membershipPlans => 'Mipango';
+
+  @override
+  String get membershipQuote => 'Bei yako';
+
+  @override
+  String get membershipVouchers => 'Vocha';
+
+  @override
+  String get membershipHelp => 'Msaada';
+
+  @override
+  String get membershipHeroTitle => 'Mpango wako, kwa njia yako.';
+
+  @override
+  String get membershipHeroDescription =>
+      'Tuambie unachohitaji. Tutakuandalia uanachama unaokufaa.';
+
+  @override
+  String get membershipGetStarted => 'Anza';
+
+  @override
+  String get membershipAvailableFeatures => 'Vipengele vinavyopatikana';
+
+  @override
+  String get membershipAvailableFeaturesDescription =>
+      'Angalia zana zinazopatikana kwenye uanachama wako.';
+
+  @override
+  String get membershipMemberRewards => 'Zawadi za wanachama';
+
+  @override
+  String get membershipMemberRewardsDescription =>
+      'Angalia ofa na vocha unazoweza kutumia.';
+
+  @override
+  String get membershipStepLabel => 'JENGA MPANGO WAKO · HATUA YA 1';
+
+  @override
+  String get membershipWhatDoYouNeed => 'Unahitaji nini?';
+
+  @override
+  String get membershipChooseFeatures =>
+      'Chagua unachotaka kujumuisha. Unaweza kubadilisha chaguo zako kabla ya kutuma ombi.';
+
+  @override
+  String get membershipCoreFeatures => 'Vipengele vya msingi';
+
+  @override
+  String get membershipCoreDescription =>
+      'Mambo muhimu ya kuendesha duka lako.';
+
+  @override
+  String get membershipAdditionalFeatures => 'Vipengele vya ziada';
+
+  @override
+  String get membershipAdditionalDescription =>
+      'Ongeza zana zaidi kwenye uanachama wako.';
+
+  @override
+  String get membershipExtraSupport => 'Msaada wa ziada';
+
+  @override
+  String get membershipSupportDescription =>
+      'Chagua msaada ambao timu yako inahitaji.';
+
+  @override
+  String get membershipCustomRequirements => 'Mahitaji maalum';
+
+  @override
+  String get membershipCustomRequirementsHint =>
+      'Tuambie jambo lingine ungependa kujumuisha.';
+
+  @override
+  String get membershipRequestOffer => 'Omba ofa yako';
+
+  @override
+  String get membershipBackToExplore => 'Rudi kutazama';
+
+  @override
+  String get membershipFeatureSales => 'Mauzo na malipo';
+
+  @override
+  String get membershipFeatureInventory => 'Usimamizi wa bidhaa';
+
+  @override
+  String get membershipFeatureReports => 'Ripoti za biashara';
+
+  @override
+  String get membershipFeatureStaff => 'Akaunti za wafanyakazi';
+
+  @override
+  String get membershipFeatureProductTools => 'Zana za bidhaa na stoo';
+
+  @override
+  String get membershipFeatureCustomers => 'Rekodi za wateja';
+
+  @override
+  String get membershipFeatureSetupHelp => 'Msaada wa kuanzisha';
+
+  @override
+  String get membershipFeatureTraining => 'Mafunzo ya timu';
+
+  @override
+  String get membershipFeaturePrioritySupport => 'Msaada wa kipaumbele';
+
+  @override
+  String get membershipChooseSomething =>
+      'Chagua kipengele au tuambie unachohitaji.';
+
+  @override
+  String get membershipRequestFailed =>
+      'Ombi lako halikutumwa. Angalia mtandao kisha ujaribu tena.';
+
+  @override
+  String get membershipActiveDescription => 'Uanachama wako unatumika.';
+
+  @override
+  String membershipRenewalDate(String date) {
+    return 'Usasishaji unaofuata: $date';
+  }
+
+  @override
+  String get membershipMySubscription => 'Uanachama wangu';
+
+  @override
+  String get membershipExistingOffer => 'Tayari una ofa?';
+
+  @override
+  String get membershipExistingOfferDescription =>
+      'Tazama maelezo ya malipo yaliyowekwa kwa duka hili.';
+
+  @override
+  String get membershipConfiguredPrice => 'Bei ya uanachama wa duka';
+
+  @override
+  String get membershipMpesaPhone => 'Nambari ya simu ya M-Pesa';
+
+  @override
+  String get membershipCheckPayment => 'Angalia hali ya malipo';
+
+  @override
+  String get membershipMpesaReceipt =>
+      'Msimbo wa risiti ya M-Pesa (ikihitajika)';
+
+  @override
+  String get membershipVerifyReceipt => 'Thibitisha msimbo wa risiti';
+
+  @override
+  String get membershipVoucherDescription =>
+      'Weka msimbo, dai ofa, au tazama punguzo lililohifadhiwa kwa duka hili.';
+
+  @override
+  String get membershipHelpDescription =>
+      'Chagua timu unayohitaji na uanze mazungumzo ya WhatsApp.';
+
+  @override
+  String get membershipSales => 'Mauzo';
+
+  @override
+  String get membershipSalesDescription =>
+      'Zungumza kuhusu ombi au ofa yako ya uanachama.';
+
+  @override
+  String get membershipContactSales => 'Wasiliana na Mauzo kwa WhatsApp';
+
+  @override
+  String get membershipSupport => 'Usaidizi';
+
+  @override
+  String get membershipSupportContactDescription =>
+      'Pata msaada wa kutumia au kusanidi programu.';
+
+  @override
+  String get membershipContactSupport => 'Wasiliana na Usaidizi kwa WhatsApp';
+
+  @override
+  String get membershipContactUnavailable =>
+      'Mawasiliano haya ya WhatsApp hayapatikani kwa sasa.';
+
+  @override
+  String get membershipQuoteDescription => 'Ofa yako binafsi, sehemu moja.';
+
+  @override
+  String get membershipRequestSentTitle => 'Ombi lako limetumwa.';
+
+  @override
+  String get membershipRequestSentDescription =>
+      'Timu yetu imepokea ombi lako. Wasiliana na Mauzo kwa WhatsApp ikiwa ungependa kulijadili.';
+
+  @override
+  String get membershipQuoteEmptyTitle => 'Anza na unachohitaji.';
+
+  @override
+  String get membershipQuoteEmptyDescription =>
+      'Tuambie cha kujumuisha na timu yetu itakuandalia ofa binafsi.';
+
+  @override
+  String get membershipDiscussOnWhatsApp => 'Endelea kwa WhatsApp';
 
   @override
   String get diagnosticsTitle => 'Diagnostics';

@@ -33,6 +33,22 @@ import 'package:yaml/yaml.dart';
 /// The workflow under test.
 const String workflowPath = '../.github/workflows/auto-release.yml';
 
+String get _bashExecutable {
+  if (Platform.isWindows) {
+    const String gitBash = r'C:\Program Files\Git\bin\bash.exe';
+    if (File(gitBash).existsSync()) return gitBash;
+  }
+  return 'bash';
+}
+
+String _bashPath(String path) {
+  final String normalized = path.replaceAll(r'\', '/');
+  final RegExpMatch? drivePath =
+      RegExp(r'^([A-Za-z]):/(.*)$').firstMatch(normalized);
+  if (drivePath == null) return normalized;
+  return '/${drivePath[1]!.toLowerCase()}/${drivePath[2]}';
+}
+
 /// The shell of every step in the job, keyed by the step's name.
 Map<String, String> _stepsOf(String workflow) {
   final YamlMap doc = loadYaml(File(workflowPath).readAsStringSync());
@@ -121,11 +137,11 @@ void main() {
     scriptFile.writeAsStringSync(script);
 
     final ProcessResult result = Process.runSync(
-      'bash',
-      <String>['${out.path}/step.sh'],
+      _bashExecutable,
+      <String>[_bashPath(scriptFile.path)],
       workingDirectory: repo.path,
       environment: <String, String>{
-        'GITHUB_OUTPUT': outputFile.path,
+        'GITHUB_OUTPUT': _bashPath(outputFile.path),
         'GITHUB_REPOSITORY': 'owner/repo',
         'RUNNER_TEMP': out.path,
         ...env,
@@ -150,7 +166,10 @@ void main() {
       .replaceAll(r'${{ github.event.workflow_run.conclusion }}', 'success')
       .replaceAll(r'${{ github.event.workflow_run.event }}', 'push')
       .replaceAll(
-          r'${{ github.event.workflow_run.html_url }}', 'https://example/run');
+        r'${{ github.event.workflow_run.html_url }}',
+        'https://example/run',
+      )
+      .replaceAll(r'${{ github.token }}', 'test-token');
 
   test('a build number that has NOT been used is released as it stands', () {
     final Map<String, String> steps = _stepsOf(workflowPath);
@@ -166,13 +185,13 @@ void main() {
 
     final ({Map<String, String> outputs, String log}) planned =
         runStep(planScript(plan, sha));
-    expect(planned.outputs['stale'], 'false');
+    expect(planned.outputs['stale'], 'false', reason: planned.log);
     expect(planned.outputs['tag'], 'v2.0.0+28');
     expect(planned.outputs['code'], '28');
 
     // No bump: the number was free, so the tested commit is the one released.
     final ProcessResult bumpResult = Process.runSync(
-      'bash',
+      _bashExecutable,
       <String>['-c', bump],
       workingDirectory: repo.path,
     );

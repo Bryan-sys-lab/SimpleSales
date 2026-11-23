@@ -1,5 +1,6 @@
 import 'package:duka_pos/ui/shop_profile_picker.dart';
 import 'package:duka_pos/profile/shop_profile.dart';
+import 'package:duka_pos/theme/app_colors.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -22,7 +23,7 @@ void main() {
     expect(find.text('Drinks'), findsOneWidget);
 
     // Duka card shows selected state.
-    expect(find.byIcon(Icons.check_circle), findsOneWidget);
+    expect(find.byIcon(Icons.check), findsOneWidget);
     final Map<String, String> profileImages = <String, String>{
       'Duka': 'assets/onboarding/duka_shop_photo.jpg',
       'Drinks': 'assets/onboarding/drinks_shop_photo.jpg',
@@ -51,12 +52,35 @@ void main() {
   testWidgets('selecting a profile updates selection visibly',
       (WidgetTester tester) async {
     tester.useDevice(Device.compact);
-    ShopProfile? selected;
+    ShopProfile selected = ShopProfile.duka;
     await tester.pumpApp(
-      home: ShopProfilePicker(
-        value: ShopProfile.duka,
-        onChanged: (profile) => selected = profile,
+      home: StatefulBuilder(
+        builder: (BuildContext context, StateSetter setState) =>
+            ShopProfilePicker(
+          value: selected,
+          onChanged: (ShopProfile profile) {
+            setState(() => selected = profile);
+          },
+        ),
       ),
+    );
+    final AppColors colors =
+        AppColors.of(tester.element(find.byType(ShopProfilePicker)));
+
+    Material profileCard(String title) {
+      final Finder card = find
+          .ancestor(
+            of: find.text(title).first,
+            matching: find.byType(Material),
+          )
+          .first;
+      return tester.widget<Material>(card);
+    }
+
+    expect(profileCard('Duka').color, colors.selectionContainer);
+    expect(
+      (profileCard('Duka').shape! as RoundedRectangleBorder).side.color,
+      colors.selection,
     );
 
     final rail = find.byType(Scrollable).first;
@@ -64,6 +88,8 @@ void main() {
     await tester.tap(find.text('Drinks').first);
     await tester.pumpAndSettle();
     expect(selected, ShopProfile.drinks);
+    expect(profileCard('Drinks').color, colors.selectionContainer);
+    expect(find.byIcon(Icons.check), findsOneWidget);
 
     // Tap Fashion.
     await tester.scrollUntilVisible(find.text('Fashion'), 120,
@@ -71,12 +97,14 @@ void main() {
     await tester.tap(find.text('Fashion').first);
     await tester.pumpAndSettle();
     expect(selected, ShopProfile.fashion);
+    expect(profileCard('Fashion').color, colors.selectionContainer);
 
     // Tap Open.
     await tester.scrollUntilVisible(find.text('Open'), 120, scrollable: rail);
     await tester.tap(find.text('Open').first);
     await tester.pumpAndSettle();
     expect(selected, ShopProfile.open);
+    expect(profileCard('Open').color, colors.selectionContainer);
 
     // Back to Duka.
     await tester.drag(find.byType(ListView), const Offset(400, 0));
@@ -84,6 +112,7 @@ void main() {
     await tester.tap(find.text('Duka').first);
     await tester.pumpAndSettle();
     expect(selected, ShopProfile.duka);
+    expect(profileCard('Duka').color, colors.selectionContainer);
   });
 
   testWidgets('keeps the profile rail horizontally scrollable on wide surfaces',
