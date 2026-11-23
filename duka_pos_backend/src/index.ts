@@ -57,6 +57,7 @@ import ownerTransactionRoutes from './routes/owner-transactions';
 import businessContextRoutes from './routes/business_context';
 import commercialConsentRoutes from './routes/commercial_consent';
 import commercialContributionsRoutes from './routes/commercial_contributions';
+import partnerRoutes from './routes/partner';
 import saleEvidenceRoutes from './routes/sale_evidence';
 import { verifyAccessToken } from './lib/jwt';
 import { addLiveClient, broadcastAll, broadcastTenantChange, removeLiveClient } from './services/live_broker';
@@ -347,6 +348,7 @@ if (isNode) {
     next();
   });
 }
+app.use('/api/partner', partnerRoutes);
 app.use('/api/admin/auth', adminAuthRoutes);
 app.use('/api/admin/org', adminOrgRoutes);
 app.use('/api/admin/membership', adminMembershipRoutes);

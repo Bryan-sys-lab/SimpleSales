@@ -288,6 +288,75 @@ model CloudBackup {
   @@map("cloud_backups")
 }
 
+model Partner {
+  id             String   @id @default(cuid())
+  legalName      String   @map("legal_name")
+  status         String   @default("pending_contract")
+  contractRef    String?  @map("contract_ref")
+  purpose        String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  grants      PartnerGrant[]
+  credentials PartnerCredential[]
+  deliveries  PartnerDelivery[]
+
+  @@map("partners")
+}
+
+model PartnerGrant {
+  id             String   @id @default(cuid())
+  partnerId      String   @map("partner_id")
+  productId      String   @map("product_id")
+  snapshotId     String   @map("snapshot_id")
+  permittedScope String   @map("permitted_scope")
+  status         String   @default("active")
+  expiresAt      DateTime @map("expires_at")
+  quotaPerDay    Int      @default(100) @map("quota_per_day")
+  createdAt      DateTime @default(now()) @map("created_at")
+  revokedAt      DateTime? @map("revoked_at")
+
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  deliveries PartnerDelivery[]
+
+  @@index([partnerId, status, expiresAt])
+  @@map("partner_grants")
+}
+
+model PartnerCredential {
+  id          String   @id @default(cuid())
+  partnerId   String   @map("partner_id")
+  keyPrefix   String   @map("key_prefix")
+  keyHash     String   @unique @map("key_hash")
+  status      String   @default("active")
+  expiresAt   DateTime @map("expires_at")
+  quotaPerDay Int      @default(100) @map("quota_per_day")
+  revokedAt   DateTime? @map("revoked_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@index([partnerId, status, expiresAt])
+  @@map("partner_credentials")
+}
+
+model PartnerDelivery {
+  id        String   @id @default(cuid())
+  partnerId String   @map("partner_id")
+  grantId   String   @map("grant_id")
+  snapshotId String  @map("snapshot_id")
+  productId String   @map("product_id")
+  status    String
+  responseHash String? @map("response_hash")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  grant PartnerGrant @relation(fields: [grantId], references: [id], onDelete: Cascade)
+
+  @@index([partnerId, createdAt])
+  @@map("partner_deliveries")
+}
+
 /// Server-authoritative, owner-granted commercial contribution scopes.
 /// This is purpose and withdrawal evidence; it never enables collection.
 model CommercialConsentGrant {

@@ -500,6 +500,107 @@ router.get('/commercial/data-intelligence/overview', asyncHandler(async (req: Re
   });
 }));
 
+router.get('/commercial/partners', asyncHandler(async (req: Request, res: Response) => {
+  const partners = await prisma.partner.findMany({
+    include: { grants: true, credentials: true, deliveries: { orderBy: { createdAt: 'desc' }, take: 20 } },
+    orderBy: { createdAt: 'desc' },
+  });
+  await prisma.adminAuditLog.create({
+    data: { adminId: req.auth?.sub ?? 'unknown', action: 'view_partner_products', targetType: 'partner', targetId: null, tenantId: null },
+  });
+  return res.json({ partners: partners.map((partner) => ({
+    id: partner.id,
+    legalName: partner.legalName,
+    status: partner.status,
+    contractRef: partner.contractRef,
+    purpose: partner.purpose,
+    grants: partner.grants,
+    credentials: partner.credentials.map((credential) => ({
+      id: credential.id,
+      keyPrefix: credential.keyPrefix,
+      status: credential.status,
+      expiresAt: credential.expiresAt,
+      quotaPerDay: credential.quotaPerDay,
+      revokedAt: credential.revokedAt,
+    })),
+    deliveries: partner.deliveries,
+  })) });
+}));
+
+router.post('/commercial/partners', asyncHandler(async (req: Request, res: Response) => {
+  const input = z.object({
+    legalName: z.string().trim().min(2).max(200),
+    contractRef: z.string().trim().min(2).max(200),
+    purpose: z.string().trim().min(10).max(1000),
+  }).strict().parse(req.body);
+  const partner = await prisma.partner.create({
+    data: { legalName: input.legalName, contractRef: input.contractRef, purpose: input.purpose, status: 'contracted' },
+  });
+  await prisma.adminAuditLog.create({
+    data: { adminId: req.auth?.sub ?? 'unknown', action: 'create_partner', targetType: 'partner', targetId: partner.id, tenantId: null },
+  });
+  return res.status(201).json({ partner });
+}));
+
+router.post('/commercial/partners/:partnerId/grant', asyncHandler(async (req: Request, res: Response) => {
+  const partnerId = Array.isArray(req.params.partnerId) ? req.params.partnerId[0] : req.params.partnerId;
+  const input = z.object({
+    productId: z.enum(['ngo_digitisation_pulse', 'manufacturer_category_brand_demand', 'supplier_replenishment_supply']),
+    snapshotId: z.string().trim().min(1).max(200),
+    permittedScope: z.string().trim().min(5).max(200),
+    expiresAt: z.string().datetime({ offset: true }),
+    quotaPerDay: z.number().int().min(1).max(10000).default(100),
+  }).strict().parse(req.body);
+  const partner = await prisma.partner.findUnique({ where: { id: partnerId } });
+  if (!partner) return res.status(404).json({ error: 'Partner not found' });
+  if (partner.status !== 'contracted') return res.status(409).json({ error: 'Partner contract is not approved' });
+
+  const grant = await prisma.partnerGrant.create({
+    data: {
+      partnerId,
+      productId: input.productId,
+      snapshotId: input.snapshotId,
+      permittedScope: input.permittedScope,
+      expiresAt: new Date(input.expiresAt),
+      quotaPerDay: input.quotaPerDay,
+    },
+  });
+  const rawKey = `dukap-${crypto.randomBytes(24).toString('base64url')}`;
+  const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
+  const credential = await prisma.partnerCredential.create({
+    data: {
+      partnerId,
+      keyPrefix: rawKey.substring(0, 12),
+      keyHash,
+      expiresAt: new Date(input.expiresAt),
+      quotaPerDay: input.quotaPerDay,
+    },
+  });
+  await prisma.adminAuditLog.create({
+    data: { adminId: req.auth?.sub ?? 'unknown', action: 'issue_partner_credential', targetType: 'partner_credential', targetId: credential.id, tenantId: null },
+  });
+  return res.status(201).json({
+    grant,
+    credential: { id: credential.id, keyPrefix: credential.keyPrefix, expiresAt: credential.expiresAt, quotaPerDay: credential.quotaPerDay },
+    oneTimeKey: rawKey,
+  });
+}));
+
+router.post('/commercial/partners/credentials/:credentialId/revoke', asyncHandler(async (req: Request, res: Response) => {
+  const credentialId = Array.isArray(req.params.credentialId) ? req.params.credentialId[0] : req.params.credentialId;
+  const input = z.object({ reason: z.string().trim().min(3).max(500) }).strict().parse(req.body);
+  const updated = await prisma.partnerCredential.updateMany({
+    where: { id: credentialId, status: 'active' },
+    data: { status: 'revoked', revokedAt: new Date() },
+  });
+  if (updated.count !== 1) return res.status(404).json({ error: 'Active credential not found' });
+  await prisma.adminAuditLog.create({
+    data: { adminId: req.auth?.sub ?? 'unknown', action: 'revoke_partner_credential', targetType: 'partner_credential', targetId: credentialId, tenantId: null },
+  });
+  log('info', 'partner.credential_revoked', { credentialId, reason: input.reason });
+  return res.json({ status: 'revoked' });
+}));
+
 router.get('/commercial/data-intelligence/datasets', asyncHandler(async (req: Request, res: Response) => {
   const rows = await prisma.commercialContribution.findMany({
     where: { datasetSnapshotId: { not: null } },
