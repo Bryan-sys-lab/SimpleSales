@@ -51,9 +51,10 @@ The authenticated staging journeys create test accounts and need the isolated
 staging Worker configured for test verification. In staging only,
 `VERIFICATION_DEBUG_CODES=true` enables returning the challenge and first
 voucher to the auth test, and the response is gated by the
-`STAGING_AUTH_TEST_SECRET` request header. Keep that secret on the staging
-Worker and as a GitHub Actions secret; never enable test-only verification
-responses in production.
+`STAGING_AUTH_TEST_SECRET` request header. The GitHub Actions workflow creates
+a fresh random value for each run and writes it to the staging Worker; do not
+store a persistent copy as a GitHub Actions secret. Never enable test-only
+verification responses in production.
 
 Staging encrypted-backup journeys use the isolated
 `duka-pos-backups-staging` R2 bucket through the `BACKUP_BUCKET` binding.
@@ -63,8 +64,22 @@ migration/schema checks, deploys to staging, and runs its live journeys before
 production migration or deployment. It can also be started manually on that
 branch. A missing staging auth-test secret or any failed journey stops the job
 before production. Configure the public staging origin as the GitHub
-repository variable `STAGING_BASE_URL` and configure the same
-`STAGING_AUTH_TEST_SECRET` on the staging Worker and in GitHub Actions.
+repository variable `STAGING_BASE_URL`.
+
+The backend GitHub Actions deployment uses only these Cloudflare settings:
+
+- Repository secret `CLOUDFLARE_API_TOKEN`: the backend deployment token used
+  for remote D1 migrations, staging Worker secrets, and Worker deployments.
+  Scope it to the target account with D1 Write and Workers Scripts Write (or
+  Workers Editor) permissions. Add Workers Routes Write only if the deployment
+  changes routes or custom domains.
+- Repository variable `CLOUDFLARE_ACCOUNT_ID`: the Cloudflare account ID; this
+  is an identifier, not a secret.
+- Repository variable `STAGING_BASE_URL`: the staging Worker origin used by
+  the promotion checks.
+
+`CLOUDFLARE_ADMIN_API_TOKEN` is a separate credential used only by the Admin
+Worker workflow. Do not use it as the backend deployment token.
 
 Each successful backend promotion uses `package.json`'s semantic version as
 `BACKEND_VERSION_NAME`, GitHub Actions' monotonically increasing run number as
