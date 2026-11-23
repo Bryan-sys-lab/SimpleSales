@@ -16,6 +16,7 @@ export type AccessTokenClaims = {
   email: string;
   email_verified: boolean;
   token_use: TokenTier;
+  remembered?: boolean;
   iat: number;
   exp: number;
   jti: string;
@@ -24,6 +25,7 @@ export type AccessTokenClaims = {
 const DEVICE_TTL_SECONDS = 12 * 60 * 60;
 const ACCESS_TTL_SECONDS = 60 * 60;
 const ADMIN_TTL_SECONDS = 60 * 60;
+const REMEMBERED_ADMIN_TTL_SECONDS = 30 * 24 * 60 * 60;
 const CLOCK_SKEW_SECONDS = 60;
 const STAFF_SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 
@@ -32,8 +34,14 @@ export function issueAccessToken(params: {
   email: string;
   emailVerified: boolean;
   tier: TokenTier;
+  rememberMe?: boolean;
 }): { token: string; expiresIn: number } {
-  const ttl = params.tier === 'device' ? DEVICE_TTL_SECONDS : params.tier === 'admin' ? ADMIN_TTL_SECONDS : ACCESS_TTL_SECONDS;
+  const remembered = params.tier === 'admin' && params.rememberMe === true;
+  const ttl = params.tier === 'device'
+    ? DEVICE_TTL_SECONDS
+    : params.tier === 'admin'
+      ? remembered ? REMEMBERED_ADMIN_TTL_SECONDS : ADMIN_TTL_SECONDS
+      : ACCESS_TTL_SECONDS;
   const secret = process.env.AUTH_JWT_SECRET;
   if (!secret) throw new Error('AUTH_JWT_SECRET must be configured');
   const jti = (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2));
@@ -43,6 +51,7 @@ export function issueAccessToken(params: {
       email: params.email,
       email_verified: params.emailVerified,
       token_use: params.tier,
+      ...(remembered ? { remembered: true } : {}),
       jti,
     },
     secret,
@@ -61,8 +70,14 @@ export function verifyAccessToken(token: string): AccessTokenClaims | null {
         clockTolerance: CLOCK_SKEW_SECONDS,
       }) as AccessTokenClaims;
       if (!decoded || typeof decoded.sub !== 'string') return null;
+      if (decoded.remembered !== undefined && typeof decoded.remembered !== 'boolean') return null;
+      if (decoded.remembered && decoded.token_use !== 'admin') return null;
       if (typeof decoded.iat === 'number' && typeof decoded.exp === 'number') {
-        const maxLifetime = decoded.token_use === 'device' ? DEVICE_TTL_SECONDS : decoded.token_use === 'admin' ? ADMIN_TTL_SECONDS : ACCESS_TTL_SECONDS;
+        const maxLifetime = decoded.token_use === 'device'
+          ? DEVICE_TTL_SECONDS
+          : decoded.token_use === 'admin'
+            ? decoded.remembered ? REMEMBERED_ADMIN_TTL_SECONDS : ADMIN_TTL_SECONDS
+            : ACCESS_TTL_SECONDS;
         if (decoded.exp - decoded.iat > maxLifetime + CLOCK_SKEW_SECONDS) return null;
       }
       if (decoded.token_use !== 'device' && decoded.token_use !== 'access' && decoded.token_use !== 'admin') return null;

@@ -73,6 +73,29 @@ describe('admin session refresh', () => {
     });
   });
 
+  it('preserves an opted-in 30-day session when refreshing', async () => {
+    const original = issueAccessToken({
+      userId: 'admin:key-1',
+      email: 'analyst@example.com',
+      emailVerified: true,
+      tier: 'admin',
+      rememberMe: true,
+    });
+
+    const response = await supertest(app)
+      .post('/admin/auth/refresh')
+      .set('authorization', `Bearer ${original.token}`)
+      .send({});
+
+    expect(response.status).toBe(200);
+    expect(response.body.expires_in).toBe(30 * 24 * 60 * 60);
+    expect(verifyAccessToken(response.body.access_token)).toMatchObject({
+      sub: 'admin:key-1',
+      remembered: true,
+      token_use: 'admin',
+    });
+  });
+
   it('does not refresh an invalid or expired session', async () => {
     const response = await supertest(app)
       .post('/admin/auth/refresh')

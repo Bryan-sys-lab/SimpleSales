@@ -13,6 +13,7 @@ import { issueAdminWebSocketTicket } from '../services/admin_ws_tickets';
 import {
   adminPackagePermissions,
   adminPackages,
+  effectiveAdminPermissions,
   adminPermissionOptions,
   normalizeAdminPackages,
 } from '../lib/admin_access_catalog';
@@ -27,6 +28,7 @@ const loginSchema = z.object({
   masterToken: z.string().min(24).max(512).optional(),
   phone: z.string().trim().min(6).max(30).optional(),
   key: z.string().min(24).max(128).optional(),
+  rememberMe: z.boolean().default(false),
 }).strict();
 const mintSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
@@ -80,7 +82,13 @@ router.post('/login', loginLimiter, asyncHandler(async (req: Request, res: Respo
   const superEmail = (process.env.SYSTEM_ADMIN_EMAIL ?? 'brian@nerva.co.ke').trim().toLowerCase();
   const masterToken = process.env.SYSTEM_ADMIN_TOKEN;
   if (input.email === superEmail && input.masterToken && masterToken && constantTimeEqual(input.masterToken, masterToken)) {
-    const { token, expiresIn } = issueAccessToken({ userId: 'super-admin', email: superEmail, emailVerified: true, tier: 'admin' });
+    const { token, expiresIn } = issueAccessToken({
+      userId: 'super-admin',
+      email: superEmail,
+      emailVerified: true,
+      tier: 'admin',
+      rememberMe: input.rememberMe,
+    });
     log('info', 'admin.auth.login', { subject: 'super-admin' });
     return res.json({ access_token: token, token_type: 'Bearer', expires_in: expiresIn, email: superEmail, role: 'super_admin' });
   }
@@ -90,7 +98,13 @@ router.post('/login', loginLimiter, asyncHandler(async (req: Request, res: Respo
     return res.status(401).json({ error: 'Invalid administrator credentials' });
   }
   await prisma.adminKey.update({ where: { id: key.id }, data: { usedAt: new Date() } });
-  const { token, expiresIn } = issueAccessToken({ userId: `admin:${key.id}`, email: input.email, emailVerified: true, tier: 'admin' });
+  const { token, expiresIn } = issueAccessToken({
+    userId: `admin:${key.id}`,
+    email: input.email,
+    emailVerified: true,
+    tier: 'admin',
+    rememberMe: input.rememberMe,
+  });
   log('info', 'admin.auth.login', { subject: `admin:${key.id}` });
   return res.json({ access_token: token, token_type: 'Bearer', expires_in: expiresIn, email: input.email, role: 'department_admin' });
 }));
@@ -105,6 +119,7 @@ router.post('/refresh', refreshLimiter, systemAdminMiddleware, (req: Request, re
     email: auth.email,
     emailVerified: auth.email_verified === true,
     tier: 'admin',
+    rememberMe: auth.remembered === true,
   });
   res.setHeader('cache-control', 'no-store');
   return res.json({ access_token: token, token_type: 'Bearer', expires_in: expiresIn });
@@ -152,7 +167,11 @@ router.get('/keys', systemAdminMiddleware, asyncHandler(async (req, res) => {
     select: { id: true, email: true, phone: true, department: true, role: true, packages: true, permissions: true, canRecruit: true, canMintKeys: true, canAssignTasks: true, parentKeyId: true, parent: { select: { id: true, email: true, department: true, role: true } }, createdBy: true, createdAt: true, usedAt: true, expiresAt: true, revokedAt: true },
     orderBy: { createdAt: 'desc' }, take: 500,
   });
-  res.json({ keys: keys.map((key) => ({ ...key, packages: normalizeAdminPackages(key.packages, key.department) })) });
+  res.json({ keys: keys.map((key) => {
+    const packages = normalizeAdminPackages(key.packages, key.department);
+    const storedPermissions = Array.isArray(key.permissions) ? key.permissions.filter((permission): permission is string => typeof permission === 'string') : [];
+    return { ...key, packages, permissions: effectiveAdminPermissions(packages, storedPermissions) };
+  }) });
 }));
 
 router.post('/keys/mint', systemAdminMiddleware, asyncHandler(async (req: Request, res: Response) => {
@@ -290,7 +309,9 @@ router.patch('/keys/:id', systemAdminMiddleware, asyncHandler(async (req: Reques
   const updated = await prisma.adminKey.findUnique({ where: { id: target.id }, select: { id: true, email: true, department: true, role: true, packages: true, permissions: true, canRecruit: true, canMintKeys: true, canAssignTasks: true, expiresAt: true, revokedAt: true } });
   if (!updated) throw new Error('Updated administrator key could not be reloaded');
   log('info', 'admin.key.permissions_updated', { keyId: updated.id, updatedBy: req.auth?.sub });
-  res.json({ key: updated });
+  const updatedPackages = normalizeAdminPackages(updated.packages, updated.department);
+  const updatedPermissions = Array.isArray(updated.permissions) ? updated.permissions.filter((permission): permission is string => typeof permission === 'string') : [];
+  res.json({ key: { ...updated, packages: updatedPackages, permissions: effectiveAdminPermissions(updatedPackages, updatedPermissions) } });
 }));
 
 router.post('/keys/:id/revoke', systemAdminMiddleware, asyncHandler(async (req: Request, res: Response) => {

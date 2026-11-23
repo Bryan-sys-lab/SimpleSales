@@ -17,6 +17,9 @@ const mocks = vi.hoisted(() => ({
       findUnique: vi.fn(),
       findFirst: vi.fn(),
     },
+    tenant: {
+      findMany: vi.fn(),
+    },
   },
   sendEmail: vi.fn(),
   generateVoucher: vi.fn(),
@@ -87,6 +90,20 @@ describe('admin access voucher issuance', () => {
     mocks.prisma.adminAuditLog.create.mockResolvedValue({});
     mocks.sendEmail.mockResolvedValue(undefined);
     mocks.registerPaymentChannel.mockResolvedValue({ id: 12345 });
+    mocks.prisma.tenant.findMany.mockResolvedValue([
+      { id: 'tenant-1', shopName: 'Sample shop' },
+    ]);
+  });
+
+  it('returns minimal shop options for billing operations', async () => {
+    const response = await supertest(app).get('/admin/billing/shop-options');
+
+    expect(response.status).toBe(200);
+    expect(response.body.tenants).toEqual([{ id: 'tenant-1', shopName: 'Sample shop' }]);
+    expect(mocks.prisma.tenant.findMany).toHaveBeenCalledWith({
+      select: { id: true, shopName: true },
+      orderBy: { shopName: 'asc' },
+    });
   });
 
   it('creates a no-expiry voucher and emails its claim details', async () => {

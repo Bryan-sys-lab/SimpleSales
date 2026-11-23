@@ -2,7 +2,7 @@ export const adminPermissionOptions = [
   'system:read', 'keys:read', 'keys:manage', 'users:read', 'users:manage',
   'tenants:read', 'tenants:manage', 'sessions:read', 'sessions:manage',
   'diagnostics:read', 'diagnostics:manage', 'commercial:read', 'commercial:manage',
-  'audit:read', 'analytics:read', 'configuration:read', 'configuration:manage',
+  'audit:read', 'analytics:read', 'configuration:read', 'configuration:manage', 'billing:manage',
   'tasks:read', 'tasks:manage', 'support:read', 'support:manage',
   'membership:read', 'membership:manage',
 ] as const;
@@ -14,7 +14,7 @@ export const adminPackages = [
     id: 'finance',
     name: 'Finance',
     department: 'Finance',
-    permissions: ['analytics:read', 'commercial:read', 'configuration:read'],
+    permissions: ['analytics:read', 'commercial:read', 'configuration:read', 'billing:manage'],
   },
   {
     id: 'hr',
@@ -26,7 +26,7 @@ export const adminPackages = [
     id: 'marketing',
     name: 'Marketing',
     department: 'Marketing',
-    permissions: ['analytics:read', 'support:read', 'configuration:read'],
+    permissions: ['analytics:read', 'support:read', 'configuration:read', 'billing:manage'],
   },
   {
     id: 'operations',
@@ -84,6 +84,10 @@ export function adminPackagePermissions(packages: readonly string[]): AdminPermi
       .filter((item) => selected.has(item.id))
       .flatMap((item) => item.permissions),
   )];
+}
+
+export function effectiveAdminPermissions(packages: readonly string[], stored: readonly string[]): string[] {
+  return [...new Set([...adminPackagePermissions(packages), ...stored])];
 }
 
 export function isAdminPermission(value: string): value is AdminPermission {

@@ -10,7 +10,7 @@ import express from 'express';
 import { prisma } from '../lib/prisma';
 import { verifyAccessToken, verifyStaffSessionToken } from '../lib/jwt';
 import { tenantEntitlement } from '../lib/entitlements';
-import { normalizeAdminPackages } from '../lib/admin_access_catalog';
+import { effectiveAdminPermissions, normalizeAdminPackages } from '../lib/admin_access_catalog';
 
 declare global {
   namespace Express {
@@ -20,6 +20,7 @@ declare global {
         email?: string;
         email_verified?: boolean;
         token_use?: string;
+        remembered?: boolean;
         jti?: string;
         [key: string]: unknown;
       };
@@ -177,6 +178,7 @@ export const authMiddleware = async (req: express.Request, res: express.Response
     // Billing endpoints remain reachable while access is blocked so an owner
     // can redeem a voucher or inspect the negotiated shop terms.
     const billingExemption = voucherBillingPath ||
+      (req.method === 'GET' && normalizedOriginalPath === '/backups/full') ||
       normalizedOriginalPath === '/tenant/subscription' ||
       normalizedOriginalPath.startsWith('/tenant/subscription/') ||
       normalizedOriginalPath.startsWith('/tenant/membership') ||
@@ -236,9 +238,10 @@ export const systemAdminMiddleware = async (req: express.Request, res: express.R
       return res.status(403).json({ error: 'System administrator access required', requestId: req.requestId });
     }
     if (claims.email !== key.email) return res.status(403).json({ error: 'Administrator identity mismatch', requestId: req.requestId });
-    permissions = Array.isArray(key.permissions) ? key.permissions.filter((p): p is string => typeof p === 'string') : [];
     department = key.department;
     packages = normalizeAdminPackages(key.packages, key.department);
+    const storedPermissions = Array.isArray(key.permissions) ? key.permissions.filter((p): p is string => typeof p === 'string') : [];
+    permissions = effectiveAdminPermissions(packages, storedPermissions);
     canRecruit = key.canRecruit;
     canMintKeys = key.canMintKeys;
     canAssignTasks = key.canAssignTasks;
@@ -246,7 +249,13 @@ export const systemAdminMiddleware = async (req: express.Request, res: express.R
     return res.status(403).json({ error: 'System administrator access required', requestId: req.requestId });
   }
   req.adminAccess = { isSuperAdmin, permissions, packages, department, canRecruit, canMintKeys, canAssignTasks, keyId };
-  req.auth = { sub: claims.sub, email: claims.email, email_verified: claims.email_verified, token_use: claims.token_use };
+  req.auth = {
+    sub: claims.sub,
+    email: claims.email,
+    email_verified: claims.email_verified,
+    token_use: claims.token_use,
+    remembered: claims.remembered,
+  };
   if (isSuperAdmin) return next();
 
   const method = req.method.toUpperCase();
@@ -265,7 +274,7 @@ export const systemAdminMiddleware = async (req: express.Request, res: express.R
   return next();
 };
 
-function adminPermissionFor(method: string, path: string): string | null {
+export function adminPermissionFor(method: string, path: string): string | null {
   if (/\/auth\/(?:session|logout)$/.test(path)) return 'system:read';
   if (/\/auth\/access-catalog$/.test(path)) return method === 'GET' ? 'keys:read' : 'keys:manage';
   if (/\/org\/reports(?:\/|$)/.test(path)) return 'tasks:read';
@@ -279,7 +288,9 @@ function adminPermissionFor(method: string, path: string): string | null {
   if (/\/commercial\//.test(path)) return method === 'GET' ? 'commercial:read' : 'commercial:manage';
   if (/\/audit/.test(path)) return 'audit:read';
   if (/\/analytics|\/churn|\/financials|\/sales|\/products|\/expenses|\/laybys|\/exchanges|\/tax-compliance/.test(path)) return 'analytics:read';
-  if (/\/billing|\/tax-rules|\/commercial-policy|\/announcement/.test(path)) return method === 'GET' ? 'configuration:read' : 'configuration:manage';
+  if (/\/billing\/provider(?:\/|$)/.test(path)) return method === 'GET' ? 'configuration:read' : 'configuration:manage';
+  if (/\/billing(?:\/|$)/.test(path)) return method === 'GET' ? 'configuration:read' : 'billing:manage';
+  if (/\/tax-rules|\/commercial-policy|\/announcement/.test(path)) return method === 'GET' ? 'configuration:read' : 'configuration:manage';
   if (/\/support/.test(path)) return method === 'GET' ? 'support:read' : 'support:manage';
   if (/\/membership/.test(path)) return method === 'GET' ? 'membership:read' : 'membership:manage';
   return 'system:read';

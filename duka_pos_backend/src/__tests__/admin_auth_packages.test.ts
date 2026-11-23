@@ -78,6 +78,7 @@ describe('admin account package assignment', () => {
       'analytics:read',
       'commercial:read',
       'configuration:read',
+      'billing:manage',
       'membership:read',
       'membership:manage',
       'tenants:read',

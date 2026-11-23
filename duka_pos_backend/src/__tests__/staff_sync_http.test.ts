@@ -67,12 +67,14 @@ describe('staff registration, pull and bootstrap contracts', () => {
         email_verified: true,
         token_use: 'access',
       };
-      req.user = {
-        id: 'owner-1',
-        tenantId: 'tenant-1',
-        role: req.header('x-test-role') ?? 'admin',
-        name: 'Owner',
-      };
+      if (req.path !== '/shops') {
+        req.user = {
+          id: 'owner-1',
+          tenantId: 'tenant-1',
+          role: req.header('x-test-role') ?? 'admin',
+          name: 'Owner',
+        };
+      }
       next();
     });
     app.use('/tenant', tenantRoutes);
@@ -117,6 +119,31 @@ describe('staff registration, pull and bootstrap contracts', () => {
       active: true,
     });
     mocks.prisma.syncRecord.create.mockResolvedValue({ id: 'request-1' });
+  });
+
+  it('lists account shops from the verified identity without a selected tenant profile', async () => {
+    mocks.prisma.profile.findMany.mockResolvedValue([{
+      tenantId: 'tenant-1',
+      role: 'admin',
+      tenant: { shopName: 'Main shop' },
+    }]);
+
+    const response = await supertest(app).get('/tenant/shops');
+
+    expect(response.status).toBe(200);
+    expect(response.body.shops).toEqual([{
+      tenantId: 'tenant-1',
+      shopName: 'Main shop',
+      role: 'admin',
+    }]);
+    expect(mocks.prisma.profile.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        OR: expect.arrayContaining([
+          { userId: 'owner-1' },
+          { email: 'owner@example.com' },
+        ]),
+      }),
+    }));
   });
 
   it('refuses provisioning when the requested owner email differs from OIDC', async () => {
@@ -210,6 +237,62 @@ describe('staff registration, pull and bootstrap contracts', () => {
       expect(mocks.d1.statements[0].values).toContain('amina');
       expect(mocks.d1.statements[0].values).toContain(null);
     });
+
+  it('syncs Admin staff without matching an account owner profile', async () => {
+    const response = await supertest(app).post('/tenant/staff/sync').send({
+      staff: [{
+        localId: 12,
+        name: 'Operations Admin',
+        username: 'ops-admin',
+        role: 'admin',
+        active: true,
+        pinHash: null,
+      }],
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.synced).toEqual([
+      { localId: 12, remoteId: expect.any(String) },
+    ]);
+    expect(mocks.d1.statements[0].sql).toContain('INSERT INTO profiles');
+    expect(mocks.d1.statements[0].values).toContain('admin');
+    const roleFilter = mocks.prisma.profile.findMany.mock.calls[1][0].where.AND[0].OR;
+    expect(roleFilter).toContainEqual({
+      role: 'admin',
+      userId: null,
+      localId: { not: null },
+    });
+  });
+
+  it('updates the remote PIN verifier when an existing local staff PIN changes', async () => {
+    mocks.prisma.profile.findMany
+      .mockResolvedValueOnce([{
+        id: 'remote-staff-1',
+        localId: 7,
+        username: 'amina',
+      }])
+      .mockResolvedValueOnce([{
+        id: 'remote-staff-1',
+        localId: 7,
+        role: 'cashier',
+      }]);
+
+    const response = await supertest(app).post('/tenant/staff/sync').send({
+      staff: [{
+        localId: 7,
+        remoteId: 'remote-staff-1',
+        name: 'Amina',
+        username: 'amina',
+        role: 'cashier',
+        active: true,
+        pinHash: 'pbkdf2$120000$c2FsdA$ZGlnaWVzdA',
+      }],
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.d1.statements[0].sql).toContain('pin_hash = COALESCE(?, pin_hash)');
+    expect(mocks.d1.statements[0].values).toContain('pbkdf2$120000$c2FsdA$ZGlnaWVzdA');
+  });
 
   it('pulls the tenant staff roster without returning PIN material', async () => {
     mocks.prisma.profile.findMany.mockResolvedValue([{
@@ -328,6 +411,34 @@ describe('staff registration, pull and bootstrap contracts', () => {
       expect(mocks.d1.statements[0].sql).toContain('p.pin_hash');
       expect(mocks.d1.statements[0].values).toEqual(['tenant-1', 'amina']);
       expect(response.body.session_token).toEqual(expect.any(String));
+    });
+
+  it('authenticates owner-created Admin staff with the app PIN hash work factor',
+    async () => {
+      const salt = randomBytes(16);
+      const digest = pbkdf2Sync('123456', salt, 120000, 32, 'sha256');
+      mocks.d1.firstResult = {
+        id: 'remote-admin-staff',
+        local_id: 12,
+        name: 'Operations Admin',
+        username: 'ops-admin',
+        role: 'admin',
+        active: true,
+        pin_hash: `pbkdf2$120000$${salt.toString('base64url')}$${digest.toString('base64url')}`,
+        shop_name: 'Main shop',
+      };
+
+      const response = await supertest(app)
+        .post('/tenant/staff/authenticate')
+        .set('x-tenant-id', 'tenant-1')
+        .send({ username: 'ops-admin', pin: '123456' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        staff_id: 'remote-admin-staff',
+        role: 'admin',
+      });
+      expect(mocks.d1.statements[0].sql).toContain("p.role = 'admin'");
     });
 
   it('rejects a wrong remote staff PIN without issuing a session', async () => {

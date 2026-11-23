@@ -28,6 +28,15 @@ import { activateSubscriptionPaymentAtomically } from '../lib/subscription_settl
 
 const router = Router();
 
+function managedStaffProfileFilter() {
+  return {
+    OR: [
+      { role: { in: ['cashier', 'manager'] } },
+      { role: 'admin', userId: null, localId: { not: null } },
+    ],
+  };
+}
+
 const _isNode = typeof module !== 'undefined';
 const staffAuthLimiter = _isNode ? rateLimit({
   windowMs: 60_000,
@@ -35,6 +44,7 @@ const staffAuthLimiter = _isNode ? rateLimit({
   standardHeaders: 'draft-7',
   legacyHeaders: false,
 }) : ((_req: any, _res: any, next: any) => next());
+const STAFF_PIN_HASH_ITERATIONS = 120_000;
 
 async function deriveStaffPin(pin: string, salt: Uint8Array, iterations: number, length: number): Promise<Uint8Array> {
   const key = await globalThis.crypto.subtle.importKey(
@@ -70,7 +80,7 @@ async function verifyStaffPin(pin: string, stored: string | null): Promise<boole
   const parts = stored.split('$');
   if (parts.length !== 4) return false;
   const iterations = Number.parseInt(parts[1], 10);
-  if (!Number.isSafeInteger(iterations) || iterations < 1 || iterations > 100_000) {
+  if (!Number.isSafeInteger(iterations) || iterations < 1 || iterations > 2_000_000) {
     return false;
   }
   try {
@@ -92,7 +102,7 @@ async function verifyStaffPin(pin: string, stored: string | null): Promise<boole
 
 async function hashStaffPin(pin: string): Promise<string> {
   const salt = globalThis.crypto.getRandomValues(new Uint8Array(16));
-  const iterations = 100_000;
+  const iterations = STAFF_PIN_HASH_ITERATIONS;
   const hash = await deriveStaffPin(pin, salt, iterations, 32);
   return `pbkdf2$${iterations}$${encodeBase64Url(salt)}$${encodeBase64Url(hash)}`;
 }
@@ -547,18 +557,16 @@ router.post(
 router.get(
   '/shops',
   asyncHandler(async (req, res) => {
-    const user = requireUser(req);
     const identity = req.auth;
-    const accountWhere = identity?.email
-      ? {
-          OR: [
-            ...(identity.sub ? [{ userId: identity.sub }] : []),
-            { email: identity.email },
-          ],
-        }
-      : identity?.sub
-        ? { userId: identity.sub }
-        : { id: user.id };
+    if (!identity?.sub && !identity?.email) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    const accountWhere = {
+      OR: [
+        ...(identity.sub ? [{ userId: identity.sub }] : []),
+        ...(identity.email ? [{ email: identity.email }] : []),
+      ],
+    };
     const profiles = await prisma.profile.findMany({
       where: { ...accountWhere, active: true, deletedAt: null },
       include: { tenant: true },
@@ -1444,10 +1452,14 @@ router.post(
       : await prisma.profile.findMany({
           where: {
             tenantId,
-            role: { in: ['cashier', 'manager'] },
-            OR: [
-              ...(remoteIds.length > 0 ? [{ id: { in: remoteIds } }] : []),
-              { localId: { in: localIds } },
+            AND: [
+              managedStaffProfileFilter(),
+              {
+                OR: [
+                  ...(remoteIds.length > 0 ? [{ id: { in: remoteIds } }] : []),
+                  { localId: { in: localIds } },
+                ],
+              },
             ],
           },
           select: { id: true, localId: true, role: true },
@@ -1468,9 +1480,13 @@ router.post(
       if (existing) {
         statements.push(db.prepare(`
           UPDATE profiles
-          SET name = ?, username = ?, role = ?, active = ?
-          WHERE id = ? AND tenant_id = ? AND role IN ('cashier', 'manager')
-        `).bind(item.name, username, item.role, item.active, existing.id, tenantId));
+          SET name = ?, username = ?, role = ?, active = ?, pin_hash = COALESCE(?, pin_hash)
+          WHERE id = ? AND tenant_id = ?
+            AND (
+              role IN ('cashier', 'manager')
+              OR (role = 'admin' AND user_id IS NULL AND local_id IS NOT NULL)
+            )
+        `).bind(item.name, username, item.role, item.active, item.pinHash ?? null, existing.id, tenantId));
         synced.push({ localId: item.localId, remoteId: existing.id });
       } else {
         const remoteId = randomUUID();
@@ -1509,7 +1525,7 @@ router.get(
     const profiles = await prisma.profile.findMany({
       where: {
         tenantId: requireUser(req).tenantId,
-        role: { in: ['cashier', 'manager'] },
+        AND: [managedStaffProfileFilter()],
       },
       select: { id: true, localId: true, name: true, username: true, role: true, active: true, deletedAt: true },
       orderBy: { name: 'asc' },
@@ -1537,7 +1553,11 @@ router.delete(
     const { reason } = parseBody(deletionSchema, req.body ?? {});
     const profileId = req.params.profileId as string;
     const profile = await prisma.profile.findFirst({
-      where: { id: profileId, tenantId: requireUser(req).tenantId, role: { in: ['cashier', 'manager'] } },
+      where: {
+        id: profileId,
+        tenantId: requireUser(req).tenantId,
+        AND: [managedStaffProfileFilter()],
+      },
     });
     if (!profile) {
       return res.status(404).json({ error: 'Staff profile not found' });
@@ -1551,7 +1571,11 @@ router.delete(
       db.prepare(`
         UPDATE profiles
         SET name = ?, active = 0, deleted_at = ?
-        WHERE id = ? AND tenant_id = ? AND role IN ('cashier', 'manager')
+        WHERE id = ? AND tenant_id = ?
+          AND (
+            role IN ('cashier', 'manager')
+            OR (role = 'admin' AND user_id IS NULL AND local_id IS NOT NULL)
+          )
           AND deleted_at IS NULL
       `).bind(deletedLabel, now, profile.id, tenantId),
       db.prepare(`
@@ -1607,7 +1631,10 @@ router.post(
       JOIN tenants t ON t.id = p.tenant_id
       WHERE p.tenant_id = ?
         AND p.username = ?
-        AND p.role IN ('cashier', 'manager')
+        AND (
+          p.role IN ('cashier', 'manager')
+          OR (p.role = 'admin' AND p.user_id IS NULL AND p.local_id IS NOT NULL)
+        )
         AND p.active = 1
         AND p.deleted_at IS NULL
       LIMIT 1
@@ -1616,7 +1643,7 @@ router.post(
       local_id: number | null;
       name: string;
       username: string;
-      role: 'cashier' | 'manager';
+      role: 'cashier' | 'manager' | 'admin';
       active: number;
       pin_hash: string | null;
       shop_name: string;
@@ -1661,7 +1688,13 @@ router.post(
     const { currentPin, newPin } = parseBody(staffSelfPinSchema, req.body);
     if (currentPin === newPin) return res.status(400).json({ error: 'New PIN must be different' });
     const profile = await prisma.profile.findFirst({
-      where: { id: claims.profileId, tenantId, role: { in: ['cashier', 'manager'] }, active: true, deletedAt: null },
+      where: {
+        id: claims.profileId,
+        tenantId,
+        active: true,
+        deletedAt: null,
+        AND: [managedStaffProfileFilter()],
+      },
     });
     if (!profile || !await verifyStaffPin(currentPin, profile.pinHash)) {
       return res.status(401).json({ error: 'Current PIN is incorrect' });
@@ -1683,7 +1716,13 @@ router.post(
     if (!tenantId) return res.status(400).json({ error: 'Shop selection required' });
     const username = rawUsername.toLowerCase();
     const profile = await prisma.profile.findFirst({
-      where: { tenantId, username, role: { in: ['cashier', 'manager'] }, active: true, deletedAt: null },
+      where: {
+        tenantId,
+        username,
+        active: true,
+        deletedAt: null,
+        AND: [managedStaffProfileFilter()],
+      },
       select: { id: true, localId: true, name: true },
     });
     if (profile) {
@@ -1744,7 +1783,13 @@ router.post(
       return res.status(409).json({ error: 'PIN reset request is no longer pending' });
     }
     const profile = await prisma.profile.findFirst({
-      where: { id: payload.staffProfileId, tenantId: user.tenantId, role: { in: ['cashier', 'manager'] }, active: true, deletedAt: null },
+      where: {
+        id: payload.staffProfileId,
+        tenantId: user.tenantId,
+        active: true,
+        deletedAt: null,
+        AND: [managedStaffProfileFilter()],
+      },
     });
     if (!profile) return res.status(404).json({ error: 'Staff profile is no longer active' });
     const now = new Date().toISOString();
@@ -1754,7 +1799,11 @@ router.post(
       db.prepare(`
         UPDATE profiles
         SET pin_hash = ?
-        WHERE id = ? AND tenant_id = ? AND role IN ('cashier', 'manager')
+        WHERE id = ? AND tenant_id = ?
+          AND (
+            role IN ('cashier', 'manager')
+            OR (role = 'admin' AND user_id IS NULL AND local_id IS NOT NULL)
+          )
           AND active = 1 AND deleted_at IS NULL
           AND EXISTS (
             SELECT 1 FROM sync_records

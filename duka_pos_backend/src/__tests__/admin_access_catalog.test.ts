@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   adminPackagePermissions,
+  effectiveAdminPermissions,
   isAdminPermission,
   normalizeAdminPackages,
 } from '../lib/admin_access_catalog';
@@ -11,6 +12,7 @@ describe('admin access packages', () => {
       'analytics:read',
       'commercial:read',
       'configuration:read',
+      'billing:manage',
       'membership:read',
       'membership:manage',
       'tenants:read',
@@ -26,6 +28,13 @@ describe('admin access packages', () => {
 
   it('does not recognize arbitrary permission scopes', () => {
     expect(isAdminPermission('membership:manage')).toBe(true);
+    expect(isAdminPermission('billing:manage')).toBe(true);
     expect(isAdminPermission('system:root')).toBe(false);
+  });
+
+  it('applies new package scopes to existing accounts without removing extra scopes', () => {
+    expect(effectiveAdminPermissions(['finance'], ['configuration:read', 'users:read']))
+      .toEqual(['analytics:read', 'commercial:read', 'configuration:read', 'billing:manage', 'users:read']);
+    expect(adminPackagePermissions(['marketing'])).toContain('billing:manage');
   });
 });

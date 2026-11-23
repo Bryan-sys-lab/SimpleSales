@@ -47,7 +47,15 @@ async function createPaymentDraft(input: PaymentInput, user: NonNullable<Request
   let initiatedBy = user.id;
   if (input.staff_profile_id) {
     const cashier = await prisma.profile.findFirst({
-      where: { id: input.staff_profile_id, tenantId: user.tenantId, role: { in: ['cashier', 'manager'] }, active: true },
+      where: {
+        id: input.staff_profile_id,
+        tenantId: user.tenantId,
+        active: true,
+        OR: [
+          { role: { in: ['cashier', 'manager'] } },
+          { role: 'admin', userId: null, localId: { not: null } },
+        ],
+      },
     });
     if (!cashier) throw new HttpError(403, 'Cashier profile is not active');
     if (user.role === 'cashier' && cashier.id !== user.id) throw new HttpError(403, 'A cashier may only record sales under their own profile');

@@ -160,9 +160,14 @@ describe('request validation', () => {
     expect(input).not.toHaveProperty('amount');
   });
 
-  it('accepts only cashier or manager staff roles', () => {
-    const valid = parseBody(staffSyncSchema, { staff: [{ localId: 1, name: 'Manager', role: 'manager' }] });
-    expect(valid.staff[0].role).toBe('manager');
+  it('accepts cashier, manager, and admin staff roles without allowing owner roles', () => {
+    for (const role of ['cashier', 'manager', 'admin'] as const) {
+      const valid = parseBody(staffSyncSchema, {
+        staff: [{ localId: 1, name: 'Staff member', role }],
+      });
+      expect(valid.staff[0].role).toBe(role);
+    }
+
     const cuidRemoteId = parseBody(staffSyncSchema, {
       staff: [{
         localId: 2,
@@ -172,7 +177,9 @@ describe('request validation', () => {
       }],
     });
     expect(cuidRemoteId.staff[0].remoteId).toBe('clw7staffcuid123');
-    expect(() => parseBody(staffSyncSchema, { staff: [{ localId: 2, name: 'Root', role: 'admin' }] })).toThrow();
+    expect(() => parseBody(staffSyncSchema, {
+      staff: [{ localId: 2, name: 'Owner', role: 'owner' }],
+    })).toThrow();
   });
 
   it('accepts optional line tax snapshots for offline sale replay', () => {

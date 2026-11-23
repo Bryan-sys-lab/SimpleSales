@@ -155,4 +155,35 @@ describe('auth middleware staff bootstrap', () => {
       expect(response.status).toBe(204);
       expect(mocks.tenantSubscriptionFindUnique).not.toHaveBeenCalled();
     });
+
+  it('allows an owner to restore an encrypted backup while paywalled, but still gates other shop reads',
+    async () => {
+      const { authMiddleware } = await import('../middleware/auth');
+      mocks.verifyAccessToken.mockReset().mockReturnValue({ sub: 'user-1', token_use: 'device' });
+      mocks.profileFindMany.mockReset().mockResolvedValue([{
+        id: 'profile-1',
+        tenantId: 'tenant-1',
+        role: 'admin',
+        name: 'Owner',
+        tenant: { shopName: 'Shop' },
+      }]);
+      mocks.tenantSubscriptionFindUnique.mockReset().mockResolvedValue(null);
+
+      const app = express();
+      app.use('/api', authMiddleware);
+      app.get('/api/backups/full', (_req, res) => res.status(204).end());
+      app.get('/api/tenant/settings', (_req, res) => res.status(204).end());
+
+      const backup = await supertest(app)
+        .get('/api/backups/full')
+        .set('authorization', 'Bearer device-token')
+        .set('x-tenant-id', 'tenant-1');
+      expect(backup.status).toBe(204);
+
+      const settings = await supertest(app)
+        .get('/api/tenant/settings')
+        .set('authorization', 'Bearer device-token')
+        .set('x-tenant-id', 'tenant-1');
+      expect(settings.status).toBe(402);
+    });
 });

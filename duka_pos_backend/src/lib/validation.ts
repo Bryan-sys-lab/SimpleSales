@@ -235,7 +235,7 @@ export const staffSyncSchema = z.object({
     remoteId: remoteIdentifier.optional().nullable(),
     name: boundedName,
     username: z.string().trim().min(1).max(120).nullable().optional(),
-    role: z.enum(['cashier', 'manager']).default('cashier'),
+    role: z.enum(['cashier', 'manager', 'admin']).default('cashier'),
     active: z.boolean().default(true),
     // Self-describing PBKDF2 verifier from the till. Never accept a plain PIN.
     pinHash: z.string().trim().max(400).nullable().optional(),

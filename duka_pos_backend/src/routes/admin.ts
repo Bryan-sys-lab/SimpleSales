@@ -194,6 +194,14 @@ router.get('/users', asyncHandler(async (_req: Request, res: Response) => {
   return res.json({ users });
 }));
 
+router.get('/billing/shop-options', asyncHandler(async (_req: Request, res: Response) => {
+  const tenants = await prisma.tenant.findMany({
+    select: { id: true, shopName: true },
+    orderBy: { shopName: 'asc' },
+  });
+  return res.json({ tenants });
+}));
+
 router.get('/billing/provider', asyncHandler(async (_req: Request, res: Response) => {
   const rows = await prisma.systemSettings.findMany({ where: { key: { in: ['billing_channel_type', 'billing_channel_id', 'billing_short_code', 'billing_account_number'] } } });
   const values = Object.fromEntries(rows.map((row) => [row.key, row.value]));
@@ -797,14 +805,21 @@ router.get('/sessions/:sessionJti/replay', asyncHandler(async (req: Request, res
 }));
 
 // ---------------------------------------------------------------------------
-// GET /api/admin/tenants — all tenants with profile and sale counts
+// GET /api/admin/tenants — all tenants with active-profile and sale counts
 // ---------------------------------------------------------------------------
 
 router.get(
   '/tenants',
   asyncHandler(async (_req: Request, res: Response) => {
     const tenants = await prisma.tenant.findMany({
-      include: { _count: { select: { profiles: true, sales: true } } },
+      include: {
+        _count: {
+          select: {
+            profiles: { where: { active: true, deletedAt: null } },
+            sales: true,
+          },
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
     return res.json({ tenants });
