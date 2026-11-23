@@ -74,6 +74,7 @@ model Tenant {
   membershipRequests     MembershipRequest[]
   membershipAgreements   MembershipAgreement[]
   businessContext        BusinessContext?
+  commercialConsentGrants CommercialConsentGrant[]
 
   ownerTransactions      OwnerTransaction[]
 
@@ -285,6 +286,34 @@ model CloudBackup {
   @@index([tenantId, workspaceKey, kind, createdAt])
   @@unique([tenantId, workspaceKey, kind, snapshotHash])
   @@map("cloud_backups")
+}
+
+/// Server-authoritative, owner-granted commercial contribution scopes.
+model CommercialConsentGrant {
+  id                String    @id @default(cuid())
+  tenantId          String    @map("tenant_id")
+  actorId           String    @map("actor_id")
+  actorRole         String    @map("actor_role")
+  status            String    @default("active")
+  scopes            Json
+  noticeVersion     String    @map("notice_version")
+  noticeDigest      String    @map("notice_digest")
+  termsVersion      String?   @map("terms_version")
+  schemaVersion     String    @map("schema_version")
+  dictionaryVersion String    @map("dictionary_version")
+  appVersion        String    @map("app_version")
+  captureMethod     String    @map("capture_method")
+  authorityEvidence String    @map("authority_evidence")
+  effectiveAt       DateTime  @map("effective_at")
+  withdrawnAt       DateTime? @map("withdrawn_at")
+  processingState   String    @default("none") @map("processing_state")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status, effectiveAt])
+  @@map("commercial_consent_grants")
 }
 
 /// Restricted, minimized commercial contribution ledger. It deliberately has

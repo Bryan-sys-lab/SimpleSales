@@ -14,6 +14,23 @@ export const COMMERCIAL_POLICY = Object.freeze({
     'Produce aggregated Kenyan commerce trend insights for approved business and research uses; never sell or expose an individual shop, customer, receipt, or source transaction.',
   disclosure:
     'Commercial sharing is separate from owner backup and financial evidence. POS checkout and owner analytics work when commercial sharing is off.',
+  scopes: Object.freeze([
+    'business_activity',
+    'product_demand',
+    'availability',
+    'procurement_patterns',
+    'operating_cost_bands',
+    'digitisation_metrics',
+  ]),
+  legalGates: Object.freeze({
+    controllerProcessorAssessment: 'pending_counsel_review',
+    odpcRegistrationAssessment: 'pending_counsel_review',
+    privacyNoticeVersion: 'commercial-notice-v1-draft',
+    dpia: 'required_before_production',
+    crossBorderTransferAssessment: 'required_before_production',
+    partnerContracts: 'required_before_partner_release',
+    productionContribution: 'disabled',
+  }),
   allowlist: Object.freeze([
     'period_start_utc',
     'period_end_utc',

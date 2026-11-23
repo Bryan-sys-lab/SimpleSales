@@ -416,6 +416,29 @@ router.get('/commercial/policy', asyncHandler(async (_req: Request, res: Respons
   return res.json({ policy: COMMERCIAL_POLICY });
 }));
 
+router.get('/commercial/consent-status', asyncHandler(async (req: Request, res: Response) => {
+  const statusRows = await prisma.commercialConsentGrant.groupBy({
+    by: ['status'],
+    _count: { _all: true },
+  });
+  const statusCounts = Object.fromEntries(
+    statusRows.map((row) => [row.status, row._count._all]),
+  );
+  await prisma.adminAuditLog.create({
+    data: {
+      adminId: req.auth?.sub ?? 'unknown',
+      action: 'view_commercial_consent_status',
+      targetType: 'commercial_consent_status',
+      targetId: null,
+      tenantId: null,
+    },
+  });
+  return res.json({
+    collectionEnabled: COMMERCIAL_POLICY.collectionEnabled,
+    statusCounts,
+  });
+}));
+
 // Restricted source-of-truth view. This is deliberately under the existing
 // system-admin boundary; no merchant, analyst, or partner route is mounted.
 router.get('/commercial/ledger', asyncHandler(async (req: Request, res: Response) => {
