@@ -40,6 +40,13 @@ if (session.role !== 'super_admin' || typeof session.access_token !== 'string') 
 }
 const adminToken = session.access_token;
 
+const wsTicket = await request('/api/admin/auth/ws-ticket', { method: 'POST' });
+if (!wsTicket.ok) throw new Error(`Admin WebSocket ticket issue returned ${wsTicket.status}`);
+const wsTicketBody = await wsTicket.json();
+if (typeof wsTicketBody.ticket !== 'string' || wsTicketBody.expiresIn !== 30) {
+  throw new Error('Admin WebSocket ticket did not have the expected short lifetime');
+}
+
 const usersResponse = await request('/api/admin/users');
 if (!usersResponse.ok) throw new Error(`Admin user list returned ${usersResponse.status}`);
 const users = (await usersResponse.json()).users;
@@ -56,6 +63,93 @@ if (!testUser?.email || !testProfile?.tenant?.id) {
 }
 const tenantId = testProfile.tenant.id;
 const suffix = randomUUID().slice(0, 8);
+
+const keyEmail = `ci-admin-${suffix}@example.com`;
+const keyPhone = `+2547${randomUUID().replace(/\D/g, '').slice(0, 8)}`;
+const mintedKey = await request('/api/admin/auth/keys/mint', {
+  method: 'POST',
+  body: JSON.stringify({
+    email: keyEmail,
+    phone: keyPhone,
+    department: 'staging-ci',
+    role: 'worker',
+    permissions: ['tasks:read', 'tasks:manage'],
+    expiresInDays: 7,
+  }),
+});
+if (mintedKey.status !== 201) {
+  throw new Error(`Admin key mint returned ${mintedKey.status}`);
+}
+const mintedKeyBody = await mintedKey.json();
+if (typeof mintedKeyBody.id !== 'string' || typeof mintedKeyBody.key !== 'string') {
+  throw new Error('Admin key mint did not return its one-time staging credentials');
+}
+const adminKeyId = mintedKeyBody.id;
+const departmentLogin = await request('/api/admin/auth/login', {
+  method: 'POST',
+  body: JSON.stringify({
+    email: keyEmail,
+    phone: keyPhone,
+    key: mintedKeyBody.key,
+  }),
+});
+if (
+  !departmentLogin.ok ||
+  (await departmentLogin.json()).role !== 'department_admin'
+) {
+  throw new Error('The minted staging administrator could not log in');
+}
+const updatedKey = await request(`/api/admin/auth/keys/${encodeURIComponent(adminKeyId)}`, {
+  method: 'PATCH',
+  body: JSON.stringify({
+    role: 'manager',
+    permissions: ['tasks:read', 'tasks:manage'],
+    expiresInDays: 7,
+  }),
+});
+if (!updatedKey.ok || (await updatedKey.json()).key?.role !== 'manager') {
+  throw new Error(`Admin key update returned ${updatedKey.status}`);
+}
+
+const createdTask = await request('/api/admin/org/tasks', {
+  method: 'POST',
+  body: JSON.stringify({
+    title: `CI staging task ${suffix}`,
+    description: 'Temporary staging-only administrator task.',
+    assigneeKeyId: adminKeyId,
+  }),
+});
+if (createdTask.status !== 201) {
+  throw new Error(`Admin task creation returned ${createdTask.status}`);
+}
+const taskId = (await createdTask.json()).task?.id;
+if (typeof taskId !== 'string') throw new Error('Admin task creation returned no task ID');
+for (const status of ['in_progress', 'done']) {
+  const taskUpdate = await request(`/api/admin/org/tasks/${encodeURIComponent(taskId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+  if (!taskUpdate.ok || (await taskUpdate.json()).task?.status !== status) {
+    throw new Error(`Admin task status update to ${status} returned ${taskUpdate.status}`);
+  }
+}
+const revokedKey = await request(`/api/admin/auth/keys/${encodeURIComponent(adminKeyId)}/revoke`, {
+  method: 'POST',
+});
+if (!revokedKey.ok || !(await revokedKey.json()).key?.revokedAt) {
+  throw new Error(`Admin key revocation returned ${revokedKey.status}`);
+}
+const revokedLogin = await request('/api/admin/auth/login', {
+  method: 'POST',
+  body: JSON.stringify({
+    email: keyEmail,
+    phone: keyPhone,
+    key: mintedKeyBody.key,
+  }),
+});
+if (revokedLogin.status !== 401) {
+  throw new Error(`Revoked staging administrator login should return 401, got ${revokedLogin.status}`);
+}
 
 const subscription = await request(`/api/admin/billing/subscriptions/${encodeURIComponent(tenantId)}`, {
   method: 'PATCH',
@@ -214,4 +308,4 @@ if (taxEntity) {
   throw new Error(`Admin tax rule create should reject the missing staging entity; got ${taxRule.status}`);
 }
 
-console.log(`Staging admin subscription, voucher lifecycle, validation, retention, audit, expense, and tax-rule writes passed for tenant ${tenantId}`);
+console.log(`Staging admin key/task, subscription, voucher, retention, audit, expense, announcement, and tax-rule writes passed for tenant ${tenantId}`);
