@@ -138,3 +138,35 @@ Follow the supplied order: **13 → 14 → 18 → 15 → 16 → 17**. Complete a
 - Limitation: Wrangler local D1 runtime returned repeatable `write EOF` errors
   for both existing and isolated persistence state. Live Wrangler D1
   application remains blocked and was not claimed as pass.
+
+## Patch 16 implementation update (2026-11-23)
+
+- Added a separate mobile `CommercialContributionService` and kept it outside
+  `OwnerBusinessSyncService.ownerBusinessDomains`. It calculates monthly
+  coarse aggregates from confirmed local sales, applies active scopes, and
+  queues only schema-pinned minimized batches with deterministic UUIDs.
+- Mobile withdrawal deletes unsent queued batches in the consent transaction.
+  Offline and unavailable-backend behavior does not affect checkout or owner
+  backup synchronization.
+- Backend gained authenticated
+  `POST /api/tenant/commercial-contributions/batches`. It derives the tenant
+  from the verified profile, requires an active owner grant, validates every
+  scope, rejects unknown nested fields and foreign tenant fields, reconciles
+  gross/discount/refund/tax/net values, canonicalizes payload hashes, and
+  returns idempotent duplicate delivery behavior.
+- Added tenant-scoped idempotency to `CommercialContribution` and PostgreSQL/D1
+  migrations for `tenant_id` plus a unique tenant/batch key. Production
+  ingestion remains hard-disabled until the Patch 15 legal gate is approved.
+- Existing Admin Panel gained a backend-fed Data Intelligence overview and
+  dataset-snapshot view. It reads `/api/admin/commercial/data-intelligence/*`
+  and displays actual counts, reporting period, freshness, coverage, warnings
+  and suppressed/no-data states. No mobile database or static fixture is used.
+- Backend Admin overview and datasets are restricted by the existing admin
+  authentication/permission boundary. The partner and merchant isolation
+  primitives remain server-side and no partner route exposes ledger rows.
+- Verification: app dedicated queue/business-context/product suite passed 19
+  tests; app analysis passed with no issues. Backend ingest/consent/quality
+  suite passed 13 tests; Prisma validation and backend build passed. Admin
+  production build passed. D1-compatible tenant/batch SQL executed in isolated
+  SQLite and required tenant columns/uniqueness were verified. Live Wrangler
+  D1 still has the Patch 15 environment `write EOF` limitation.

@@ -2324,6 +2324,16 @@ class BackendService {
     await _dio.post('$backendUrl/tenant/commercial-consent/withdraw');
   }
 
+  static Future<void> submitCommercialContributionBatch(
+      Map<String, dynamic> batch) async {
+    await ensureInitialized();
+    if (await tenantId == null) return;
+    await _dio.post(
+      '$backendUrl/tenant/commercial-contributions/batches',
+      data: batch,
+    );
+  }
+
   // ---------------- eTIMS ----------------
 
   /// Asks the backend to issue a KRA receipt for one sale.
