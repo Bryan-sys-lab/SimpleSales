@@ -27,7 +27,12 @@ class _PaywallScreenState extends State<PaywallScreen> {
   final _phone = TextEditingController();
   final _receipt = TextEditingController();
   final _requirements = TextEditingController();
+  final _message = TextEditingController();
   final Set<String> _selectedFeatures = <String>{};
+  List<MembershipRequest> _membershipRequests = const [];
+  List<MembershipPayment> _membershipPayments = const [];
+  List<MembershipVoucher> _membershipVouchers = const [];
+  String? _selectedMembershipRequestId;
   SubscriptionEntitlement? _entitlement;
   _MembershipSection _section = _MembershipSection.plans;
   bool _loading = true;
@@ -39,6 +44,30 @@ class _PaywallScreenState extends State<PaywallScreen> {
   bool _refreshing = false;
   int _durationMonths = 1;
   Timer? _voucherRefreshTimer;
+
+  MembershipRequest? get _currentMembershipRequest {
+    for (final request in _membershipRequests) {
+      if (request.id == _selectedMembershipRequestId) return request;
+    }
+    return _membershipRequests.isEmpty ? null : _membershipRequests.first;
+  }
+
+  Future<void> _refreshMembershipData() async {
+    final requests = await BackendService.membershipRequests();
+    final payments = await BackendService.membershipPayments();
+    final vouchers = await BackendService.membershipVouchers();
+    if (!mounted) return;
+    setState(() {
+      _membershipRequests = requests;
+      _membershipPayments = payments;
+      _membershipVouchers = vouchers;
+      if (!requests
+          .any((request) => request.id == _selectedMembershipRequestId)) {
+        _selectedMembershipRequestId =
+            requests.isEmpty ? null : requests.first.id;
+      }
+    });
+  }
 
   Future<void> _unlockAndReturn() async {
     await context.read<AppStageController>().refreshSubscription();
@@ -109,12 +138,17 @@ class _PaywallScreenState extends State<PaywallScreen> {
       _error = null;
     });
     try {
-      await BackendService.requestSubscriptionQuote(
+      final request = await BackendService.requestSubscriptionQuote(
         features: selectedFeatures,
         requirements: requirements,
       );
       if (!mounted) return;
       setState(() {
+        _membershipRequests = [
+          request,
+          ..._membershipRequests.where((item) => item.id != request.id),
+        ];
+        _selectedMembershipRequestId = request.id;
         _quoteRequested = true;
         _buildingPlan = false;
         _section = _MembershipSection.quote;
@@ -151,9 +185,25 @@ class _PaywallScreenState extends State<PaywallScreen> {
   Future<void> _load() async {
     try {
       final result = await BackendService.fetchSubscriptionEntitlement();
+      List<MembershipRequest> requests = const [];
+      List<MembershipPayment> payments = const [];
+      List<MembershipVoucher> vouchers = const [];
+      try {
+        requests = await BackendService.membershipRequests();
+        payments = await BackendService.membershipPayments();
+        vouchers = await BackendService.membershipVouchers();
+      } catch (error, stack) {
+        debugPrint('Could not load membership account details: $error\n$stack');
+      }
       if (mounted) {
         setState(() {
           _entitlement = result;
+          _membershipRequests = requests;
+          _membershipPayments = payments;
+          _membershipVouchers = vouchers;
+          _selectedMembershipRequestId =
+              requests.isEmpty ? null : requests.first.id;
+          _quoteRequested = requests.isNotEmpty;
           _durationMonths =
               result?.discountVoucherDurationMonths ?? _durationMonths;
           _loading = false;
@@ -307,7 +357,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
     }
   }
 
-  Future<void> _startPayment() async {
+  Future<void> _startPayment({String? agreementId}) async {
     if (_phone.text.trim().isEmpty) return;
     setState(() {
       _loading = true;
@@ -317,6 +367,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
       final quote = await BackendService.startSubscriptionPayment(
         phoneNumber: _phone.text.trim(),
         durationMonths: _durationMonths,
+        agreementId: agreementId,
       );
       if (mounted) {
         setState(() {
@@ -335,6 +386,176 @@ class _PaywallScreenState extends State<PaywallScreen> {
               'Payment could not be started.';
         });
       }
+    }
+  }
+
+  Future<void> _sendMembershipMessage() async {
+    final request = _currentMembershipRequest;
+    final body = _message.text.trim();
+    if (request == null || body.isEmpty) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final sent = await BackendService.sendMembershipMessage(
+          requestId: request.id, body: body);
+      if (!mounted) return;
+      setState(() {
+        _membershipRequests = _membershipRequests
+            .map((item) => item.id == request.id
+                ? MembershipRequest(
+                    id: item.id,
+                    status: item.status == 'offer_ready'
+                        ? 'negotiating'
+                        : item.status,
+                    features: item.features,
+                    requirements: item.requirements,
+                    offers: item.offers,
+                    messages: [...item.messages, sent],
+                    agreement: item.agreement,
+                  )
+                : item)
+            .toList();
+        _message.clear();
+        _loading = false;
+      });
+    } on DioException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = (error.response?.data is Map
+                ? error.response!.data['error'] as String?
+                : null) ??
+            'Your message could not be sent.';
+      });
+    } catch (error, stack) {
+      debugPrint('Could not send membership message: $error\n$stack');
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'Your message could not be sent.';
+      });
+    }
+  }
+
+  Future<void> _reviewAndAcceptOffer(
+    MembershipRequest request,
+    MembershipOffer offer,
+  ) async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final preview = await BackendService.previewMembershipOffer(
+        requestId: request.id,
+        offerId: offer.id,
+      );
+      if (!mounted) return;
+      final accepted = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Review offer ${offer.revision}'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Your price: ${offer.currency} ${(preview.amountMinor / 100).toStringAsFixed(2)}',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                if (preview.discountPercent > 0)
+                  Text(
+                    'Voucher discount: ${preview.discountPercent}% '
+                    '(-${offer.currency} ${(preview.discountAmountMinor / 100).toStringAsFixed(2)})',
+                  ),
+                if (preview.voucherNotApplicable)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8),
+                    child: Text(
+                        'Your claimed voucher does not apply to this offer.'),
+                  ),
+                const SizedBox(height: 12),
+                Text('Payment: ${offer.paymentArrangement}'),
+                Text('Renewal: ${offer.renewalTerms}'),
+                if (offer.termMonths != null)
+                  Text('Term: ${offer.termMonths} months'),
+                if (offer.includedFeatures.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  const Text('Included features'),
+                  ...offer.includedFeatures.map(
+                    (feature) => Text('- $feature'),
+                  ),
+                ],
+                if (offer.additionalConditions?.isNotEmpty == true) ...[
+                  const SizedBox(height: 12),
+                  Text(offer.additionalConditions!),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Not now'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Accept offer'),
+            ),
+          ],
+        ),
+      );
+      if (accepted != true || !mounted) {
+        if (mounted) setState(() => _loading = false);
+        return;
+      }
+      final acceptedAgreement = await BackendService.acceptMembershipOffer(
+        requestId: request.id,
+        offerId: offer.id,
+        preview: preview,
+      );
+      if (!mounted) return;
+      setState(() {
+        _membershipRequests = _membershipRequests
+            .map((item) => item.id == request.id
+                ? MembershipRequest(
+                    id: item.id,
+                    status: 'accepted',
+                    features: item.features,
+                    requirements: item.requirements,
+                    offers: item.offers,
+                    messages: item.messages,
+                    agreement: acceptedAgreement,
+                  )
+                : item)
+            .toList();
+        _loading = false;
+      });
+      try {
+        await _refreshMembershipData();
+      } catch (error, stack) {
+        debugPrint(
+            'Agreement accepted but account refresh failed: $error\n$stack');
+      }
+    } on DioException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = (error.response?.data is Map
+                ? error.response!.data['error'] as String?
+                : null) ??
+            'This offer could not be accepted.';
+      });
+    } catch (error, stack) {
+      debugPrint('Could not review membership offer: $error\n$stack');
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'This offer could not be accepted.';
+      });
     }
   }
 
@@ -393,6 +614,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
     _phone.dispose();
     _receipt.dispose();
     _requirements.dispose();
+    _message.dispose();
     super.dispose();
   }
 
@@ -519,15 +741,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
     );
   }
 
-  Widget _buildPlansContent(
-    AppLocalizations l10n,
-    ThemeData theme, {
-    required int? price,
-    required List<(int, String)> availableDurations,
-    required int baseAmountMinor,
-    required int discountedAmountMinor,
-    required int discountPercent,
-  }) {
+  Widget _buildPlansContent(AppLocalizations l10n, ThemeData theme) {
     if (_buildingPlan) return _buildPlanBuilder(l10n, theme);
     final colors = theme.colorScheme;
     return ListView(
@@ -593,18 +807,6 @@ class _PaywallScreenState extends State<PaywallScreen> {
           const SizedBox(height: 12),
           _buildSubscriptionSummary(l10n, theme),
         ],
-        if (price != null && _entitlement?.allowed != true) ...[
-          const SizedBox(height: 12),
-          _buildExistingOffer(
-            l10n,
-            theme,
-            price: price,
-            availableDurations: availableDurations,
-            baseAmountMinor: baseAmountMinor,
-            discountedAmountMinor: discountedAmountMinor,
-            discountPercent: discountPercent,
-          ),
-        ],
       ],
     );
   }
@@ -620,138 +822,29 @@ class _PaywallScreenState extends State<PaywallScreen> {
                 .formatMediumDate(parsedPeriodEnd.toLocal()),
           );
     return Card(
-      child: ListTile(
-        leading:
-            Icon(Icons.check_circle_outline, color: theme.colorScheme.primary),
-        title: Text(l10n.membershipMySubscription),
-        subtitle: Text(subtitle),
-      ),
-    );
-  }
-
-  Widget _buildExistingOffer(
-    AppLocalizations l10n,
-    ThemeData theme, {
-    required int price,
-    required List<(int, String)> availableDurations,
-    required int baseAmountMinor,
-    required int discountedAmountMinor,
-    required int discountPercent,
-  }) {
-    final currency = _entitlement?.currency ?? 'KES';
-    return Card(
-      child: ExpansionTile(
-        leading: const Icon(Icons.receipt_long_outlined),
-        title: Text(l10n.membershipExistingOffer),
-        subtitle: Text(l10n.membershipExistingOfferDescription),
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        children: [
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(l10n.membershipConfiguredPrice),
-            subtitle: Text(
-              '$currency ${(price / 100).toStringAsFixed(2)} / '
-              '${_entitlement?.billingInterval ?? 'month'}',
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Column(
+          children: [
+            ListTile(
+              leading: Icon(Icons.check_circle_outline,
+                  color: theme.colorScheme.primary),
+              title: Text(l10n.membershipMySubscription),
+              subtitle: Text(subtitle),
             ),
-          ),
-          DropdownButtonFormField<int>(
-            initialValue: _durationMonths,
-            decoration: InputDecoration(
-              labelText: l10n.paywallDuration,
-              border: const OutlineInputBorder(),
-            ),
-            items: availableDurations
-                .map((duration) => DropdownMenuItem<int>(
-                      value: duration.$1,
-                      child: Text(duration.$2),
-                    ))
-                .toList(),
-            onChanged: _loading
-                ? null
-                : (value) {
-                    if (value != null) {
-                      setState(() {
-                        _durationMonths = value;
-                        _paymentQuote = null;
-                        _paymentReference = null;
-                      });
-                    }
-                  },
-          ),
-          const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              '${l10n.paywallQuoteBase}: $currency '
-              '${(baseAmountMinor / 100).toStringAsFixed(2)}',
-            ),
-          ),
-          if (discountPercent > 0) ...[
-            const SizedBox(height: 4),
             Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                '${l10n.paywallDiscount(discountPercent)}: -$currency '
-                '${((baseAmountMinor - discountedAmountMinor) / 100).toStringAsFixed(2)}',
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () => setState(() {
+                  _buildingPlan = true;
+                  _section = _MembershipSection.plans;
+                }),
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('Request a change'),
               ),
             ),
           ],
-          const SizedBox(height: 4),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              '${l10n.paywallAmountDue}: $currency '
-              '${(discountedAmountMinor / 100).toStringAsFixed(2)}',
-              style: theme.textTheme.titleMedium,
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _phone,
-            keyboardType: TextInputType.phone,
-            autofillHints: const [AutofillHints.telephoneNumber],
-            decoration: InputDecoration(
-              labelText: l10n.membershipMpesaPhone,
-              border: const OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          FilledButton.tonalIcon(
-            onPressed: _loading ? null : _startPayment,
-            icon: const Icon(Icons.phone_android_rounded),
-            label: Text(l10n.paywallPayMpesa),
-          ),
-          if (_paymentQuote != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              l10n.paywallPaymentPrompt(
-                currency,
-                (_paymentQuote!.amountMinor / 100).toStringAsFixed(2),
-                _paymentQuote!.durationMonths,
-              ),
-              style: theme.textTheme.bodyMedium,
-            ),
-          ],
-          if (_paymentReference != null) ...[
-            const SizedBox(height: 8),
-            OutlinedButton(
-              onPressed: _loading ? null : _checkPayment,
-              child: Text(l10n.membershipCheckPayment),
-            ),
-            TextField(
-              controller: _receipt,
-              textCapitalization: TextCapitalization.characters,
-              decoration: InputDecoration(
-                labelText: l10n.membershipMpesaReceipt,
-                border: const OutlineInputBorder(),
-              ),
-            ),
-            TextButton(
-              onPressed: _loading ? null : _confirmReceipt,
-              child: Text(l10n.membershipVerifyReceipt),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }
@@ -810,6 +903,34 @@ class _PaywallScreenState extends State<PaywallScreen> {
               ),
             ),
           ),
+        ],
+        if (_membershipVouchers.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          Text('Your vouchers', style: theme.textTheme.titleLarge),
+          const SizedBox(height: 8),
+          ..._membershipVouchers.map((voucher) {
+            final expiry = DateTime.tryParse(voucher.expiresAt ?? '');
+            return Card(
+              child: ListTile(
+                leading: const Icon(Icons.redeem_outlined),
+                title: Text(
+                  voucher.voucherType == 'discount'
+                      ? '${voucher.discountPercent}% off · ${voucher.durationMonths} months'
+                      : 'Access · ${voucher.durationMonths} months',
+                ),
+                subtitle: Text(
+                  'Code prefix ${voucher.codePrefix}'
+                  '${voucher.redeemedAt == null ? ' · Not claimed' : ' · Claimed'}',
+                ),
+                trailing: expiry == null
+                    ? null
+                    : Text(
+                        'Expires ${MaterialLocalizations.of(context).formatShortDate(expiry.toLocal())}',
+                        style: theme.textTheme.bodySmall,
+                      ),
+              ),
+            );
+          }),
         ],
         const SizedBox(height: 18),
         Text(l10n.paywallVoucherSectionTitle,
@@ -919,6 +1040,16 @@ class _PaywallScreenState extends State<PaywallScreen> {
   }
 
   Widget _buildQuoteContent(AppLocalizations l10n, ThemeData theme) {
+    final request = _currentMembershipRequest;
+    final agreement = request?.agreement;
+    final snapshot = agreement?.snapshot ?? const <String, dynamic>{};
+    final agreedAmount = (snapshot['amountMinor'] as num?)?.toInt();
+    final agreementCurrency = snapshot['currency'] as String? ?? 'KES';
+    final requestPayments = agreement == null
+        ? const <MembershipPayment>[]
+        : _membershipPayments
+            .where((payment) => payment.agreementId == agreement.id)
+            .toList();
     return ListView(
       key: const ValueKey<String>('membership-quote'),
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
@@ -926,56 +1057,303 @@ class _PaywallScreenState extends State<PaywallScreen> {
         Text(l10n.membershipQuote, style: theme.textTheme.headlineSmall),
         const SizedBox(height: 6),
         Text(l10n.membershipQuoteDescription, style: theme.textTheme.bodyLarge),
-        const SizedBox(height: 16),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  _quoteRequested
-                      ? Icons.mark_email_read_outlined
-                      : Icons.request_quote_outlined,
-                  color: theme.colorScheme.primary,
-                  size: 30,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  _quoteRequested
-                      ? l10n.membershipRequestSentTitle
-                      : l10n.membershipQuoteEmptyTitle,
-                  style: theme.textTheme.titleLarge,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _quoteRequested
-                      ? l10n.membershipRequestSentDescription
-                      : l10n.membershipQuoteEmptyDescription,
-                  style: theme.textTheme.bodyMedium,
-                ),
-              ],
+        if (_membershipRequests.length > 1) ...[
+          const SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            initialValue: request?.id,
+            decoration: const InputDecoration(
+              labelText: 'Your requests',
+              border: OutlineInputBorder(),
+            ),
+            items: _membershipRequests
+                .map((item) => DropdownMenuItem<String>(
+                      value: item.id,
+                      child: Text(
+                        '${item.status.replaceAll('_', ' ')} · ${item.features.take(2).join(', ')}',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ))
+                .toList(),
+            onChanged: _loading
+                ? null
+                : (id) => setState(() => _selectedMembershipRequestId = id),
+          ),
+        ],
+        if (request == null) ...[
+          const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.request_quote_outlined, size: 30),
+                  const SizedBox(height: 12),
+                  Text(l10n.membershipQuoteEmptyTitle,
+                      style: theme.textTheme.titleLarge),
+                  const SizedBox(height: 8),
+                  Text(l10n.membershipQuoteEmptyDescription),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: () => setState(() {
+                      _section = _MembershipSection.plans;
+                      _buildingPlan = true;
+                    }),
+                    icon: const Icon(Icons.arrow_forward),
+                    label: Text(l10n.membershipGetStarted),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-        const SizedBox(height: 12),
-        if (_quoteRequested)
-          OutlinedButton.icon(
-            onPressed: _salesWhatsappUri(l10n) == null
-                ? null
-                : () => _openSupport(_salesWhatsappUri(l10n)!),
-            icon: const Icon(Icons.chat_outlined),
-            label: Text(l10n.membershipDiscussOnWhatsApp),
-          )
-        else
-          FilledButton.icon(
-            onPressed: () => setState(() {
-              _section = _MembershipSection.plans;
-              _buildingPlan = true;
-            }),
-            icon: const Icon(Icons.arrow_forward),
-            label: Text(l10n.membershipGetStarted),
+        ] else ...[
+          const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.request_quote_outlined),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Request · ${request.status.replaceAll('_', ' ')}',
+                          style: theme.textTheme.titleMedium,
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Refresh request',
+                        onPressed: _loading
+                            ? null
+                            : () async {
+                                try {
+                                  await _refreshMembershipData();
+                                } catch (error, stack) {
+                                  debugPrint(
+                                      'Could not refresh membership: $error\n$stack');
+                                  if (mounted) {
+                                    setState(() => _error =
+                                        'Could not refresh your request.');
+                                  }
+                                }
+                              },
+                        icon: const Icon(Icons.refresh),
+                      ),
+                    ],
+                  ),
+                  if (request.features.isNotEmpty)
+                    Text('Requested: ${request.features.join(', ')}'),
+                  if (request.requirements.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(request.requirements),
+                    ),
+                ],
+              ),
+            ),
           ),
+          if (agreement != null) ...[
+            const SizedBox(height: 12),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Your agreement', style: theme.textTheme.titleLarge),
+                    const SizedBox(height: 8),
+                    Text('Reference: ${agreement.reference}'),
+                    if (agreedAmount != null)
+                      Text(
+                        'Agreed price: $agreementCurrency '
+                        '${(agreedAmount / 100).toStringAsFixed(2)}',
+                      ),
+                    Text(
+                      'Payment: ${snapshot['paymentArrangement'] ?? 'As agreed'}',
+                    ),
+                    Text(
+                      'Renewal: ${snapshot['renewalTerms'] ?? 'As agreed'}',
+                    ),
+                    if (snapshot['termMonths'] is num)
+                      Text('Term: ${snapshot['termMonths']} months'),
+                    if (snapshot['includedFeatures'] is List) ...[
+                      const SizedBox(height: 8),
+                      const Text('Included features'),
+                      ...((snapshot['includedFeatures'] as List)
+                          .whereType<String>()
+                          .map((feature) => Text('- $feature'))),
+                    ],
+                    if (snapshot['additionalConditions'] is String &&
+                        (snapshot['additionalConditions'] as String)
+                            .isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(snapshot['additionalConditions'] as String),
+                    ],
+                    if (_entitlement?.allowed != true) ...[
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _phone,
+                        keyboardType: TextInputType.phone,
+                        decoration: const InputDecoration(
+                          labelText: 'M-Pesa phone number',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      FilledButton.icon(
+                        onPressed: _loading
+                            ? null
+                            : () => _startPayment(agreementId: agreement.id),
+                        icon: const Icon(Icons.phone_android_rounded),
+                        label: const Text('Complete payment'),
+                      ),
+                    ],
+                    if (_paymentReference != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        'Payment request: $_paymentReference',
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                      if (_paymentQuote != null)
+                        Text(
+                          'Confirm $agreementCurrency '
+                          '${(_paymentQuote!.amountMinor / 100).toStringAsFixed(2)} '
+                          'on your phone.',
+                        ),
+                      OutlinedButton(
+                        onPressed: _loading ? null : _checkPayment,
+                        child: const Text('Check payment'),
+                      ),
+                      TextField(
+                        controller: _receipt,
+                        textCapitalization: TextCapitalization.characters,
+                        decoration: const InputDecoration(
+                          labelText: 'M-Pesa receipt code',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: _loading ? null : _confirmReceipt,
+                        child: const Text('Verify receipt'),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            if (requestPayments.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text('Payment history', style: theme.textTheme.titleMedium),
+              ...requestPayments.map((payment) => Card(
+                    child: ListTile(
+                      title: Text(
+                        '${payment.status} · $agreementCurrency '
+                        '${(payment.amountMinor / 100).toStringAsFixed(2)}',
+                      ),
+                      subtitle: Text(payment.reference),
+                      trailing: payment.status == 'PENDING'
+                          ? TextButton(
+                              onPressed: _loading
+                                  ? null
+                                  : () => setState(() {
+                                        _paymentReference = payment.reference;
+                                        _paymentQuote =
+                                            SubscriptionPaymentQuote(
+                                          reference: payment.reference,
+                                          amountMinor: payment.amountMinor,
+                                          baseAmountMinor: payment.amountMinor,
+                                          discountAmountMinor: 0,
+                                          discountPercent: 0,
+                                          durationMonths:
+                                              payment.durationMonths,
+                                        );
+                                      }),
+                              child: const Text('Check'),
+                            )
+                          : null,
+                    ),
+                  )),
+            ],
+          ],
+          ...request.offers
+              .where((offer) => offer.status == 'offered')
+              .map((offer) => Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Offer ${offer.revision}',
+                              style: theme.textTheme.titleLarge),
+                          const SizedBox(height: 6),
+                          Text('Your quoted price is reviewed below.'),
+                          Text('Payment: ${offer.paymentArrangement}'),
+                          Text('Renewal: ${offer.renewalTerms}'),
+                          if (offer.termMonths != null)
+                            Text('Term: ${offer.termMonths} months'),
+                          if (offer.includedFeatures.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            const Text('Included features'),
+                            ...offer.includedFeatures
+                                .map((feature) => Text('- $feature')),
+                          ],
+                          if (offer.additionalConditions?.isNotEmpty == true)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Text(offer.additionalConditions!),
+                            ),
+                          const SizedBox(height: 12),
+                          FilledButton(
+                            onPressed: _loading
+                                ? null
+                                : () => _reviewAndAcceptOffer(request, offer),
+                            child: const Text('Review offer'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )),
+          if (request.messages.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text('Conversation', style: theme.textTheme.titleLarge),
+            ...request.messages.map((message) => Card(
+                  child: ListTile(
+                    title: Text(
+                        message.senderType == 'sales' ? 'Sales team' : 'You'),
+                    subtitle: Text(message.body),
+                  ),
+                )),
+          ],
+          if (request.status != 'accepted' && request.status != 'closed') ...[
+            const SizedBox(height: 8),
+            TextField(
+              controller: _message,
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                labelText: 'Write a message',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            FilledButton.tonalIcon(
+              onPressed: _loading ? null : _sendMembershipMessage,
+              icon: const Icon(Icons.send_outlined),
+              label: const Text('Send message'),
+            ),
+          ],
+          if (_quoteRequested)
+            OutlinedButton.icon(
+              onPressed: _salesWhatsappUri(l10n) == null
+                  ? null
+                  : () => _openSupport(_salesWhatsappUri(l10n)!),
+              icon: const Icon(Icons.chat_outlined),
+              label: Text(l10n.membershipDiscussOnWhatsApp),
+            ),
+        ],
       ],
     );
   }
@@ -991,23 +1369,6 @@ class _PaywallScreenState extends State<PaywallScreen> {
       );
     }
 
-    final price = _entitlement?.priceMinor;
-    final discountPercent = _entitlement?.discountPercent ?? 0;
-    final discountDuration = _entitlement?.discountVoucherDurationMonths;
-    final baseAmountMinor = (price ?? 0) * _durationMonths;
-    final discountedAmountMinor =
-        (baseAmountMinor * (100 - discountPercent) / 100).round();
-    final durations = <(int, String)>[
-      (1, l10n.paywallOneMonth),
-      (3, l10n.paywallThreeMonths),
-      (6, l10n.paywallSixMonths),
-      (12, l10n.paywallTwelveMonths),
-    ];
-    final availableDurations = discountDuration == null
-        ? durations
-        : durations
-            .where((duration) => duration.$1 == discountDuration)
-            .toList();
     final sectionIndex = _section.index;
 
     return Scaffold(
@@ -1036,15 +1397,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
               child: IndexedStack(
                 index: sectionIndex,
                 children: [
-                  _buildPlansContent(
-                    l10n,
-                    theme,
-                    price: price,
-                    availableDurations: availableDurations,
-                    baseAmountMinor: baseAmountMinor,
-                    discountedAmountMinor: discountedAmountMinor,
-                    discountPercent: discountPercent,
-                  ),
+                  _buildPlansContent(l10n, theme),
                   _buildQuoteContent(l10n, theme),
                   _buildVoucherContent(l10n, theme),
                   _buildHelpContent(l10n, theme),

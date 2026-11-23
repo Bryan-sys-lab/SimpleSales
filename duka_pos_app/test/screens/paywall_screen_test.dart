@@ -16,6 +16,9 @@ import '../support/harness.dart';
 class _PaywallAdapter implements HttpClientAdapter {
   final List<String> requestedPaths = <String>[];
   final List<Map<String, dynamic>> requestBodies = <Map<String, dynamic>>[];
+  bool offerReady = false;
+  bool agreementAccepted = false;
+  bool paymentStarted = false;
 
   @override
   Future<ResponseBody> fetch(
@@ -27,8 +30,86 @@ class _PaywallAdapter implements HttpClientAdapter {
     if (options.data is Map) {
       requestBodies.add(Map<String, dynamic>.from(options.data as Map));
     }
-    return ResponseBody.fromString(
-      jsonEncode(<String, Object?>{
+    final Map<String, Object?> payload;
+    if (options.path.endsWith('/tenant/membership/requests') &&
+        options.method == 'POST') {
+      payload = <String, Object?>{
+        'request': <String, Object?>{
+          'id': 'membership-request-1',
+          'status': 'pending',
+          'features': requestBodies.last['features'],
+          'requirements': requestBodies.last['requirements'],
+          'offers': <Object>[],
+          'messages': <Object>[],
+          'agreement': null,
+        },
+      };
+    } else if (options.path.endsWith('/tenant/membership/requests')) {
+      payload = <String, Object?>{
+        'requests': <Object>[
+          <String, Object?>{
+            'id': 'membership-request-1',
+            'status': agreementAccepted
+                ? 'accepted'
+                : offerReady
+                    ? 'offer_ready'
+                    : 'pending',
+            'features': <String>['Inventory'],
+            'requirements': 'Train two staff members.',
+            'offers': offerReady ? <Object>[_membershipOffer] : <Object>[],
+            'messages': <Object>[],
+            'agreement': agreementAccepted ? _membershipAgreement : null,
+          },
+        ],
+      };
+    } else if (options.path.endsWith('/tenant/membership/payments')) {
+      payload = <String, Object?>{
+        'payments': paymentStarted
+            ? <Object>[
+                <String, Object?>{
+                  'reference': 'SUBS-test',
+                  'amountMinor': 7500,
+                  'durationMonths': 3,
+                  'status': 'PENDING',
+                  'agreementId': 'agreement-1',
+                  'createdAt': DateTime.now().toIso8601String(),
+                },
+              ]
+            : <Object>[],
+      };
+    } else if (options.path.endsWith('/tenant/membership/vouchers')) {
+      payload = <String, Object?>{'vouchers': <Object>[]};
+    } else if (options.path.endsWith('/offers/offer-1/preview')) {
+      payload = <String, Object?>{
+        'offer': _membershipOffer,
+        'pricing': <String, Object?>{
+          'currency': 'KES',
+          'baseAmountMinor': 10000,
+          'discountPercent': 25,
+          'discountAmountMinor': 2500,
+          'amountMinor': 7500,
+          'voucherApplied': true,
+          'voucherNotApplicable': false,
+        },
+      };
+    } else if (options.path.endsWith('/offers/offer-1/accept')) {
+      agreementAccepted = true;
+      payload = <String, Object?>{'agreement': _membershipAgreement};
+    } else if (options.path.endsWith('/tenant/subscription/payment') &&
+        options.method == 'POST') {
+      paymentStarted = true;
+      payload = <String, Object?>{
+        'reference': 'SUBS-test',
+        'amountMinor': 7500,
+        'baseAmountMinor': 10000,
+        'discountAmountMinor': 2500,
+        'discountPercent': 25,
+        'durationMonths': 3,
+        'agreementId': 'agreement-1',
+        'status': 'PENDING',
+      };
+    } else {
+      payload = <String, Object?>{
         'entitlement': <String, Object?>{
           'allowed': false,
           'status': 'pending',
@@ -43,7 +124,10 @@ class _PaywallAdapter implements HttpClientAdapter {
           'availableVoucher': <String, Object>{'durationMonths': 6},
           'whatsappUrl': null,
         },
-      }),
+      };
+    }
+    return ResponseBody.fromString(
+      jsonEncode(payload),
       200,
       headers: <String, List<String>>{
         Headers.contentTypeHeader: <String>[Headers.jsonContentType],
@@ -53,6 +137,39 @@ class _PaywallAdapter implements HttpClientAdapter {
 
   @override
   void close({bool force = false}) {}
+
+  static const Map<String, Object?> _membershipOffer = <String, Object?>{
+    'id': 'offer-1',
+    'revision': 1,
+    'status': 'offered',
+    'amountMinor': 10000,
+    'currency': 'KES',
+    'termMonths': 3,
+    'paymentArrangement': 'Pay by M-Pesa',
+    'renewalTerms': 'Renewal as agreed',
+    'includedFeatures': <String>['Inventory', 'Reports'],
+    'additionalConditions': null,
+    'expiresAt': null,
+  };
+
+  static const Map<String, Object?> _membershipAgreement = <String, Object?>{
+    'id': 'agreement-1',
+    'reference': 'AGR-test',
+    'acceptedAt': '2026-11-23T12:00:00.000Z',
+    'snapshot': <String, Object?>{
+      'amountMinor': 7500,
+      'baseAmountMinor': 10000,
+      'discountPercent': 25,
+      'discountAmountMinor': 2500,
+      'currency': 'KES',
+      'termMonths': 3,
+      'paymentArrangement': 'Pay by M-Pesa',
+      'renewalTerms': 'Renewal as agreed',
+      'includedFeatures': <String>['Inventory', 'Reports'],
+      'additionalConditions': null,
+      'voucherId': 'voucher-1',
+    },
+  };
 }
 
 class _DiscountVoucherAdapter implements HttpClientAdapter {
@@ -160,7 +277,7 @@ void main() {
   );
 
   testWidgets(
-    'claims a discount voucher without unlocking access and limits checkout to its term',
+    'claims a discount voucher without showing a fixed subscription price',
     (WidgetTester tester) async {
       tester.useDevice(Device.compact);
       final _DiscountVoucherAdapter adapter = _DiscountVoucherAdapter();
@@ -186,19 +303,8 @@ void main() {
       await tester.pump(const Duration(seconds: 5));
       await tester.tap(find.text(l10n.membershipPlans));
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(
-        find.text(l10n.membershipExistingOffer),
-        260,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await tester.tap(find.text(l10n.membershipExistingOffer));
-      await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(
-        find.textContaining('KES 2250.00'),
-        300,
-        scrollable: find.byType(Scrollable).first,
-      );
-      expect(find.textContaining('KES 2250.00'), findsOneWidget);
+      expect(find.text(l10n.membershipExistingOffer), findsNothing);
+      expect(find.textContaining('KES 2250.00'), findsNothing);
       expect(
         adapter.requestedPaths,
         contains(endsWith('/auth/voucher/claim')),
@@ -290,7 +396,7 @@ void main() {
   );
 
   testWidgets(
-    'sends selected membership needs through the existing quote request path',
+    'sends selected membership needs through the dedicated quote request path',
     (WidgetTester tester) async {
       tester.useDevice(Device.compact);
       SharedPreferences.setMockInitialValues(<String, Object>{});
@@ -329,18 +435,89 @@ void main() {
       await tester.tap(find.text(l10n.membershipRequestOffer));
       await tester.pumpAndSettle();
 
-      expect(find.text(l10n.membershipRequestSentTitle), findsOneWidget);
+      expect(find.text('Request · pending'), findsOneWidget);
       expect(
         adapter.requestedPaths,
-        contains(endsWith('/telemetry/support')),
+        contains(endsWith('/tenant/membership/requests')),
       );
       final Map<String, dynamic> body = adapter.requestBodies.last;
-      final items = body['items'] as List;
-      final request = items.single as Map;
-      expect(request['title'], 'Personal membership quote request');
-      expect(request['description'], contains(l10n.membershipFeatureInventory));
-      expect(request['description'],
-          contains('Please include training for two staff members.'));
+      expect(body['features'], contains(l10n.membershipFeatureInventory));
+      expect(body['requirements'],
+          'Please include training for two staff members.');
+    },
+  );
+
+  testWidgets(
+    'reviews, accepts, and pays for the accepted membership offer',
+    (WidgetTester tester) async {
+      tester.useDevice(Device.compact);
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      await WorkspaceService.register(
+        workspaceKey: 'accepted-membership-test',
+        tenantId: 'tenant-accepted-membership',
+        shopName: 'Accepted membership test',
+      );
+      await WorkspaceService.setActiveWorkspace('accepted-membership-test');
+      final _PaywallAdapter adapter = _PaywallAdapter();
+      BackendService.setHttpClientAdapterForTesting(adapter);
+      addTearDown(() => BackendService.setHttpClientAdapterForTesting(null));
+
+      await tester.pumpApp(home: const PaywallScreen());
+      await tester.pumpAndSettle();
+      final AppLocalizations l10n =
+          AppLocalizations.of(tester.element(find.byType(PaywallScreen)));
+      await tester.tap(find.text(l10n.membershipGetStarted));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(l10n.membershipFeatureInventory));
+      await tester.scrollUntilVisible(
+        find.text(l10n.membershipRequestOffer),
+        260,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find.text(l10n.membershipRequestOffer));
+      await tester.pumpAndSettle();
+
+      adapter.offerReady = true;
+      await tester.tap(find.byTooltip('Refresh request'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Review offer'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('KES 75.00'), findsOneWidget);
+      await tester.tap(find.text('Accept offer'));
+      await tester.pumpAndSettle();
+      expect(find.text('Reference: AGR-test'), findsOneWidget);
+      final acceptBody = adapter.requestBodies
+          .firstWhere((body) => body.containsKey('expectedAmountMinor'));
+      expect(acceptBody, <String, dynamic>{
+        'expectedAmountMinor': 7500,
+        'expectedDiscountPercent': 25,
+        'expectedVoucherApplied': true,
+      });
+
+      await tester.scrollUntilVisible(
+        find.text('Complete payment'),
+        260,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.enterText(
+        find.byWidgetPredicate((widget) =>
+            widget is TextField &&
+            widget.decoration?.labelText == 'M-Pesa phone number'),
+        '254700000000',
+      );
+      tester.testTextInput.hide();
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Complete payment'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Complete payment'));
+      await tester.pumpAndSettle();
+
+      expect(adapter.paymentStarted, isTrue);
+      expect(adapter.requestBodies.last['agreementId'], 'agreement-1');
+      expect(adapter.requestBodies.last['phoneNumber'], '254700000000');
+      expect(adapter.requestedPaths,
+          contains(endsWith('/tenant/subscription/payment')));
+      tester.expectNoOverflow('accepted membership agreement and payment');
     },
   );
 }

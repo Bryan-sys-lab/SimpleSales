@@ -269,6 +269,232 @@ class SubscriptionPaymentQuote {
   final int durationMonths;
 }
 
+class MembershipMessage {
+  const MembershipMessage({
+    required this.id,
+    required this.senderType,
+    required this.body,
+    required this.createdAt,
+  });
+
+  factory MembershipMessage.fromJson(Map<String, dynamic> json) =>
+      MembershipMessage(
+        id: json['id'] as String,
+        senderType: json['senderType'] as String? ?? 'customer',
+        body: json['body'] as String? ?? '',
+        createdAt: json['createdAt'] as String? ?? '',
+      );
+
+  final String id;
+  final String senderType;
+  final String body;
+  final String createdAt;
+}
+
+class MembershipOffer {
+  const MembershipOffer({
+    required this.id,
+    required this.revision,
+    required this.status,
+    required this.amountMinor,
+    required this.currency,
+    required this.termMonths,
+    required this.paymentArrangement,
+    required this.renewalTerms,
+    required this.includedFeatures,
+    required this.additionalConditions,
+    required this.expiresAt,
+  });
+
+  factory MembershipOffer.fromJson(Map<String, dynamic> json) =>
+      MembershipOffer(
+        id: json['id'] as String,
+        revision: (json['revision'] as num).toInt(),
+        status: json['status'] as String? ?? 'offered',
+        amountMinor: (json['amountMinor'] as num).toInt(),
+        currency: json['currency'] as String? ?? 'KES',
+        termMonths: (json['termMonths'] as num?)?.toInt(),
+        paymentArrangement: json['paymentArrangement'] as String? ?? '',
+        renewalTerms: json['renewalTerms'] as String? ?? '',
+        includedFeatures: (json['includedFeatures'] as List? ?? const [])
+            .whereType<String>()
+            .toList(),
+        additionalConditions: json['additionalConditions'] as String?,
+        expiresAt: json['expiresAt'] as String?,
+      );
+
+  final String id;
+  final int revision;
+  final String status;
+  final int amountMinor;
+  final String currency;
+  final int? termMonths;
+  final String paymentArrangement;
+  final String renewalTerms;
+  final List<String> includedFeatures;
+  final String? additionalConditions;
+  final String? expiresAt;
+}
+
+class MembershipAgreement {
+  const MembershipAgreement({
+    required this.id,
+    required this.reference,
+    required this.acceptedAt,
+    required this.snapshot,
+  });
+
+  factory MembershipAgreement.fromJson(Map<String, dynamic> json) =>
+      MembershipAgreement(
+        id: json['id'] as String,
+        reference: json['reference'] as String,
+        acceptedAt: json['acceptedAt'] as String? ?? '',
+        snapshot: json['snapshot'] is Map
+            ? Map<String, dynamic>.from(json['snapshot'] as Map)
+            : const <String, dynamic>{},
+      );
+
+  final String id;
+  final String reference;
+  final String acceptedAt;
+  final Map<String, dynamic> snapshot;
+}
+
+class MembershipRequest {
+  const MembershipRequest({
+    required this.id,
+    required this.status,
+    required this.features,
+    required this.requirements,
+    required this.offers,
+    required this.messages,
+    required this.agreement,
+  });
+
+  factory MembershipRequest.fromJson(Map<String, dynamic> json) =>
+      MembershipRequest(
+        id: json['id'] as String,
+        status: json['status'] as String? ?? 'pending',
+        features: (json['features'] as List? ?? const [])
+            .whereType<String>()
+            .toList(),
+        requirements: json['requirements'] as String? ?? '',
+        offers: (json['offers'] as List? ?? const [])
+            .whereType<Map>()
+            .map((item) =>
+                MembershipOffer.fromJson(Map<String, dynamic>.from(item)))
+            .toList(),
+        messages: (json['messages'] as List? ?? const [])
+            .whereType<Map>()
+            .map((item) =>
+                MembershipMessage.fromJson(Map<String, dynamic>.from(item)))
+            .toList(),
+        agreement: json['agreement'] is Map
+            ? MembershipAgreement.fromJson(
+                Map<String, dynamic>.from(json['agreement'] as Map))
+            : null,
+      );
+
+  final String id;
+  final String status;
+  final List<String> features;
+  final String requirements;
+  final List<MembershipOffer> offers;
+  final List<MembershipMessage> messages;
+  final MembershipAgreement? agreement;
+}
+
+class MembershipOfferPreview {
+  const MembershipOfferPreview({
+    required this.offer,
+    required this.amountMinor,
+    required this.baseAmountMinor,
+    required this.discountPercent,
+    required this.discountAmountMinor,
+    required this.voucherApplied,
+    required this.voucherNotApplicable,
+  });
+
+  factory MembershipOfferPreview.fromJson(Map<String, dynamic> json) {
+    final offer = MembershipOffer.fromJson(
+        Map<String, dynamic>.from(json['offer'] as Map));
+    final pricing = Map<String, dynamic>.from(json['pricing'] as Map);
+    return MembershipOfferPreview(
+      offer: offer,
+      amountMinor: (pricing['amountMinor'] as num).toInt(),
+      baseAmountMinor: (pricing['baseAmountMinor'] as num).toInt(),
+      discountPercent: (pricing['discountPercent'] as num).toInt(),
+      discountAmountMinor: (pricing['discountAmountMinor'] as num).toInt(),
+      voucherApplied: pricing['voucherApplied'] as bool? ?? false,
+      voucherNotApplicable: pricing['voucherNotApplicable'] as bool? ?? false,
+    );
+  }
+
+  final MembershipOffer offer;
+  final int amountMinor;
+  final int baseAmountMinor;
+  final int discountPercent;
+  final int discountAmountMinor;
+  final bool voucherApplied;
+  final bool voucherNotApplicable;
+}
+
+class MembershipVoucher {
+  const MembershipVoucher({
+    required this.codePrefix,
+    required this.voucherType,
+    required this.durationMonths,
+    required this.discountPercent,
+    required this.expiresAt,
+    required this.redeemedAt,
+  });
+
+  factory MembershipVoucher.fromJson(Map<String, dynamic> json) =>
+      MembershipVoucher(
+        codePrefix: json['codePrefix'] as String? ?? '',
+        voucherType: json['voucherType'] as String? ?? 'access',
+        durationMonths: (json['durationMonths'] as num?)?.toInt() ?? 1,
+        discountPercent: (json['discountPercent'] as num?)?.toInt() ?? 0,
+        expiresAt: json['expiresAt'] as String?,
+        redeemedAt: json['redeemedAt'] as String?,
+      );
+
+  final String codePrefix;
+  final String voucherType;
+  final int durationMonths;
+  final int discountPercent;
+  final String? expiresAt;
+  final String? redeemedAt;
+}
+
+class MembershipPayment {
+  const MembershipPayment({
+    required this.reference,
+    required this.amountMinor,
+    required this.durationMonths,
+    required this.status,
+    required this.agreementId,
+    required this.createdAt,
+  });
+
+  factory MembershipPayment.fromJson(Map<String, dynamic> json) =>
+      MembershipPayment(
+        reference: json['reference'] as String,
+        amountMinor: (json['amountMinor'] as num).toInt(),
+        durationMonths: (json['durationMonths'] as num?)?.toInt() ?? 0,
+        status: json['status'] as String? ?? 'PENDING',
+        agreementId: json['agreementId'] as String?,
+        createdAt: json['createdAt'] as String? ?? '',
+      );
+
+  final String reference;
+  final int amountMinor;
+  final int durationMonths;
+  final String status;
+  final String? agreementId;
+  final String createdAt;
+}
+
 /// The email code and setup details accepted for the next signup step.
 ///
 /// The payload stays in memory between email-code verification and remote
@@ -986,46 +1212,116 @@ class BackendService {
     );
   }
 
-  /// Persists a quote request in the system-admin Support screen and broadcasts
-  /// it over the existing live channel. Billing remains reachable after expiry.
-  static Future<void> requestSubscriptionQuote({
+  static Future<List<MembershipRequest>> membershipRequests() async {
+    final response = await _dio.get('$backendUrl/tenant/membership/requests');
+    final raw = (response.data as Map)['requests'] as List? ?? const [];
+    return raw
+        .whereType<Map>()
+        .map((item) =>
+            MembershipRequest.fromJson(Map<String, dynamic>.from(item)))
+        .toList();
+  }
+
+  static Future<MembershipRequest> requestSubscriptionQuote({
     required List<String> features,
     required String requirements,
   }) async {
-    final tid = await tenantId;
-    if (tid == null || tid.isEmpty) {
+    final selectedTenantId = await tenantId;
+    if (selectedTenantId == null || selectedTenantId.isEmpty) {
       throw StateError('A shop must be selected before requesting an offer.');
     }
-    final details = <String>[
-      if (features.isNotEmpty) 'Requested features: ${features.join(', ')}',
-      if (requirements.trim().isNotEmpty)
-        'Additional requirements: ${requirements.trim()}',
-    ];
-    if (details.isEmpty) {
+    if (features.isEmpty && requirements.trim().isEmpty) {
       throw ArgumentError('Select a feature or describe a requirement.');
     }
-    await _dio.post('$backendUrl/telemetry/support', data: <String, dynamic>{
-      'items': <Map<String, dynamic>>[
-        <String, dynamic>{
-          'type': 'request',
-          'title': 'Personal membership quote request',
-          'description':
-              'This shop is requesting a tailored membership offer.\n${details.join('\n')}',
-          'status': 'open',
-          'deviceId': tid,
-        },
-      ],
+    final response =
+        await _dio.post('$backendUrl/tenant/membership/requests', data: {
+      'features': features,
+      'requirements': requirements.trim(),
     });
+    return MembershipRequest.fromJson(
+        Map<String, dynamic>.from((response.data as Map)['request'] as Map));
+  }
+
+  static Future<MembershipMessage> sendMembershipMessage({
+    required String requestId,
+    required String body,
+  }) async {
+    final response = await _dio.post(
+      '$backendUrl/tenant/membership/requests/${Uri.encodeComponent(requestId)}/messages',
+      data: {'body': body},
+    );
+    return MembershipMessage.fromJson(
+        Map<String, dynamic>.from((response.data as Map)['message'] as Map));
+  }
+
+  static Future<MembershipOfferPreview> previewMembershipOffer({
+    required String requestId,
+    required String offerId,
+  }) async {
+    final response = await _dio.get(
+      '$backendUrl/tenant/membership/requests/${Uri.encodeComponent(requestId)}/offers/${Uri.encodeComponent(offerId)}/preview',
+    );
+    return MembershipOfferPreview.fromJson(
+        Map<String, dynamic>.from(response.data as Map));
+  }
+
+  static Future<MembershipAgreement> acceptMembershipOffer({
+    required String requestId,
+    required String offerId,
+    required MembershipOfferPreview preview,
+  }) async {
+    final response = await _dio.post(
+      '$backendUrl/tenant/membership/requests/${Uri.encodeComponent(requestId)}/offers/${Uri.encodeComponent(offerId)}/accept',
+      data: {
+        'expectedAmountMinor': preview.amountMinor,
+        'expectedDiscountPercent': preview.discountPercent,
+        'expectedVoucherApplied': preview.voucherApplied,
+      },
+    );
+    return MembershipAgreement.fromJson(
+        Map<String, dynamic>.from((response.data as Map)['agreement'] as Map));
+  }
+
+  static Future<List<MembershipAgreement>> membershipAgreements() async {
+    final response = await _dio.get('$backendUrl/tenant/membership/agreements');
+    final raw = (response.data as Map)['agreements'] as List? ?? const [];
+    return raw
+        .whereType<Map>()
+        .map((item) =>
+            MembershipAgreement.fromJson(Map<String, dynamic>.from(item)))
+        .toList();
+  }
+
+  static Future<List<MembershipVoucher>> membershipVouchers() async {
+    final response = await _dio.get('$backendUrl/tenant/membership/vouchers');
+    final raw = (response.data as Map)['vouchers'] as List? ?? const [];
+    return raw
+        .whereType<Map>()
+        .map((item) =>
+            MembershipVoucher.fromJson(Map<String, dynamic>.from(item)))
+        .toList();
+  }
+
+  static Future<List<MembershipPayment>> membershipPayments() async {
+    final response = await _dio.get('$backendUrl/tenant/membership/payments');
+    final raw = (response.data as Map)['payments'] as List? ?? const [];
+    return raw
+        .whereType<Map>()
+        .map((item) =>
+            MembershipPayment.fromJson(Map<String, dynamic>.from(item)))
+        .toList();
   }
 
   static Future<SubscriptionPaymentQuote> startSubscriptionPayment({
     required String phoneNumber,
     int durationMonths = 1,
+    String? agreementId,
   }) async {
     final response = await _dio.post('$backendUrl/tenant/subscription/payment',
         data: <String, dynamic>{
           'phoneNumber': phoneNumber,
-          'durationMonths': durationMonths
+          'durationMonths': durationMonths,
+          if (agreementId != null) 'agreementId': agreementId,
         });
     return SubscriptionPaymentQuote.fromJson(
       Map<String, dynamic>.from(response.data as Map),
