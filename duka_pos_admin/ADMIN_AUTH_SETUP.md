@@ -4,14 +4,20 @@
 
 Configure the **backend Worker** with a private `SYSTEM_ADMIN_TOKEN` secret and `AUTH_JWT_SECRET`. Set `SYSTEM_ADMIN_EMAIL=brian@nerva.co.ke` and `ADMIN_APP_ORIGIN=https://simpleranalytics.nerva.co.ke` as backend Worker variables. Configure the admin Worker with server-only `ADMIN_BACKEND_URL` pointing at the backend origin.
 
-Create and set the secret on the backend project:
+For production, generate a high-entropy token locally and place it in a temporary,
+access-restricted JSON file with the `SYSTEM_ADMIN_TOKEN` property. From the
+backend project directory, pass that file to the guarded promotion script:
 
-```sh
-openssl rand -base64 48
-wrangler secret put SYSTEM_ADMIN_TOKEN
+```powershell
+.\scripts\deploy-cloudflare.ps1 -PromoteProduction -SystemAdminTokenFile <path-to-protected-json>
 ```
 
-Paste the generated value only into the Wrangler secret prompt. Do not put it in the admin Worker, a `NEXT_PUBLIC_` variable, source control, or a browser setting. The super-admin email is fixed by `SYSTEM_ADMIN_EMAIL`; the first administrator signs in with that email and the backend secret.
+The script uploads the token with the final backend deployment, after staging
+journeys, production migration, and schema checks pass. This avoids the immediate
+deployment that `wrangler secret put` would otherwise trigger. Do not put the
+token in the admin Worker, a `NEXT_PUBLIC_` variable, source control, or a browser
+setting. The super-admin email is fixed by `SYSTEM_ADMIN_EMAIL`; the first
+administrator signs in with that email and the backend secret.
 
 Department credentials are minted from **Admin access**. A key is shown once, is bound to its invited email and phone, and expires after its configured lifetime. Revoke lost keys from the access roster. Delegated managers can only invite into their department, choose lower roles, and grant permissions and capabilities they already hold.
 
