@@ -123,6 +123,27 @@ class BusinessContext {
     };
   }
 
+  /// Merchant-facing operational completeness. Optional, and independent
+  /// from commercial contribution consent.
+  ({int numerator, int denominator}) get completeness {
+    const denominator = 5;
+    var numerator = 0;
+    if (primaryActivityStatus == 'selected' ||
+        primaryActivityStatus == 'prefer_not_to_say') {
+      numerator++;
+    }
+    if (countyCode != null) numerator++;
+    if (settlementContext == 'urban' ||
+        settlementContext == 'peri_urban' ||
+        settlementContext == 'rural' ||
+        settlementContext == 'prefer_not_to_say') {
+      numerator++;
+    }
+    if (operatorRoles.isNotEmpty) numerator++;
+    if (salesChannels.isNotEmpty) numerator++;
+    return (numerator: numerator, denominator: denominator);
+  }
+
   void validate() {
     if (!const {'drinks', 'duka', 'fashion', 'open'}.contains(appProfile)) {
       throw ArgumentError('Choose one of the four supported POS profiles.');

@@ -4,6 +4,18 @@
 
 Use this add-on package for the new structured business data / Data Intelligence work only. Do not reapply POS patches 00–12 from it. The original v84 source archive is read-only. The existing backend and admin panel are separate repositories and must be inspected before implementation.
 
+## Sequential approval gate (updated instruction)
+
+- After each patch, verify the implementation in the app, backend and existing
+  Admin Panel worktrees affected by that patch.
+- If all relevant verification and reproducibility checks pass, commit the
+  patch on every affected branch and automatically begin the next patch.
+- Do not push branches unless the user separately requests a push.
+- Stop only if a patch fails a verification gate, is blocked by an unavailable
+  dependency, or would violate data-integrity/privacy/legal requirements.
+- The strict implementation order remains
+  `13 -> 14 -> 18 -> 15 -> 16 -> 17`; one patch may be active at a time.
+
 ## Phase 0 — Inspect actual repositories (mandatory)
 
 1. Confirm the mobile source commit/archive fingerprint matches v84.

@@ -293,6 +293,28 @@ class _BusinessContextEditorState extends State<BusinessContextEditor> {
               'commercial contribution or partner sharing.',
               style: Theme.of(context).textTheme.bodyMedium),
           const SizedBox(height: 20),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Builder(builder: (context) {
+                final completeness = BusinessContext(
+                  appProfile: widget.profile.wireValue,
+                  primaryActivityCode: _primaryCode,
+                  primaryActivityStatus: _primaryStatus,
+                  countyCode: _county,
+                  settlementContext: _settlement,
+                  operatorRoles: _roles.toList(),
+                  salesChannels: _channels.toList(),
+                ).completeness;
+                return Text(
+                  'Business details: ${completeness.numerator} of '
+                  '${completeness.denominator} applicable fields populated or '
+                  'declined. Optional fields never block sales.',
+                );
+              }),
+            ),
+          ),
+          const SizedBox(height: 12),
           InputDecorator(
             decoration: const InputDecoration(labelText: 'POS profile'),
             child: Text(widget.profile.displayName),

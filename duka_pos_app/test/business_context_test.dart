@@ -211,6 +211,29 @@ void main() {
     expect(declined.primaryActivityStatus, 'prefer_not_to_say');
   });
 
+  test('business profile completeness treats decline as complete, not missing',
+      () {
+    const declined = BusinessContext(
+      primaryActivityStatus: 'prefer_not_to_say',
+      settlementContext: 'prefer_not_to_say',
+      countyCode: null,
+      operatorRoles: [],
+      salesChannels: [],
+    );
+    expect(declined.completeness.numerator, 2);
+    expect(declined.completeness.denominator, 5);
+
+    const complete = BusinessContext(
+      primaryActivityCode: '561030',
+      primaryActivityStatus: 'selected',
+      countyCode: '047',
+      settlementContext: 'urban',
+      operatorRoles: ['retailer'],
+      salesChannels: ['physical_shop'],
+    );
+    expect(complete.completeness, (numerator: 5, denominator: 5));
+  });
+
   test('offline KeSIC index has distinct codes and all official sections', () {
     final codes = kesicActivities.map((activity) => activity.code).toSet();
     final sections = kesicActivities

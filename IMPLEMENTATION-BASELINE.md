@@ -74,3 +74,37 @@ Follow the supplied order: **13 → 14 → 18 → 15 → 16 → 17**. Complete a
 - The shop-profile selector is now a horizontal rail on both phone and wide layouts. Rail height/card width respond to text scale and each option exposes selected/button semantics.
 - Focused Flutter analyze passed for the changed model, DB, repositories, inventory editor and picker before the latest unit-editor additions. The first combined migration run found old repair fixtures without a products table; the v91 migration now guards absent tables and indexes. Subsequent targeted test run is in progress. Backend validation tests (37) and TypeScript build passed after the current schema/route changes; Prisma validation/generation passed. Admin production build passed.
 - The full app suite previously reported five overflow failures in the shop-profile picker at compact widths before the horizontal rail adjustment; the focused picker suite is being rerun. The earlier migration failure set was fixed and the migration suite rerun is in progress. Do not close Patch 14 until focused picker/migration/product/receipt/sale checks finish and all three worktrees are rechecked.
+
+## Patch 18 implementation update (2026-11-23)
+
+- Added a versioned canonical metric and quality-state module to the backend:
+  `duka_pos_backend/src/lib/canonical_metrics.ts`. It defines all required
+  Patch 18 states and deterministic definitions for sales, payments,
+  receivables, unit volumes, stock coverage/stockout, procurement, profile
+  completeness and sales-record completeness.
+- Added independently calculated metric-fixture coverage for reconciliation,
+  missing/unknown stock observations, PO fill linkage and service
+  not-applicable semantics.
+- The existing backend quality report now exposes its data-dictionary version,
+  canonical quality states and metric definitions. Numerator/denominator,
+  period, freshness and suppression metadata are carried through the existing
+  restricted `/api/admin/commercial/quality` API.
+- Tightened disclosure guardrails from 5/10 to the Patch 17 minimum 10
+  independent contributors and 100 underlying transactions.
+- The existing Admin `/commercial-quality` page now renders backend-supplied
+  definitions, quality states, period/freshness and explicit
+  numerator/denominator details. It contains no static production fixture.
+- Added merchant-only business-profile completeness to the existing optional
+  Business details editor. Prefer-not-to-say and not-sure states do not block
+  POS operations or imply commercial consent.
+- Open services and fees remain ordinary `good|service|fee` catalogue/sale-line
+  records. Existing inventory and stockout tests confirm service/fee products
+  do not enter stockout calculations.
+- Sequential execution instruction updated in
+  `DUKA_POS_V84_NEW_PATCHES_13_TO_18/AGENT-WORK-ORDER.md`: after a patch passes
+  all affected-branch verification gates, implementation advances
+  automatically to the next patch; it stops on any failed or blocked gate.
+- Verification: app business-context/product/receipt suite passed 34 tests;
+  app analysis passed with no issues. Backend canonical/quality/control suite
+  passed 13 tests; backend build and Prisma validation passed. Admin production
+  build passed. No Flutter app build was run.
