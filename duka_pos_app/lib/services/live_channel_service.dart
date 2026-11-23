@@ -142,6 +142,7 @@ class LiveChannelService extends ChangeNotifier {
   /// while the screen is off. Returning to the foreground reconnects.
   bool _foreground = true;
   bool _disposed = false;
+  bool _connecting = false;
 
   bool get linked => _lastKnownLinked;
 
@@ -187,49 +188,38 @@ class LiveChannelService extends ChangeNotifier {
   Future<void> _maybeConnect() async {
     if (_disposed) return;
     if (!_linked() || !_foreground) return;
-    if (_channel != null) return;
+    if (_channel != null || _connecting) return;
     if (_reconnectTimer?.isActive ?? false) return;
 
-    // The session is read BEFORE the state is changed, and its failure is
-    // contained. Two reasons this ordering matters:
-    //
-    //   * A keystore that is unavailable (no platform, a storage error) throws
-    //     here, and an unhandled throw from a `void`-returning path would take
-    //     the zone down — the same reason `signOut` swallows its teardown.
-    //   * Reading it before `connecting` means a failure leaves the state as it
-    //     was, rather than stuck claiming a connection attempt that never ran.
-    final String? token;
+    _connecting = true;
+    WebSocketChannel? pendingChannel;
     try {
+      // The session is read before the state is changed. A keystore failure
+      // must not leave the UI claiming a socket connection is in progress.
+      final String? token = await IdentityService.accessToken;
+      if (_disposed) return;
+      _setState(LiveConnectionState.connecting);
+
+      if (token == null || token.isEmpty) {
+        _setState(LiveConnectionState.off);
+        return;
+      }
+
+      final url = _liveUrl();
+      if (url == null) {
+        _setState(LiveConnectionState.off);
+        return;
+      }
+
+      final tenantId = await BackendService.tenantId;
+      if (tenantId == null || tenantId.trim().isEmpty) {
+        _setState(LiveConnectionState.off);
+        return;
+      }
+
       // The ONE credential: the Keycloak access token. The server's live
       // channel verifies it against the identity server's own signing keys,
       // and accepts nothing else.
-      token = await IdentityService.accessToken;
-    } on Object catch (_) {
-      _scheduleReconnect();
-      return;
-    }
-
-    if (_disposed) return;
-    _setState(LiveConnectionState.connecting);
-
-    if (token == null || token.isEmpty) {
-      // No session: nothing to subscribe as. Stay off rather than scheduling
-      // a reconnect that will just fail again — an unlinked or signed-out
-      // shop does not retry every frame. The channel reconnects when the
-      // user signs in and setLinked is called again with a real token.
-      _setState(LiveConnectionState.off);
-      return;
-    }
-
-    final url = _liveUrl();
-    if (url == null) {
-      // No backend configured. Offline-only builds are legitimate, so this is
-      // a silent off rather than an error the owner has to see.
-      _setState(LiveConnectionState.off);
-      return;
-    }
-
-    try {
       // `IOWebSocketChannel`, not the abstract `WebSocketChannel`: only the
       // platform implementation accepts `headers`, and the bearer token has to
       // travel in the handshake — the backend reads it from the upgrade request,
@@ -237,22 +227,32 @@ class LiveChannelService extends ChangeNotifier {
       //
       // `pingInterval` is left to the server: it pings more often than our own
       // silence timer, and two pingers on one socket is noise for no gain.
-      final tenantId = await BackendService.tenantId;
-      if (tenantId == null || tenantId.trim().isEmpty) {
-        _setState(LiveConnectionState.off);
-        return;
-      }
-      final channel = IOWebSocketChannel.connect(
+      pendingChannel = IOWebSocketChannel.connect(
         Uri.parse(url),
         headers: <String, dynamic>{
           'Authorization': 'Bearer $token',
           'x-tenant-id': tenantId,
         },
       );
-      _attach(channel);
+      // The socket package reports handshake failures through `ready` as well
+      // as the stream. Await it so an offline network cannot leak an unhandled
+      // WebSocketChannelException into the app's crash handler.
+      await pendingChannel.ready.timeout(const Duration(seconds: 15));
+      if (_disposed || !_linked() || !_foreground) {
+        await pendingChannel.sink.close();
+        return;
+      }
+      _lastError = null;
+      _attach(pendingChannel);
+      pendingChannel = null;
     } on Object catch (error) {
+      if (pendingChannel != null) {
+        pendingChannel.sink.close().catchError((Object _) {});
+      }
       _lastError = '$error';
-      _scheduleReconnect();
+      if (!_disposed && _linked() && _foreground) _scheduleReconnect();
+    } finally {
+      _connecting = false;
     }
   }
 

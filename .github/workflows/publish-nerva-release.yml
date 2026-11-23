@@ -9,9 +9,10 @@ on:
         description: Existing GitHub release tag to publish (for example v2.0.0+32)
         required: true
         type: string
-
-permissions:
-  contents: read
+      commit_message:
+        description: Commit message to include in the Nerva release metadata
+        required: false
+        type: string
 
 concurrency:
   group: nerva-release-${{ github.event.release.tag_name || inputs.tag }}
@@ -19,11 +20,29 @@ concurrency:
 
 jobs:
   publish:
-    name: Publish signed APK to Nerva
-    needs: []
-    uses: zxds1/nerva/.github/workflows/publish-release.yml@main
-    with:
-      product: bussiness-and-finance
-      version: ${{ github.event.release.tag_name || inputs.tag }}
-    secrets:
-      CI_TOKEN: ${{ secrets.NERVA_CI_TOKEN }}
+    name: Publish release metadata to Nerva
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish release to Nerva
+        env:
+          CI_TOKEN: ${{ secrets.NERVA_CI_TOKEN }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          RELEASE_BODY: ${{ github.event.release.body || '' }}
+          COMMIT_MESSAGE: ${{ inputs.commit_message || '' }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          apk_name="SimpleSales-${TAG}.apk"
+          url="https://github.com/${{ github.repository }}/releases/download/${TAG}/${apk_name}"
+          notes="${COMMIT_MESSAGE:-$RELEASE_BODY}"
+          payload="$(jq -n \
+            --arg id "bussiness-and-finance" \
+            --arg version "$version" \
+            --arg url "$url" \
+            --arg notes "$notes" \
+            '{id: $id, version: {version: $version, url: $url, channel: "beta", notes: $notes}}')"
+          curl -fSs -X POST https://nerva.brianbmk332.workers.dev/api/releases \
+            -H "x-ci-token: $CI_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$payload"
+          echo

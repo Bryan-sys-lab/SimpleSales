@@ -278,6 +278,7 @@ class AppUpdateService extends ChangeNotifier {
       ));
     } finally {
       _busy = false;
+      notifyListeners();
     }
   }
 
@@ -354,8 +355,8 @@ class AppUpdateService extends ChangeNotifier {
             throw const UpdateException(UpdateFailure.downloadFailed);
           }
           sink.add(chunk);
-          final progress = UpdateProgress(
-              received: received, total: contentLength);
+          final progress =
+              UpdateProgress(received: received, total: contentLength);
           _progress = progress;
           onProgress?.call(progress);
           notifyListeners();

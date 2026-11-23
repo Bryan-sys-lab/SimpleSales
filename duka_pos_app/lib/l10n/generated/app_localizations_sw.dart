@@ -6154,6 +6154,14 @@ class AppLocalizationsSw extends AppLocalizations {
       'Link a stock item to this group before reloading its stock.';
 
   @override
+  String get openCostGroupDetailReloaded =>
+      'Bidhaa zimeongezwa kwenye hisa kwa mafanikio.';
+
+  @override
+  String get openCostGroupDetailReloadFailed =>
+      'Hisa hazikuweza kuongezwa. Kagua bidhaa na ujaribu tena.';
+
+  @override
   String get openCostGroupDetailNotFound => 'Kundi la gharama haijapatikana';
 
   @override
@@ -7784,4 +7792,71 @@ class AppLocalizationsSw extends AppLocalizations {
   @override
   String get productMappingReviewLoadFailed =>
       'Haikuwezekana kupakia bidhaa za kukaguliwa. Jaribu tena.';
+
+  @override
+  String get accountRecoveryTitle => 'Rejesha duka lako';
+
+  @override
+  String get accountRecoveryDescription =>
+      'Ingia kwa barua pepe ya mmiliki na PIN, kisha urejeshe nakala ya wingu inayoweza kuhamishwa. Nenosiri la nakala linahitajika na halitumwi kwa seva.';
+
+  @override
+  String get accountRecoveryEmail => 'Barua pepe ya mmiliki';
+
+  @override
+  String get accountRecoveryPin => 'PIN ya mmiliki';
+
+  @override
+  String get accountRecoveryForgotPin => 'Umesahau PIN ya mmiliki?';
+
+  @override
+  String get accountRecoveryPassphrase => 'Nenosiri la nakala rudufu';
+
+  @override
+  String get accountRecoveryPassphraseHelp =>
+      'Tumia nenosiri lililowekwa wakati wa kuunda nakala ya wingu (angalau herufi 8).';
+
+  @override
+  String get accountRecoveryAction => 'Ingia na urejeshe duka';
+
+  @override
+  String get accountRecoveryWorking => 'Inaingia na kurejesha…';
+
+  @override
+  String get accountRecoveryInvalidPin =>
+      'Weka PIN ya mmiliki yenye tarakimu 6.';
+
+  @override
+  String get accountRecoveryInvalidPassphrase =>
+      'Weka nenosiri la nakala (angalau herufi 8).';
+
+  @override
+  String get accountRecoverySignInFailed =>
+      'Imeshindwa kuingia. Kagua barua pepe na PIN ya mmiliki.';
+
+  @override
+  String get accountRecoveryNoOwnedShop =>
+      'Hakuna duka la mmiliki lililounganishwa na akaunti hii.';
+
+  @override
+  String get accountRecoveryAlreadyOnDevice =>
+      'Duka hili tayari limesajiliwa kwenye kifaa hiki. Tumia ukurasa wake wa kawaida wa kuingia.';
+
+  @override
+  String get accountRecoveryNoBackup =>
+      'Hakuna nakala ya wingu inayoweza kuhamishwa. Duka halikurejeshwa; nakala inayotegemea kifaa haiwezi kufunguliwa kwenye simu mpya.';
+
+  @override
+  String get accountRecoveryFailed =>
+      'Duka halikuweza kurejeshwa. Kagua muunganisho na nenosiri la nakala kisha ujaribu tena.';
+
+  @override
+  String get accountRecoveryEnterEmail => 'Weka barua pepe ya mmiliki kwanza.';
+
+  @override
+  String get accountRecoveryChooseShop => 'Chagua duka la kurejesha';
+
+  @override
+  String get accountRecoveryCleanupFailed =>
+      'Urejeshaji umeshindwa na kifaa hakikuweza kurudi kwenye duka lake la awali. Anzisha programu upya kabla ya kujaribu tena.';
 }

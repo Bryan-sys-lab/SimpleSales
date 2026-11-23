@@ -2,8 +2,11 @@ name: Publish to Nerva
 
 on:
   workflow_dispatch:
-  release:
-    types: [published]
+    inputs:
+      commit_message:
+        description: Commit message to include in the Nerva release metadata
+        required: false
+        type: string
 
 jobs:
   publish:
@@ -12,6 +15,7 @@ jobs:
       - name: Publish release to Nerva
         env:
           CI_TOKEN: ${{ secrets.NERVA_CI_TOKEN }}
+          COMMIT_MESSAGE: ${{ inputs.commit_message || github.event.release.body || '' }}
         run: |
           set -euo pipefail
           version="${{ github.ref_name }}"
@@ -22,7 +26,8 @@ jobs:
             --arg id "bussiness-and-finance" \
             --arg version "$version" \
             --arg url "$url" \
-            '{id: $id, version: {version: $version, url: $url, channel: "beta"}}')"
+            --arg notes "$COMMIT_MESSAGE" \
+            '{id: $id, version: {version: $version, url: $url, channel: "beta", notes: $notes}}')"
           curl -fSs -X POST https://nerva.brianbmk332.workers.dev/api/releases \
             -H "x-ci-token: $CI_TOKEN" \
             -H "Content-Type: application/json" \

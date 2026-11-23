@@ -6,6 +6,7 @@ import '../services/failure_recorder.dart';
 import '../services/barcode/scan_input_service.dart';
 
 import '../screens/analytics_screen.dart';
+import '../screens/account_recovery_screen.dart';
 import '../screens/dashboard_screen.dart';
 import '../screens/database_error_screen.dart';
 import '../screens/imports_screen.dart';
@@ -175,6 +176,12 @@ List<RouteBase> _doorRoutes(AppStageController stage, AppState appState) {
       parentNavigatorKey: rootNavigatorKey,
       pageBuilder: (BuildContext context, GoRouterState routerState) =>
           _fadeThrough(routerState, const LoginScreen()),
+    ),
+    GoRoute(
+      path: Routes.accountRecovery,
+      parentNavigatorKey: rootNavigatorKey,
+      pageBuilder: (BuildContext context, GoRouterState routerState) =>
+          _fadeThrough(routerState, const AccountRecoveryScreen()),
     ),
     GoRoute(
       path: Routes.staffLogin,

@@ -417,11 +417,34 @@ void main() {
 
       await tester.tap(find.text(l10n.membershipGetStarted));
       await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey<String>('membership-plan-builder')),
+        findsOneWidget,
+      );
+      await tester.drag(
+        find.byKey(const ValueKey<String>('membership-plan-builder')),
+        const Offset(0, -400),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.getTopLeft(find.text(l10n.membershipFeatureInventory)).dy,
+        lessThan(550),
+      );
       await tester.tap(find.text(l10n.membershipFeatureInventory));
+      await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
         find.byKey(const ValueKey<String>('membership-custom-requirements')),
         260,
-        scrollable: find.byType(Scrollable).first,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const ValueKey<String>('membership-plan-builder')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('membership-custom-requirements')),
+        findsOneWidget,
       );
       await tester.enterText(
         find.byKey(const ValueKey<String>('membership-custom-requirements')),
@@ -430,7 +453,12 @@ void main() {
       await tester.scrollUntilVisible(
         find.text(l10n.membershipRequestOffer),
         260,
-        scrollable: find.byType(Scrollable).first,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const ValueKey<String>('membership-plan-builder')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
       );
       await tester.tap(find.text(l10n.membershipRequestOffer));
       await tester.pumpAndSettle();
@@ -468,11 +496,22 @@ void main() {
           AppLocalizations.of(tester.element(find.byType(PaywallScreen)));
       await tester.tap(find.text(l10n.membershipGetStarted));
       await tester.pumpAndSettle();
+      await tester.drag(
+        find.byKey(const ValueKey<String>('membership-plan-builder')),
+        const Offset(0, -400),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(find.text(l10n.membershipFeatureInventory));
+      await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
         find.text(l10n.membershipRequestOffer),
         260,
-        scrollable: find.byType(Scrollable).first,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const ValueKey<String>('membership-plan-builder')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
       );
       await tester.tap(find.text(l10n.membershipRequestOffer));
       await tester.pumpAndSettle();
@@ -481,7 +520,7 @@ void main() {
       await tester.tap(find.byTooltip('Refresh request'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Review offer'));
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 500));
       expect(find.textContaining('KES 75.00'), findsOneWidget);
       await tester.tap(find.text('Accept offer'));
       await tester.pumpAndSettle();
@@ -497,7 +536,12 @@ void main() {
       await tester.scrollUntilVisible(
         find.text('Complete payment'),
         260,
-        scrollable: find.byType(Scrollable).first,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const ValueKey<String>('membership-quote')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
       );
       await tester.enterText(
         find.byWidgetPredicate((widget) =>

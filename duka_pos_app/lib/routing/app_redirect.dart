@@ -47,8 +47,12 @@ String? appRedirect({
 
   // 2. The session door.
   if (!signedIn) {
-    // Allow sign-in and staff login as valid unauthenticated routes.
-    if (location == Routes.login || location == Routes.staffLogin) return null;
+    // Allow the local sign-in, remote account recovery, and staff login routes.
+    if (location == Routes.login ||
+        location == Routes.accountRecovery ||
+        location == Routes.staffLogin) {
+      return null;
+    }
 
     final String door = switch (snapshot.stage) {
       AppStage.chooser => Routes.welcome,
@@ -70,6 +74,7 @@ String? appRedirect({
     Routes.recovery,
     Routes.welcome,
     Routes.login,
+    Routes.accountRecovery,
     Routes.setup,
   };
   if (doors.contains(location)) return Routes.dashboard;

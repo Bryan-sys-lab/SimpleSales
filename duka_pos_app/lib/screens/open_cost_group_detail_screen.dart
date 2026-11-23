@@ -18,6 +18,17 @@ import '../widgets/backup_reminder_banner.dart';
 
 const double _openCostGroupDetailMaxWidth = 900;
 
+typedef CostPoolStockReloader = Future<int> Function({
+  required int poolId,
+  required int productId,
+  required double qty,
+  required Money unitCost,
+  required String paidFrom,
+  String? supplierRef,
+  required String staffName,
+  int? staffId,
+});
+
 /// One cost group's detail: info, investment, allocations, remaining balance,
 /// movement history.
 class OpenCostGroupDetailScreen extends StatefulWidget {
@@ -27,12 +38,14 @@ class OpenCostGroupDetailScreen extends StatefulWidget {
     this.loadPools,
     this.loadProducts,
     this.loadEntries,
+    this.reloadStock,
   });
 
   final int poolId;
   final Future<List<Map<String, dynamic>>> Function()? loadPools;
   final Future<List<Product>> Function()? loadProducts;
   final Future<List<Map<String, dynamic>>> Function(int poolId)? loadEntries;
+  final CostPoolStockReloader? reloadStock;
 
   @override
   State<OpenCostGroupDetailScreen> createState() =>
@@ -45,6 +58,7 @@ class _OpenCostGroupDetailScreenState extends State<OpenCostGroupDetailScreen> {
   List<Product> _products = const [];
   bool _loading = true;
   bool _loadError = false;
+  bool _reloadingStock = false;
 
   DatabaseHelper get _db => DatabaseHelper.instance;
 
@@ -101,7 +115,7 @@ class _OpenCostGroupDetailScreenState extends State<OpenCostGroupDetailScreen> {
     }
     final List<Product> products;
     try {
-      products = (await _db.getProducts())
+      products = (await (widget.loadProducts?.call() ?? _db.getProducts()))
           .where((Product item) => item.costPoolId == widget.poolId)
           .toList();
     } catch (error, stack) {
@@ -129,122 +143,48 @@ class _OpenCostGroupDetailScreenState extends State<OpenCostGroupDetailScreen> {
       );
       return;
     }
-    final quantity = TextEditingController();
-    final unitCost = TextEditingController();
-    final supplierRef = TextEditingController();
-    Product? product = products.firstOrNull;
-    var paidFrom = 'other';
-    final result = await showDialog<bool>(
+    final input = await showDialog<_ReloadStockInput>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
-          title: const Text('Reload stock'),
-          content: SingleChildScrollView(
-            child: FormFieldGroup(
-              children: <Widget>[
-                DropdownButtonFormField<Product>(
-                  initialValue: product,
-                  decoration: const InputDecoration(labelText: 'Stock item'),
-                  items: <DropdownMenuItem<Product>>[
-                    for (final item in products)
-                      DropdownMenuItem<Product>(
-                        value: item,
-                        child: Text(item.name),
-                      ),
-                  ],
-                  onChanged: (value) => setDialogState(() => product = value),
-                ),
-                TextField(
-                  controller: quantity,
-                  decoration: const InputDecoration(labelText: 'Quantity'),
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                ),
-                TextField(
-                  controller: unitCost,
-                  decoration:
-                      const InputDecoration(labelText: 'Unit cost (KES)'),
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                ),
-                DropdownButtonFormField<String>(
-                  initialValue: paidFrom,
-                  decoration:
-                      const InputDecoration(labelText: 'Payment source'),
-                  items: const <DropdownMenuItem<String>>[
-                    DropdownMenuItem(
-                        value: 'till_cash', child: Text('Till cash')),
-                    DropdownMenuItem(
-                        value: 'credit', child: Text('Supplier credit')),
-                    DropdownMenuItem(value: 'other', child: Text('Other')),
-                  ],
-                  onChanged: (value) =>
-                      setDialogState(() => paidFrom = value ?? 'other'),
-                ),
-                TextField(
-                  controller: supplierRef,
-                  decoration:
-                      const InputDecoration(labelText: 'Supplier reference'),
-                ),
-              ],
-            ),
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: Text(AppLocalizations.of(context).cancel),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: Text(AppLocalizations.of(context).save),
-            ),
-          ],
-        ),
-      ),
+      builder: (_) => _ReloadStockDialog(products: products),
     );
-    final selected = product;
-    final qty = double.tryParse(quantity.text.trim());
-    final cost = parseMoneyInput(unitCost.text.trim());
-    final reference = supplierRef.text.trim();
-    if (!mounted) return;
+    if (!mounted || input == null) return;
     final staff = context.read<AppState>();
     final messenger = ScaffoldMessenger.of(context);
-    quantity.dispose();
-    unitCost.dispose();
-    supplierRef.dispose();
-    if (result != true ||
-        selected?.id == null ||
-        qty == null ||
-        qty <= 0 ||
-        cost == null ||
-        cost < 0 ||
-        !mounted) {
-      return;
-    }
+    setState(() => _reloadingStock = true);
     try {
-      await _db.reloadCostPoolStock(
+      final reloadStock = widget.reloadStock ?? _db.reloadCostPoolStock;
+      await reloadStock(
         poolId: widget.poolId,
-        productId: selected!.id!,
-        qty: qty,
-        unitCost: Money.fromMajor(cost),
-        paidFrom: paidFrom,
-        supplierRef: reference.isEmpty ? null : reference,
+        productId: input.product.id!,
+        qty: input.quantity,
+        unitCost: Money.fromMajor(input.unitCost),
+        paidFrom: input.paidFrom,
+        supplierRef: input.supplierRef,
         staffName: staff.currentStaffName ?? staff.owner?.name ?? 'Owner',
         staffId: staff.currentStaffId,
       );
       if (mounted) {
         await _load();
         if (!mounted) return;
-        messenger.showSnackBar(
-          const SnackBar(content: Text('Stock reloaded')),
-        );
+        messenger.showSnackBar(SnackBar(
+          content: Text(_loadError
+              ? AppLocalizations.of(context).openCostGroupDetailReloadFailed
+              : AppLocalizations.of(context).openCostGroupDetailReloaded),
+        ));
       }
-    } catch (error) {
+    } catch (error, stack) {
+      debugPrint('Could not reload cost-group stock: $error\n$stack');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$error')),
+          SnackBar(
+            content: Text(
+              AppLocalizations.of(context).openCostGroupDetailReloadFailed,
+            ),
+          ),
         );
       }
+    } finally {
+      if (mounted) setState(() => _reloadingStock = false);
     }
   }
 
@@ -310,121 +250,269 @@ class _OpenCostGroupDetailScreenState extends State<OpenCostGroupDetailScreen> {
       invested.minorUnits - recovered.minorUnits,
     );
 
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: AdaptivePage(
-        scrollable: true,
-        maxContentWidth: _openCostGroupDetailMaxWidth,
-        padding: PageGutter.of(context),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            BackupReminderBanner(onBackupNow: () => performBackup(context)),
-            SizedBox(height: spacing.section),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        _pool!['name'] as String,
-                        style: AppTypography.of(context).headlineSmall,
-                      ),
-                      SizedBox(height: spacing.xs),
-                      Text(
-                        _pool!['note'] as String? ??
-                            l10n.openCostGroupDetailNoNote,
-                        style: AppTypography.of(context)
-                            .bodyMedium
-                            ?.copyWith(color: colors.onSurfaceMuted),
-                      ),
-                    ],
-                  ),
-                ),
-                StatusChip(
-                  tone: remaining.minorUnits > 0
-                      ? StatusTone.neutral
-                      : StatusTone.success,
-                  text: remaining.minorUnits > 0
-                      ? l10n.openCostGroupDetailHasRemaining
-                      : l10n.openCostGroupDetailFullyAllocated,
-                ),
-              ],
-            ),
-            SizedBox(height: spacing.xl),
-            FilledButton.icon(
-              onPressed: _products.isEmpty ? null : _reloadStock,
-              icon: const Icon(Icons.add_box_outlined),
-              label: const Text('Reload stock'),
-            ),
-            SizedBox(height: spacing.lg),
-            _DetailSection(
-              title: l10n.openCostGroupDetailInvestment,
-              children: <Widget>[
-                _DetailRow(
-                  label: l10n.openCostGroupDetailInitialInvestment,
-                  value: formatMoney(invested),
-                ),
-                _DetailRow(
-                  label: l10n.openCostGroupDetailAllocated,
-                  value: formatMoney(recovered),
-                ),
-                _DetailRow(
-                  label: l10n.openCostGroupDetailRemaining,
-                  value: formatMoney(remaining),
-                  tone: remaining.minorUnits > 0
-                      ? StatusTone.neutral
-                      : StatusTone.success,
-                ),
-              ],
-            ),
-            SizedBox(height: spacing.lg),
-            _DetailSection(
-              title: l10n.openCostGroupDetailLinkedItems,
-              children: <Widget>[
-                if (_products.isEmpty)
-                  Text(
-                    l10n.openCostGroupDetailNoLinkedItems,
-                    style: AppTypography.of(context)
-                        .labelSmall
-                        ?.copyWith(color: colors.onSurfaceMuted),
-                  )
-                else
-                  for (final Product item in _products)
-                    _PoolProductRow(product: item),
-              ],
-            ),
-            SizedBox(height: spacing.lg),
-            _DetailSection(
-              title: l10n.openCostGroupDetailMovementHistory,
-              children: <Widget>[
-                if (_entries.isEmpty)
-                  Text(
-                    l10n.openCostGroupDetailNoMovements,
-                    style: AppTypography.of(context)
-                        .labelSmall
-                        ?.copyWith(color: colors.onSurfaceMuted),
-                  )
-                else
-                  for (final entry in _entries)
-                    _MovementRow(
-                      label: entry['description'] as String? ??
-                          l10n.openCostGroupDetailEntry,
-                      amount: Money.fromMinor(
-                        (entry['amount_minor'] as num?)?.toInt() ?? 0,
-                      ),
-                      when: entry['created_at'] as String? ?? '',
+    return Scaffold(
+      body: RefreshIndicator(
+        onRefresh: _load,
+        child: AdaptivePage(
+          scrollable: true,
+          maxContentWidth: _openCostGroupDetailMaxWidth,
+          padding: PageGutter.of(context),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              BackupReminderBanner(onBackupNow: () => performBackup(context)),
+              SizedBox(height: spacing.section),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          _pool!['name'] as String,
+                          style: AppTypography.of(context).headlineSmall,
+                        ),
+                        SizedBox(height: spacing.xs),
+                        Text(
+                          _pool!['note'] as String? ??
+                              l10n.openCostGroupDetailNoNote,
+                          style: AppTypography.of(context)
+                              .bodyMedium
+                              ?.copyWith(color: colors.onSurfaceMuted),
+                        ),
+                      ],
                     ),
-              ],
-            ),
-            SizedBox(height: spacing.section),
-          ],
+                  ),
+                  StatusChip(
+                    tone: remaining.minorUnits > 0
+                        ? StatusTone.neutral
+                        : StatusTone.success,
+                    text: remaining.minorUnits > 0
+                        ? l10n.openCostGroupDetailHasRemaining
+                        : l10n.openCostGroupDetailFullyAllocated,
+                  ),
+                ],
+              ),
+              SizedBox(height: spacing.xl),
+              FilledButton.icon(
+                onPressed:
+                    _products.isEmpty || _reloadingStock ? null : _reloadStock,
+                icon: _reloadingStock
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.add_box_outlined),
+                label: const Text('Reload stock'),
+              ),
+              SizedBox(height: spacing.lg),
+              _DetailSection(
+                title: l10n.openCostGroupDetailInvestment,
+                children: <Widget>[
+                  _DetailRow(
+                    label: l10n.openCostGroupDetailInitialInvestment,
+                    value: formatMoney(invested),
+                  ),
+                  _DetailRow(
+                    label: l10n.openCostGroupDetailAllocated,
+                    value: formatMoney(recovered),
+                  ),
+                  _DetailRow(
+                    label: l10n.openCostGroupDetailRemaining,
+                    value: formatMoney(remaining),
+                    tone: remaining.minorUnits > 0
+                        ? StatusTone.neutral
+                        : StatusTone.success,
+                  ),
+                ],
+              ),
+              SizedBox(height: spacing.lg),
+              _DetailSection(
+                title: l10n.openCostGroupDetailLinkedItems,
+                children: <Widget>[
+                  if (_products.isEmpty)
+                    Text(
+                      l10n.openCostGroupDetailNoLinkedItems,
+                      style: AppTypography.of(context)
+                          .labelSmall
+                          ?.copyWith(color: colors.onSurfaceMuted),
+                    )
+                  else
+                    for (final Product item in _products)
+                      _PoolProductRow(product: item),
+                ],
+              ),
+              SizedBox(height: spacing.lg),
+              _DetailSection(
+                title: l10n.openCostGroupDetailMovementHistory,
+                children: <Widget>[
+                  if (_entries.isEmpty)
+                    Text(
+                      l10n.openCostGroupDetailNoMovements,
+                      style: AppTypography.of(context)
+                          .labelSmall
+                          ?.copyWith(color: colors.onSurfaceMuted),
+                    )
+                  else
+                    for (final entry in _entries)
+                      _MovementRow(
+                        label: entry['description'] as String? ??
+                            l10n.openCostGroupDetailEntry,
+                        amount: Money.fromMinor(
+                          (entry['amount_minor'] as num?)?.toInt() ?? 0,
+                        ),
+                        when: entry['created_at'] as String? ?? '',
+                      ),
+                ],
+              ),
+              SizedBox(height: spacing.section),
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+class _ReloadStockInput {
+  const _ReloadStockInput({
+    required this.product,
+    required this.quantity,
+    required this.unitCost,
+    required this.paidFrom,
+    required this.supplierRef,
+  });
+
+  final Product product;
+  final double quantity;
+  final double unitCost;
+  final String paidFrom;
+  final String? supplierRef;
+}
+
+class _ReloadStockDialog extends StatefulWidget {
+  const _ReloadStockDialog({required this.products});
+
+  final List<Product> products;
+
+  @override
+  State<_ReloadStockDialog> createState() => _ReloadStockDialogState();
+}
+
+class _ReloadStockDialogState extends State<_ReloadStockDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _quantity = TextEditingController();
+  final _unitCost = TextEditingController();
+  final _supplierRef = TextEditingController();
+  late Product? _product = widget.products.firstOrNull;
+  String _paidFrom = 'other';
+
+  @override
+  void dispose() {
+    _quantity.dispose();
+    _unitCost.dispose();
+    _supplierRef.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    Navigator.pop(
+      context,
+      _ReloadStockInput(
+        product: _product!,
+        quantity: double.parse(_quantity.text.trim()),
+        unitCost: parseMoneyInput(_unitCost.text.trim())!,
+        paidFrom: _paidFrom,
+        supplierRef:
+            _supplierRef.text.trim().isEmpty ? null : _supplierRef.text.trim(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Reload stock'),
+        content: SingleChildScrollView(
+          child: Form(
+            key: _formKey,
+            child: FormFieldGroup(
+              children: <Widget>[
+                DropdownButtonFormField<Product>(
+                  initialValue: _product,
+                  decoration: const InputDecoration(labelText: 'Stock item'),
+                  items: <DropdownMenuItem<Product>>[
+                    for (final item in widget.products)
+                      DropdownMenuItem<Product>(
+                        value: item,
+                        child: Text(item.name),
+                      ),
+                  ],
+                  validator: (value) =>
+                      value?.id == null ? 'Select a stock item.' : null,
+                  onChanged: (value) => setState(() => _product = value),
+                ),
+                TextFormField(
+                  controller: _quantity,
+                  decoration: const InputDecoration(labelText: 'Quantity'),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  validator: (value) {
+                    final parsed = double.tryParse(value?.trim() ?? '');
+                    return parsed == null || !parsed.isFinite || parsed <= 0
+                        ? 'Enter a quantity greater than zero.'
+                        : null;
+                  },
+                ),
+                TextFormField(
+                  controller: _unitCost,
+                  decoration:
+                      const InputDecoration(labelText: 'Unit cost (KES)'),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  validator: (value) {
+                    final parsed = parseMoneyInput(value?.trim() ?? '');
+                    return parsed == null || !parsed.isFinite || parsed < 0
+                        ? 'Enter a valid unit cost.'
+                        : null;
+                  },
+                ),
+                DropdownButtonFormField<String>(
+                  initialValue: _paidFrom,
+                  decoration:
+                      const InputDecoration(labelText: 'Payment source'),
+                  items: const <DropdownMenuItem<String>>[
+                    DropdownMenuItem(
+                        value: 'till_cash', child: Text('Till cash')),
+                    DropdownMenuItem(
+                        value: 'credit', child: Text('Supplier credit')),
+                    DropdownMenuItem(value: 'other', child: Text('Other')),
+                  ],
+                  onChanged: (value) =>
+                      setState(() => _paidFrom = value ?? 'other'),
+                ),
+                TextField(
+                  controller: _supplierRef,
+                  decoration:
+                      const InputDecoration(labelText: 'Supplier reference'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(AppLocalizations.of(context).cancel),
+          ),
+          FilledButton(
+            onPressed: _save,
+            child: Text(AppLocalizations.of(context).save),
+          ),
+        ],
+      );
 }
 
 class _PoolProductRow extends StatelessWidget {

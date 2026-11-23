@@ -405,6 +405,8 @@ class _LoginScreenState extends State<LoginScreen> {
                             _RosterState.loading => const _RosterLoading(),
                             _RosterState.noAccounts => _NoAccountsPanel(
                                 onSetUp: _setUpShop,
+                                onRecover: () =>
+                                    context.go(Routes.accountRecovery),
                               ),
                             _RosterState.ready => _WhoPicker(
                                 ownerName: owner?.name,
@@ -611,9 +613,13 @@ class _RosterLoading extends StatelessWidget {
 }
 
 class _NoAccountsPanel extends StatelessWidget {
-  const _NoAccountsPanel({required this.onSetUp});
+  const _NoAccountsPanel({
+    required this.onSetUp,
+    required this.onRecover,
+  });
 
   final VoidCallback onSetUp;
+  final VoidCallback onRecover;
 
   @override
   Widget build(BuildContext context) {
@@ -654,6 +660,12 @@ class _NoAccountsPanel extends StatelessWidget {
               FilledButton(
                 onPressed: onSetUp,
                 child: Text(l10n.settingsShopNotOnDevice),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: onRecover,
+                icon: const Icon(Icons.cloud_download_outlined),
+                label: Text(l10n.accountRecoveryAction),
               ),
             ],
           ),

@@ -489,6 +489,10 @@ jobs:
               echo "Backend and sign-in endpoints are configured in this build."
             fi
             echo
+            echo "## Commit message"
+            echo
+            git show -s --format=%B "$GITHUB_SHA"
+            echo
             echo "**Verify the checksum before installing:**"
             echo '```'
             sha256sum "$apk"
@@ -533,10 +537,12 @@ jobs:
             exit 1
           fi
           tag="${GITHUB_REF_NAME}"
+          commit_message="$(git show -s --format=%B "$GITHUB_SHA")"
           started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          if ! gh workflow run publish-to-nerva.yml --ref "${tag}"; then
-            echo "::warning::Could not dispatch publish-to-nerva.yml for ${tag}; release metadata not published."
-            exit 0
+          if ! gh workflow run publish-to-nerva.yml --ref "${tag}" \
+            -f commit_message="${commit_message}"; then
+            echo "::error::Could not dispatch publish-to-nerva.yml for ${tag}; Nerva metadata was not published."
+            exit 1
           fi
           for attempt in 1 2 3 4 5 6; do
             sleep 10
@@ -547,5 +553,5 @@ jobs:
             fi
             echo "Waiting for the ${tag} Nerva publish run to appear (attempt ${attempt}/6)."
           done
-          echo "::warning::Dispatched publish-to-nerva.yml for ${tag} but the run did not appear within a minute. Nerva publish will still run via the release:published trigger."
-          exit 0
+          echo "::error::Dispatched publish-to-nerva.yml for ${tag}, but the run did not appear within a minute. The GITHUB_TOKEN release event will not start the Nerva publisher; retry the workflow dispatch."
+          exit 1

@@ -659,8 +659,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
   Widget _buildPlanBuilder(AppLocalizations l10n, ThemeData theme) {
     return ListView(
       key: const ValueKey<String>('membership-plan-builder'),
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
       children: [
+        _buildMembershipRequestSummary(theme),
         Align(
           alignment: Alignment.centerLeft,
           child: TextButton.icon(
@@ -689,7 +690,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
           description: l10n.membershipCoreDescription,
           features: _coreFeatures(l10n),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 16),
         _featureGroup(
           l10n,
           theme,
@@ -697,7 +698,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
           description: l10n.membershipAdditionalDescription,
           features: _additionalFeatures(l10n),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 16),
         _featureGroup(
           l10n,
           theme,
@@ -705,7 +706,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
           description: l10n.membershipSupportDescription,
           features: _supportFeatures(l10n),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 16),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -731,7 +732,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
         FilledButton.icon(
           onPressed: _loading ? null : _requestQuote,
           icon: const Icon(Icons.arrow_forward),
@@ -746,8 +747,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
     final colors = theme.colorScheme;
     return ListView(
       key: const ValueKey<String>('membership-explore'),
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
       children: [
+        _buildMembershipRequestSummary(theme),
         Card(
           color: colors.primaryContainer,
           child: Padding(
@@ -771,7 +773,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                   style: theme.textTheme.bodyLarge
                       ?.copyWith(color: colors.onPrimaryContainer),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 20),
                 FilledButton(
                   onPressed: () => setState(() => _buildingPlan = true),
                   child: Text(l10n.membershipGetStarted),
@@ -780,6 +782,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
             ),
           ),
         ),
+        const SizedBox(height: 16),
         const SizedBox(height: 16),
         Card(
           child: ListTile(
@@ -792,6 +795,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
             onTap: () => setState(() => _buildingPlan = true),
           ),
         ),
+        const SizedBox(height: 16),
         Card(
           child: ListTile(
             title: Text(l10n.membershipMemberRewards),
@@ -808,6 +812,130 @@ class _PaywallScreenState extends State<PaywallScreen> {
           _buildSubscriptionSummary(l10n, theme),
         ],
       ],
+    );
+  }
+
+  Widget _buildMembershipRequestSummary(ThemeData theme) {
+    final request = _currentMembershipRequest;
+    if (request == null) return const SizedBox.shrink();
+    final accepted = request.status == 'accepted';
+    final quoteReady = request.status == 'offer_ready';
+    final canStartAnother = accepted || request.status == 'closed';
+    final colorScheme = theme.colorScheme;
+
+    return Card(
+      color: accepted
+          ? colorScheme.secondaryContainer
+          : colorScheme.tertiaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  accepted
+                      ? Icons.check_circle_outline
+                      : quoteReady
+                          ? Icons.markunread_mailbox_outlined
+                          : Icons.hourglass_top_rounded,
+                  color: accepted
+                      ? colorScheme.onSecondaryContainer
+                      : colorScheme.onTertiaryContainer,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    accepted
+                        ? 'Quote accepted'
+                        : quoteReady
+                            ? 'Your quote is ready'
+                            : 'Request · ${request.status.replaceAll('_', ' ')}',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: accepted
+                          ? colorScheme.onSecondaryContainer
+                          : colorScheme.onTertiaryContainer,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Refresh request',
+                  onPressed: _loading
+                      ? null
+                      : () async {
+                          setState(() {
+                            _loading = true;
+                            _error = null;
+                          });
+                          try {
+                            await _refreshMembershipData();
+                          } catch (error, stack) {
+                            debugPrint(
+                                'Could not refresh membership: $error\n$stack');
+                            if (mounted) {
+                              setState(() =>
+                                  _error = 'Could not refresh your request.');
+                            }
+                          } finally {
+                            if (mounted) setState(() => _loading = false);
+                          }
+                        },
+                  icon: const Icon(Icons.refresh),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              accepted
+                  ? 'Your agreement is active. You can request a new plan whenever you need a change.'
+                  : quoteReady
+                      ? 'Review the proposed terms in your request.'
+                      : 'Your request is saved. Check here for status updates and replies.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: accepted
+                    ? colorScheme.onSecondaryContainer
+                    : colorScheme.onTertiaryContainer,
+              ),
+            ),
+            if (request.features.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                request.features.take(3).join(', '),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: accepted
+                      ? colorScheme.onSecondaryContainer
+                      : colorScheme.onTertiaryContainer,
+                ),
+              ),
+            ],
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: [
+                TextButton(
+                  onPressed: () => setState(() {
+                    _section = _MembershipSection.quote;
+                    _buildingPlan = false;
+                  }),
+                  child: const Text('View request'),
+                ),
+                if (canStartAnother)
+                  TextButton(
+                    onPressed: () => setState(() {
+                      _section = _MembershipSection.plans;
+                      _buildingPlan = true;
+                      _selectedFeatures.clear();
+                      _requirements.clear();
+                    }),
+                    child: const Text('Request a new plan'),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1385,6 +1513,8 @@ class _PaywallScreenState extends State<PaywallScreen> {
       body: SafeArea(
         child: Column(
           children: [
+            if (_loading && _entitlement != null)
+              const LinearProgressIndicator(),
             if (_error != null)
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),

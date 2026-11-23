@@ -57,6 +57,11 @@ class _FashionCatalogueScreenState extends State<FashionCatalogueScreen> {
     }
   }
 
+  Future<void> _createStyle() async {
+    final saved = await context.push<bool>(Routes.fashionProductForm);
+    if (saved == true && mounted) await _load();
+  }
+
   List<Product> get _filteredProducts {
     final query = _searchQuery.trim().toLowerCase();
     return _products.where((p) {
@@ -113,7 +118,7 @@ class _FashionCatalogueScreenState extends State<FashionCatalogueScreen> {
                       label: const Text('Stocktake'),
                     ),
                     FilledButton.icon(
-                      onPressed: () => context.push(Routes.fashionProductForm),
+                      onPressed: _createStyle,
                       icon: const Icon(Icons.add),
                       label: Text(l10n.fashionCatalogueAddStyle),
                     ),
@@ -140,78 +145,77 @@ class _FashionCatalogueScreenState extends State<FashionCatalogueScreen> {
             _loading || products.isEmpty
                 ? _FashionCatalogueEmpty(
                     isEmpty: products.isEmpty && !_loading,
-                    onAddStyle: () => context.push(Routes.fashionProductForm),
+                    onAddStyle: _createStyle,
                   )
                 : ListView.separated(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     itemCount: products.length,
-                      separatorBuilder: (_, i) => Divider(
-                        height: 1,
-                        indent: spacing.md,
-                        color: colors.outline,
-                      ),
-                      itemBuilder: (_, i) {
-                        final p = products[i];
-                        return Semantics(
-                          label:
-                              '${p.name} · ${p.category} · ${p.stockQty.toInt()} in stock',
-                          child: ListTile(
-                            leading: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: colors.surfaceSunken,
-                                borderRadius:
-                                    AppShapes.of(context).controlRadius,
-                              ),
-                              child: Icon(
-                                Icons.checkroom_outlined,
-                                size: 18,
-                                color: colors.onSurfaceMuted,
-                              ),
+                    separatorBuilder: (_, i) => Divider(
+                      height: 1,
+                      indent: spacing.md,
+                      color: colors.outline,
+                    ),
+                    itemBuilder: (_, i) {
+                      final p = products[i];
+                      return Semantics(
+                        label:
+                            '${p.name} · ${p.category} · ${p.stockQty.toInt()} in stock',
+                        child: ListTile(
+                          leading: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: colors.surfaceSunken,
+                              borderRadius: AppShapes.of(context).controlRadius,
                             ),
-                            title: Text(
-                              p.name,
-                              style: AppTypography.of(context).bodyMedium,
-                            ),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: <Widget>[
-                                Text(
-                                  '${p.category} · ${_variantCountLabel(p)}',
-                                  style: AppTypography.of(context)
-                                      .labelSmall
-                                      ?.copyWith(color: colors.onSurfaceMuted),
-                                ),
-                                SizedBox(height: spacing.xs),
-                                Text(
-                                  _stockLabel(p),
-                                  style: AppTypography.of(context)
-                                      .labelSmall
-                                      ?.copyWith(
-                                        color: _stockTone(p, colors)
-                                            .onContainer(colors),
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                ),
-                              ],
-                            ),
-                            trailing: StatusChip(
-                              tone: _stockTone(p, colors),
-                              text: _stockStatus(p),
-                              dense: true,
-                            ),
-                            onTap: () => context.push(
-                              p.trackVariants
-                                  ? Routes.fashionProduct(p.id ?? 0)
-                                  : Routes.product(AppLocalizations.of(context)
-                                      .dashboardId(p.id ?? 0)),
+                            child: Icon(
+                              Icons.checkroom_outlined,
+                              size: 18,
+                              color: colors.onSurfaceMuted,
                             ),
                           ),
-                        );
-                      },
-                    ),
+                          title: Text(
+                            p.name,
+                            style: AppTypography.of(context).bodyMedium,
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              Text(
+                                '${p.category} · ${_variantCountLabel(p)}',
+                                style: AppTypography.of(context)
+                                    .labelSmall
+                                    ?.copyWith(color: colors.onSurfaceMuted),
+                              ),
+                              SizedBox(height: spacing.xs),
+                              Text(
+                                _stockLabel(p),
+                                style: AppTypography.of(context)
+                                    .labelSmall
+                                    ?.copyWith(
+                                      color: _stockTone(p, colors)
+                                          .onContainer(colors),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                              ),
+                            ],
+                          ),
+                          trailing: StatusChip(
+                            tone: _stockTone(p, colors),
+                            text: _stockStatus(p),
+                            dense: true,
+                          ),
+                          onTap: () => context.push(
+                            p.trackVariants
+                                ? Routes.fashionProduct(p.id ?? 0)
+                                : Routes.product(AppLocalizations.of(context)
+                                    .dashboardId(p.id ?? 0)),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
           ],
         ),
       ),

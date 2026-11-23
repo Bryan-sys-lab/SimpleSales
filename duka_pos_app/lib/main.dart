@@ -6,7 +6,6 @@ import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
-import 'package:workmanager/workmanager.dart';
 
 import 'app_brand.dart';
 import 'l10n/app_localizations_config.dart';
@@ -26,7 +25,6 @@ import 'theme/app_theme.dart';
 import 'theme/appearance_controller.dart';
 import 'services/app_release.dart';
 import 'routing/routes.dart';
-import 'services/auto_backup_worker.dart';
 import 'services/diagnostics_upload_service.dart';
 import 'services/identity_service.dart';
 import 'services/workspace_service.dart';
@@ -109,13 +107,6 @@ Future<void> main() async {
     debugPrint('Unhandled error: $error\n$stack');
     return false;
   };
-
-  // Initialize WorkManager headless callback for automatic backups that survive
-  // process death. Must run before runApp so the six-hourly cycle can fire even
-  // when Android kills or suspends the till. Initialized before the Sentry
-  // early-return so WorkManager is set up whether or not a Sentry DSN is
-  // configured.
-  await Workmanager().initialize(autoBackupDispatcher);
 
   // Initialize Sentry for crash reporting (if DSN provided). A malformed DSN
   // must never prevent the app from starting, so init is guarded and the app

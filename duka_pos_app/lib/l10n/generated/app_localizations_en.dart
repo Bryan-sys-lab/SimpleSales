@@ -6150,6 +6150,13 @@ class AppLocalizationsEn extends AppLocalizations {
       'Link a stock item to this group before reloading its stock.';
 
   @override
+  String get openCostGroupDetailReloaded => 'Stock was reloaded successfully.';
+
+  @override
+  String get openCostGroupDetailReloadFailed =>
+      'Stock could not be reloaded. Check the stock item and try again.';
+
+  @override
   String get openCostGroupDetailNotFound => 'Cost group not found';
 
   @override
@@ -7774,4 +7781,70 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get productMappingReviewLoadFailed =>
       'Could not load products for review. Try again.';
+
+  @override
+  String get accountRecoveryTitle => 'Recover your shop';
+
+  @override
+  String get accountRecoveryDescription =>
+      'Sign in with the owner email and PIN, then restore a portable cloud backup. Your backup passphrase is required and is never sent to the server.';
+
+  @override
+  String get accountRecoveryEmail => 'Owner email';
+
+  @override
+  String get accountRecoveryPin => 'Owner PIN';
+
+  @override
+  String get accountRecoveryForgotPin => 'Forgot your owner PIN?';
+
+  @override
+  String get accountRecoveryPassphrase => 'Backup passphrase';
+
+  @override
+  String get accountRecoveryPassphraseHelp =>
+      'Use the passphrase chosen when the portable backup was created (at least 8 characters).';
+
+  @override
+  String get accountRecoveryAction => 'Sign in and restore shop';
+
+  @override
+  String get accountRecoveryWorking => 'Signing in and restoring…';
+
+  @override
+  String get accountRecoveryInvalidPin => 'Enter the 6-digit owner PIN.';
+
+  @override
+  String get accountRecoveryInvalidPassphrase =>
+      'Enter the backup passphrase (at least 8 characters).';
+
+  @override
+  String get accountRecoverySignInFailed =>
+      'Could not sign in. Check the owner email and PIN.';
+
+  @override
+  String get accountRecoveryNoOwnedShop =>
+      'No owner shop is linked to this account.';
+
+  @override
+  String get accountRecoveryAlreadyOnDevice =>
+      'This shop is already registered on this device. Use its local sign-in instead.';
+
+  @override
+  String get accountRecoveryNoBackup =>
+      'No portable cloud backup was found. This shop was not restored; a device-bound backup cannot be opened on a replacement phone.';
+
+  @override
+  String get accountRecoveryFailed =>
+      'The shop could not be restored. Check your connection and backup passphrase, then try again.';
+
+  @override
+  String get accountRecoveryEnterEmail => 'Enter the owner email first.';
+
+  @override
+  String get accountRecoveryChooseShop => 'Choose the shop to restore';
+
+  @override
+  String get accountRecoveryCleanupFailed =>
+      'Recovery failed and this device could not return to its previous shop. Restart the app before trying again.';
 }

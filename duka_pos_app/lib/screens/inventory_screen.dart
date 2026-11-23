@@ -202,6 +202,7 @@ class _InventoryScreenState extends State<InventoryScreen>
         onSaved: _load,
       ),
     );
+    if (mounted) await _load();
   }
 
   Future<void> _managePacks(Product product) async {

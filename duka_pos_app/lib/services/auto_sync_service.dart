@@ -6,8 +6,10 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
+import '../models/crash_log.dart';
 import 'backend_service.dart';
 import 'excel_service.dart';
+import 'failure_recorder.dart';
 import 'owner_business_sync_service.dart';
 import 'workspace_service.dart';
 import 'auto_backup_worker.dart';
@@ -41,6 +43,7 @@ class AutoSyncService {
   static const _nextDueKey = 'automatic_backup_next_due';
   static Timer? _timer;
   static bool _running = false;
+  static Future<void>? _workManagerInitialization;
 
   /// WorkManager task name for the six-hour automatic backup cycle.
   static const _workManagerTask = 'autoBackup';
@@ -49,8 +52,14 @@ class AutoSyncService {
   /// after Android kills or suspends the app process. Safe to call repeatedly;
   /// re-registering replaces the previous request.
   static Future<void> registerWorkManager() async {
-    // Idempotent headless-isolate initializer. Safe to call more than once.
-    await Workmanager().initialize(autoBackupDispatcher);
+    _workManagerInitialization ??=
+        Workmanager().initialize(autoBackupDispatcher);
+    try {
+      await _workManagerInitialization;
+    } catch (_) {
+      _workManagerInitialization = null;
+      rethrow;
+    }
     await Workmanager().registerPeriodicTask(
       'auto_backup',
       _workManagerTask,
@@ -66,9 +75,30 @@ class AutoSyncService {
   /// backups are disabled so a dead task does not sit in the queue.
   static Future<void> cancelWorkManager() async {
     try {
+      _workManagerInitialization ??=
+          Workmanager().initialize(autoBackupDispatcher);
+      await _workManagerInitialization;
       await Workmanager().cancelByUniqueName('auto_backup');
-    } on Object {
-      // Ignore: nothing scheduled is not a failure.
+    } on Object catch (error, stack) {
+      await failureRecorder.record(
+        kind: CrashKind.warning,
+        message: 'Automatic backup scheduling could not be cancelled: $error',
+        stack: stack.toString(),
+        operation: 'cancelling automatic backup schedule',
+      );
+    }
+  }
+
+  static Future<void> _registerWorkManagerBestEffort() async {
+    try {
+      await registerWorkManager();
+    } on Object catch (error, stack) {
+      await failureRecorder.record(
+        kind: CrashKind.warning,
+        message: 'Automatic backup scheduling failed: $error',
+        stack: stack.toString(),
+        operation: 'registering automatic backup schedule',
+      );
     }
   }
 
@@ -135,7 +165,9 @@ class AutoSyncService {
       unawaited(runNow());
     }
     _schedule();
-    await registerWorkManager();
+    // WorkManager initialization can wait on Android services. It is
+    // supplementary to the in-process timer and must not hold the boot gate.
+    unawaited(_registerWorkManagerBestEffort());
     // Re-opening a till is a sync opportunity, but every till in a shop often
     // opens at the same time. A small per-process jitter prevents a fleet of
     // tills returning after an outage from stampeding the API together.
@@ -148,7 +180,7 @@ class AutoSyncService {
     await prefs.setBool(key, value);
     if (value) {
       _schedule();
-      await registerWorkManager();
+      unawaited(_registerWorkManagerBestEffort());
       await runNow();
     } else {
       _timer?.cancel();

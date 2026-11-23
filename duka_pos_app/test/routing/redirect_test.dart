@@ -76,6 +76,10 @@ void main() {
       expect(guard(AppStage.signingIn, Routes.welcome), isNull);
     });
 
+    test('a signed-out owner can reach remote account recovery', () {
+      expect(guard(AppStage.signingIn, Routes.accountRecovery), isNull);
+    });
+
     test('THE rule: a deep link can never reach the shop while signed out', () {
       for (final String path in <String>[
         Routes.dashboard,
@@ -102,6 +106,7 @@ void main() {
       Routes.recovery,
       Routes.welcome,
       Routes.login,
+      Routes.accountRecovery,
       Routes.setup,
     ]) {
       test('$door redirects home', () {

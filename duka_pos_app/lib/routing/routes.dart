@@ -74,6 +74,7 @@ abstract final class Routes {
   static const String recovery = '/recovery';
   static const String welcome = '/welcome';
   static const String login = '/login';
+  static const String accountRecovery = '/account-recovery';
   static const String staffLogin = '/staff-login';
   static const String setup = '/setup';
   static const String onboarding = '/onboarding';
@@ -97,7 +98,8 @@ abstract final class Routes {
   static String fashionProductNew() => '/inventory/fashion-product/new';
 
   /// Fashion product (style) edit form.
-  static String fashionProductEdit(int id) => '/inventory/fashion-product/$id/edit';
+  static String fashionProductEdit(int id) =>
+      '/inventory/fashion-product/$id/edit';
 
   /// Open cost group detail by id.
   static String openCostGroupDetail(int id) => '/inventory/cost-of-goods/$id';

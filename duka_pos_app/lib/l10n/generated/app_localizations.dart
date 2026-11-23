@@ -10156,6 +10156,18 @@ abstract class AppLocalizations {
   /// **'Link a stock item to this group before reloading its stock.'**
   String get openCostGroupDetailNoProductsForReload;
 
+  /// No description provided for @openCostGroupDetailReloaded.
+  ///
+  /// In en, this message translates to:
+  /// **'Stock was reloaded successfully.'**
+  String get openCostGroupDetailReloaded;
+
+  /// No description provided for @openCostGroupDetailReloadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Stock could not be reloaded. Check the stock item and try again.'**
+  String get openCostGroupDetailReloadFailed;
+
   /// No description provided for @openCostGroupDetailNotFound.
   ///
   /// In en, this message translates to:
@@ -13283,6 +13295,120 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Could not load products for review. Try again.'**
   String get productMappingReviewLoadFailed;
+
+  /// No description provided for @accountRecoveryTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Recover your shop'**
+  String get accountRecoveryTitle;
+
+  /// No description provided for @accountRecoveryDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in with the owner email and PIN, then restore a portable cloud backup. Your backup passphrase is required and is never sent to the server.'**
+  String get accountRecoveryDescription;
+
+  /// No description provided for @accountRecoveryEmail.
+  ///
+  /// In en, this message translates to:
+  /// **'Owner email'**
+  String get accountRecoveryEmail;
+
+  /// No description provided for @accountRecoveryPin.
+  ///
+  /// In en, this message translates to:
+  /// **'Owner PIN'**
+  String get accountRecoveryPin;
+
+  /// No description provided for @accountRecoveryForgotPin.
+  ///
+  /// In en, this message translates to:
+  /// **'Forgot your owner PIN?'**
+  String get accountRecoveryForgotPin;
+
+  /// No description provided for @accountRecoveryPassphrase.
+  ///
+  /// In en, this message translates to:
+  /// **'Backup passphrase'**
+  String get accountRecoveryPassphrase;
+
+  /// No description provided for @accountRecoveryPassphraseHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Use the passphrase chosen when the portable backup was created (at least 8 characters).'**
+  String get accountRecoveryPassphraseHelp;
+
+  /// No description provided for @accountRecoveryAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in and restore shop'**
+  String get accountRecoveryAction;
+
+  /// No description provided for @accountRecoveryWorking.
+  ///
+  /// In en, this message translates to:
+  /// **'Signing in and restoring…'**
+  String get accountRecoveryWorking;
+
+  /// No description provided for @accountRecoveryInvalidPin.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the 6-digit owner PIN.'**
+  String get accountRecoveryInvalidPin;
+
+  /// No description provided for @accountRecoveryInvalidPassphrase.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the backup passphrase (at least 8 characters).'**
+  String get accountRecoveryInvalidPassphrase;
+
+  /// No description provided for @accountRecoverySignInFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not sign in. Check the owner email and PIN.'**
+  String get accountRecoverySignInFailed;
+
+  /// No description provided for @accountRecoveryNoOwnedShop.
+  ///
+  /// In en, this message translates to:
+  /// **'No owner shop is linked to this account.'**
+  String get accountRecoveryNoOwnedShop;
+
+  /// No description provided for @accountRecoveryAlreadyOnDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'This shop is already registered on this device. Use its local sign-in instead.'**
+  String get accountRecoveryAlreadyOnDevice;
+
+  /// No description provided for @accountRecoveryNoBackup.
+  ///
+  /// In en, this message translates to:
+  /// **'No portable cloud backup was found. This shop was not restored; a device-bound backup cannot be opened on a replacement phone.'**
+  String get accountRecoveryNoBackup;
+
+  /// No description provided for @accountRecoveryFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The shop could not be restored. Check your connection and backup passphrase, then try again.'**
+  String get accountRecoveryFailed;
+
+  /// No description provided for @accountRecoveryEnterEmail.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the owner email first.'**
+  String get accountRecoveryEnterEmail;
+
+  /// No description provided for @accountRecoveryChooseShop.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose the shop to restore'**
+  String get accountRecoveryChooseShop;
+
+  /// No description provided for @accountRecoveryCleanupFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Recovery failed and this device could not return to its previous shop. Restart the app before trying again.'**
+  String get accountRecoveryCleanupFailed;
 }
 
 class _AppLocalizationsDelegate

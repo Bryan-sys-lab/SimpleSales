@@ -65,6 +65,11 @@ class _OpenCostGroupsScreenState extends State<OpenCostGroupsScreen> {
     }
   }
 
+  Future<void> _createGroup() async {
+    final created = await context.push<bool>(Routes.openCostGroupNew);
+    if (created == true && mounted) await _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
@@ -127,12 +132,12 @@ class _OpenCostGroupsScreenState extends State<OpenCostGroupsScreen> {
                     if (constraints.maxWidth < 420)
                       IconButton.filled(
                         tooltip: l10n.openCostGroupsNewGroup,
-                        onPressed: () => context.push(Routes.openCostGroupNew),
+                        onPressed: _createGroup,
                         icon: const Icon(Icons.add),
                       )
                     else
                       FilledButton.icon(
-                        onPressed: () => context.push(Routes.openCostGroupNew),
+                        onPressed: _createGroup,
                         icon: const Icon(Icons.add),
                         label: Text(l10n.openCostGroupsNewGroup),
                       ),
@@ -153,7 +158,7 @@ class _OpenCostGroupsScreenState extends State<OpenCostGroupsScreen> {
               )
             else if (pools.isEmpty)
               _OpenCostGroupsEmpty(
-                onNewGroup: () => context.push(Routes.openCostGroupNew),
+                onNewGroup: _createGroup,
               )
             else ...<Widget>[
               _CostGroupOverview(
