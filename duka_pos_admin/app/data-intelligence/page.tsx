@@ -17,23 +17,37 @@ type Meta = {
   warnings: string[];
 };
 
+type Partner = {
+  id: string;
+  legalName: string;
+  status: string;
+  contractRef: string | null;
+  purpose: string | null;
+  grants: Array<{ id: string; productId: string; snapshotId: string; status: string; expiresAt: string }>;
+  credentials: Array<{ id: string; keyPrefix: string; status: string; expiresAt: string; quotaPerDay: number }>;
+  deliveries: Array<{ id: string; status: string; productId: string; snapshotId: string; createdAt: string }>;
+};
+
 export default function DataIntelligencePage() {
   const [overview, setOverview] = useState<Record<string, number | string | null> | null>(null);
   const [datasets, setDatasets] = useState<Array<Record<string, string>>>([]);
   const [meta, setMeta] = useState<Meta | null>(null);
+  const [partners, setPartners] = useState<Partner[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [overviewResponse, datasetsResponse] = await Promise.all([
+      const [overviewResponse, datasetsResponse, partnerResponse] = await Promise.all([
         fetchJson<{ data: Record<string, number | string | null>; meta: Meta }>('/api/admin/commercial/data-intelligence/overview'),
         fetchJson<{ data: Array<Record<string, string>>; meta: Meta }>('/api/admin/commercial/data-intelligence/datasets'),
+        fetchJson<{ partners: Partner[] }>('/api/admin/commercial/partners'),
       ]);
       setOverview(overviewResponse.data);
       setDatasets(datasetsResponse.data);
       setMeta(overviewResponse.meta);
+      setPartners(partnerResponse.partners);
       setError(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Failed to load data intelligence');
@@ -43,6 +57,14 @@ export default function DataIntelligencePage() {
   }, []);
   useAdminLiveRefresh(load, ['commercial-quality', 'commercial-ledger']);
   useEffect(() => { void load(); }, [load]);
+
+  const revokeCredential = async (credentialId: string) => {
+    await fetchJson(`/api/admin/commercial/partners/credentials/${credentialId}/revoke`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: 'Partner access revoked by authorized Partner Manager' }),
+    });
+    await load();
+  };
 
   return (
     <ShellLayout>
@@ -83,6 +105,28 @@ export default function DataIntelligencePage() {
                 : <div className="mt-3 space-y-2">{datasets.map((dataset) => (
                     <div key={dataset.snapshot_id} className="rounded-md border border-base-200 p-3 text-sm text-base-700">
                       {dataset.snapshot_id} · {dataset.period_start_utc} → {dataset.period_end_utc} · {dataset.publish_status}
+                    </div>
+                  ))}</div>}
+            </section>
+            <section className="card p-5" aria-label="Partner grants and credentials">
+              <h3 className="text-sm font-semibold text-base-900">Partner grants &amp; credentials</h3>
+              {partners.length === 0
+                ? <p className="mt-2 text-sm text-base-500">No partner agreements or credentials are registered.</p>
+                : <div className="mt-3 space-y-3">{partners.map((partner) => (
+                    <div key={partner.id} className="rounded-md border border-base-200 p-3">
+                      <p className="text-sm font-medium text-base-900">{partner.legalName} · {partner.status}</p>
+                      {partner.contractRef && <p className="mt-1 text-xs text-base-500">Contract: {partner.contractRef}</p>}
+                      <p className="mt-1 text-xs text-base-700">{partner.grants.length} grants · {partner.credentials.length} credentials · {partner.deliveries.length} recent deliveries</p>
+                      {partner.credentials.map((credential) => (
+                        <div key={credential.id} className="mt-2 flex items-center justify-between rounded bg-base-50 px-3 py-2 text-xs text-base-700">
+                          <span>{credential.keyPrefix}… · {credential.status} · expires {credential.expiresAt} · quota {credential.quotaPerDay}/day</span>
+                          {credential.status === 'active' && (
+                            <button type="button" className="ml-3 text-xs font-semibold text-red-700" onClick={() => void revokeCredential(credential.id)}>
+                              Revoke
+                            </button>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   ))}</div>}
             </section>
