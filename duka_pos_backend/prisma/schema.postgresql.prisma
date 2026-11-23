@@ -322,6 +322,7 @@ model CommercialConsentGrant {
 /// surface while the commercial policy is approved.
 model CommercialContribution {
   id                      String   @id @default(cuid())
+  tenantId                String?  @map("tenant_id")
   batchId                 String   @map("batch_id")
   recordId                String   @unique @map("record_id")
   policyVersion           String   @map("policy_version")

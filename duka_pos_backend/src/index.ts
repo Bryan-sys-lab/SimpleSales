@@ -56,6 +56,7 @@ import costPoolRoutes from './routes/cost-pools';
 import ownerTransactionRoutes from './routes/owner-transactions';
 import businessContextRoutes from './routes/business_context';
 import commercialConsentRoutes from './routes/commercial_consent';
+import commercialContributionsRoutes from './routes/commercial_contributions';
 import saleEvidenceRoutes from './routes/sale_evidence';
 import { verifyAccessToken } from './lib/jwt';
 import { addLiveClient, broadcastAll, broadcastTenantChange, removeLiveClient } from './services/live_broker';
@@ -368,6 +369,7 @@ app.use('/api', (req, res, next) => {
 app.use('/api/mpesa', mpesaRoutes);
 app.use('/api/tenant/business-context', businessContextRoutes);
 app.use('/api/tenant/commercial-consent', commercialConsentRoutes);
+app.use('/api/tenant/commercial-contributions', commercialContributionsRoutes);
 app.use('/api/tenant/membership', membershipRoutes);
 app.use('/api/tenant', tenantRoutes);
 app.use('/api/payments', paymentRoutes);

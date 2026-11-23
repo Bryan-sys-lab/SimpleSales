@@ -439,6 +439,115 @@ router.get('/commercial/consent-status', asyncHandler(async (req: Request, res: 
   });
 }));
 
+router.get('/commercial/data-intelligence/overview', asyncHandler(async (req: Request, res: Response) => {
+  const query = commercialLedgerQuerySchema.parse(req.query);
+  const where: Record<string, unknown> = {};
+  if (query.profile) where.businessProfile = query.profile;
+  if (query.categoryFamily) where.categoryFamily = query.categoryFamily;
+  if (query.from || query.to) {
+    where.periodStart = {
+      ...(query.from ? { gte: new Date(query.from) } : {}),
+      ...(query.to ? { lte: new Date(query.to) } : {}),
+    };
+  }
+  const rows = await prisma.commercialContribution.findMany({
+    where,
+    select: commercialContributionSelect,
+    orderBy: [{ periodStart: 'desc' }, { acceptedAt: 'desc' }],
+    take: 5000,
+  });
+  const accepted = rows.filter((row) => row.status === 'accepted' && row.retentionState === 'active');
+  const report = buildCommercialQualityReport(rows);
+  await prisma.adminAuditLog.create({
+    data: {
+      adminId: req.auth?.sub ?? 'unknown',
+      action: 'view_data_intelligence_overview',
+      targetType: 'commercial_overview',
+      targetId: null,
+      tenantId: null,
+    },
+  });
+  return res.json({
+    data: {
+      accepted_batches: accepted.length,
+      rejected_batches: rows.filter((row) => row.status === 'rejected').length,
+      eligible_contributors_internal: report.eligibleRowCount,
+      published_dataset_count: new Set(rows.map((row) => row.datasetSnapshotId).filter(Boolean)).size,
+      pending_validation_count: rows.filter((row) => row.status === 'pending').length,
+      suppressed_cell_count: report.suppression.suppressedCohortCount,
+      latest_period_end_utc: report.freshness.latestPeriodEndUtc,
+    },
+    meta: {
+      generated_at_utc: report.asOfUtc,
+      period_from_utc: query.from ?? null,
+      period_to_utc: query.to ?? null,
+      reporting_timezone: 'Africa/Nairobi',
+      dictionary_version: report.dictionaryVersion,
+      schema_version: 'ci-contribution-v1',
+      freshness: report.freshness.status,
+      coverage: {
+        numerator: report.coverage.complete,
+        denominator: report.sourceRowCount,
+        ratio: report.coverage.completeRatio,
+        state: report.sourceRowCount === 0
+          ? 'no_data'
+          : report.coverage.partial > 0 || report.coverage.unknown > 0
+            ? 'limited'
+            : 'sufficient',
+      },
+      warnings: report.qualityNotes,
+    },
+  });
+}));
+
+router.get('/commercial/data-intelligence/datasets', asyncHandler(async (req: Request, res: Response) => {
+  const rows = await prisma.commercialContribution.findMany({
+    where: { datasetSnapshotId: { not: null } },
+    select: {
+      datasetSnapshotId: true,
+      periodStart: true,
+      periodEnd: true,
+      schemaVersion: true,
+      normalizedVersion: true,
+      status: true,
+    },
+    orderBy: [{ periodStart: 'desc' }],
+    take: 1000,
+  });
+  const grouped = new Map<string, typeof rows[number]>();
+  for (const row of rows) {
+    if (row.datasetSnapshotId) grouped.set(row.datasetSnapshotId, row);
+  }
+  await prisma.adminAuditLog.create({
+    data: {
+      adminId: req.auth?.sub ?? 'unknown',
+      action: 'view_data_intelligence_datasets',
+      targetType: 'commercial_datasets',
+      targetId: null,
+      tenantId: null,
+    },
+  });
+  return res.json({
+    data: [...grouped.entries()].map(([snapshotId, row]) => ({
+      snapshot_id: snapshotId,
+      period_start_utc: row.periodStart.toISOString(),
+      period_end_utc: row.periodEnd.toISOString(),
+      schema_version: row.schemaVersion,
+      normalized_version: row.normalizedVersion,
+      publish_status: row.status,
+    })),
+    meta: {
+      generated_at_utc: new Date().toISOString(),
+      reporting_timezone: 'Africa/Nairobi',
+      dictionary_version: 'duka-pos-data-dictionary-v2',
+      schema_version: 'ci-contribution-v1',
+      freshness: 'current',
+      coverage: { numerator: grouped.size, denominator: grouped.size, ratio: grouped.size === 0 ? null : 1, state: grouped.size === 0 ? 'no_data' : 'sufficient' },
+      warnings: grouped.size === 0 ? ['No published dataset snapshots are registered'] : [],
+    },
+  });
+}));
+
 // Restricted source-of-truth view. This is deliberately under the existing
 // system-admin boundary; no merchant, analyst, or partner route is mounted.
 router.get('/commercial/ledger', asyncHandler(async (req: Request, res: Response) => {
