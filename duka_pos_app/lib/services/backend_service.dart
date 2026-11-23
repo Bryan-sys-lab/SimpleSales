@@ -28,6 +28,7 @@ import '../utils/money.dart';
 import '../utils/crypto_utils.dart';
 import '../profile/shop_profile.dart';
 import '../profile/business_context.dart';
+import '../profile/commercial_consent.dart';
 
 /// Why a verification step failed.
 ///
@@ -2296,6 +2297,31 @@ class BackendService {
     if (await tenantId == null) return;
     await syncBusinessContext(
         await DatabaseHelper.instance.getBusinessContext());
+  }
+
+  static Future<void> syncCommercialConsentGrant(
+      CommercialConsentGrant grant) async {
+    await ensureInitialized();
+    if (await tenantId == null) return;
+    grant.validate();
+    await _dio.put('$backendUrl/tenant/commercial-consent', data: {
+      'scopes': grant.scopes,
+      'noticeVersion': grant.noticeVersion,
+      'noticeDigest': grant.noticeDigest,
+      'termsVersion': null,
+      'schemaVersion': grant.schemaVersion,
+      'dictionaryVersion': grant.dictionaryVersion,
+      'appVersion': grant.appVersion,
+      'captureMethod': grant.captureMethod,
+      'authorityEvidence': grant.authorityEvidence,
+    });
+  }
+
+  static Future<void> withdrawCommercialConsentGrant() async {
+    await ensureInitialized();
+    if (await tenantId == null) return;
+    await DatabaseHelper.instance.withdrawCommercialConsentGrants();
+    await _dio.post('$backendUrl/tenant/commercial-consent/withdraw');
   }
 
   // ---------------- eTIMS ----------------

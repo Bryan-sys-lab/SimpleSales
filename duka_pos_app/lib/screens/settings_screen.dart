@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:crypto/crypto.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -12,6 +14,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../db/database_helper.dart';
 import '../profile/shop_profile.dart';
 import '../profile/business_context_editor.dart';
+import '../profile/commercial_consent.dart';
+import '../services/backend_service.dart';
 import '../profile/profile_navigation.dart';
 import '../profile/profile_terminology.dart';
 import '../l10n/generated/app_localizations.dart';
@@ -34,7 +38,6 @@ import '../routing/routes.dart';
 import '../services/roles.dart';
 import '../app_brand.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import '../services/backend_service.dart';
 import '../services/auto_sync_service.dart';
 import '../services/encrypted_backup_service.dart';
 import '../ui/brand/nerva_wordmark.dart';
@@ -2110,6 +2113,126 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
   }
 
+  Future<void> _editCommercialConsent() async {
+    final active = await DatabaseHelper.instance.getActiveCommercialConsentGrant();
+    if (!mounted) return;
+    final selected = <String>{...active?.scopes ?? const <String>[]};
+    final consent = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Commercial market intelligence'),
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'This is optional and separate from owner backup, telemetry, '
+                    'checkout and normal POS operation. Choose only the scopes '
+                    'you understand. Direct customer, supplier, staff, owner '
+                    'identity and receipt data are excluded.',
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Recipients may include approved research bodies, NGOs, '
+                    'manufacturers and distributors. They receive licensed '
+                    'aggregates, subject to partner agreements and suppression.',
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Collection is currently disabled by policy. Saving a grant '
+                    'records your choice for testing and evidence, but does not '
+                    'enable production upload.',
+                  ),
+                  const SizedBox(height: 12),
+                  for (final scope in CommercialConsentGrant.allowedScopes)
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: selected.contains(scope),
+                      title: Text(scope.replaceAll('_', ' ')),
+                      onChanged: (checked) => setDialogState(() {
+                        if (checked == true) {
+                          selected.add(scope);
+                        } else {
+                          selected.remove(scope);
+                        }
+                      }),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop('cancel'),
+              child: const Text('Cancel'),
+            ),
+            if (active != null)
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop('withdraw'),
+                child: const Text('Withdraw all'),
+              ),
+            FilledButton(
+              onPressed: selected.isEmpty
+                  ? null
+                  : () => Navigator.of(dialogContext).pop('save'),
+              child: const Text('Save grant'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (consent == null || consent == 'cancel' || !mounted) return;
+    try {
+      if (consent == 'withdraw') {
+        await BackendService.withdrawCommercialConsentGrant();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Commercial consent withdrawn.')),
+          );
+        }
+        return;
+      }
+      final package = await PackageInfo.fromPlatform();
+      final notice = 'SimpleSales commercial market intelligence '
+          'purpose; approved aggregate scopes; recipient classes; '
+          'suppression; retention; withdrawal.';
+      final grant = CommercialConsentGrant(
+        grantUuid: CommercialConsentGrant.createGrantUuid(),
+        status: 'active',
+        scopes: selected.toList()..sort(),
+        noticeVersion: 'commercial-notice-v1-draft',
+        noticeDigest:
+            'sha256:${sha256.convert(utf8.encode(notice)).toString()}',
+        schemaVersion: 'commercial-contribution-v1',
+        dictionaryVersion: 'duka-pos-data-dictionary-v2',
+        appVersion: '${package.version}+${package.buildNumber}',
+        captureMethod: 'in_app_affirmative',
+        authorityEvidence: 'owner',
+        effectiveAtUtc: DateTime.now().toUtc().toIso8601String(),
+      );
+      await DatabaseHelper.instance.saveCommercialConsentGrant(grant);
+      await BackendService.syncCommercialConsentGrant(grant);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Consent grant recorded. Commercial collection remains disabled.',
+            ),
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not update commercial consent: $error')),
+        );
+      }
+    }
+  }
+
   Future<void> _addShopOnThisDevice() async {
     final previous = context.read<AppState>().owner;
     final previousWorkspace = context.read<AppState>().workspaceKey;
@@ -2392,6 +2515,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       onManageShops: _manageShops,
       onChangeBusinessProfile: ownerSession ? _changeBusinessProfile : null,
       onEditBusinessContext: ownerSession ? _editBusinessContext : null,
+      onEditCommercialConsent:
+          ownerSession ? _editCommercialConsent : null,
       onOpenPortfolio: () => context.push(Routes.portfolio),
       onOpenActivity: () => context.push(Routes.activity),
       onOpenIncomingPayments: () => context.push(Routes.incomingPayments),
@@ -2578,6 +2703,7 @@ class SettingsPanel extends StatelessWidget {
     required this.onManageShops,
     this.onChangeBusinessProfile,
     this.onEditBusinessContext,
+    this.onEditCommercialConsent,
     required this.onOpenPortfolio,
     required this.onOpenActivity,
   });
@@ -2686,6 +2812,7 @@ class SettingsPanel extends StatelessWidget {
   final Future<void> Function() onManageShops;
   final Future<void> Function()? onChangeBusinessProfile;
   final Future<void> Function()? onEditBusinessContext;
+  final Future<void> Function()? onEditCommercialConsent;
   final VoidCallback onOpenPortfolio;
   final VoidCallback onOpenActivity;
 
@@ -2713,6 +2840,7 @@ class SettingsPanel extends StatelessWidget {
           onManage: onManageShops,
           onChangeProfile: onChangeBusinessProfile,
           onEditBusinessContext: onEditBusinessContext,
+          onEditCommercialConsent: onEditCommercialConsent,
           onOpenPortfolio: onOpenPortfolio,
           onOpenActivity: onOpenActivity,
         ),
@@ -3615,6 +3743,7 @@ class _ShopsPanel extends StatelessWidget {
     required this.onManage,
     this.onChangeProfile,
     this.onEditBusinessContext,
+    this.onEditCommercialConsent,
     required this.onOpenPortfolio,
     required this.onOpenActivity,
   });
@@ -3623,6 +3752,7 @@ class _ShopsPanel extends StatelessWidget {
   final Future<void> Function() onManage;
   final Future<void> Function()? onChangeProfile;
   final Future<void> Function()? onEditBusinessContext;
+  final Future<void> Function()? onEditCommercialConsent;
   final VoidCallback onOpenPortfolio;
   final VoidCallback onOpenActivity;
 
@@ -3667,6 +3797,13 @@ class _ShopsPanel extends StatelessWidget {
               title: 'Business details',
               subtitle: 'Activity and optional shop details',
               onTap: () => onEditBusinessContext!(),
+            ),
+          if (onEditCommercialConsent != null)
+            SettingsNavRow(
+              icon: Icons.verified_user_outlined,
+              title: 'Market intelligence consent',
+              subtitle: 'Optional scopes; currently disabled',
+              onTap: () => onEditCommercialConsent!(),
             ),
           SettingsNavRow(
             icon: Icons.add_business_outlined,

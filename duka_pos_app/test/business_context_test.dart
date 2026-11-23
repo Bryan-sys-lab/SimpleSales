@@ -1,5 +1,6 @@
 import 'package:duka_pos/db/database_helper.dart';
 import 'package:duka_pos/profile/business_context.dart';
+import 'package:duka_pos/profile/commercial_consent.dart';
 import 'package:duka_pos/profile/kesic_reference_2020.dart';
 import 'package:duka_pos/profile/shop_profile.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -232,6 +233,73 @@ void main() {
       salesChannels: ['physical_shop'],
     );
     expect(complete.completeness, (numerator: 5, denominator: 5));
+  });
+
+  test('version 91 upgrade creates consent evidence and queued-batch tables',
+      () async {
+    final raw = await DatabaseHelper.instance.database;
+    await DatabaseHelper.instance.upgradeSchema(raw, 91, 92);
+    expect(
+      await raw.query(
+        'sqlite_master',
+        where: 'type = ? AND name = ?',
+        whereArgs: ['table', 'commercial_consent_grants'],
+      ),
+      isNotEmpty,
+    );
+    expect(
+      await raw.query(
+        'sqlite_master',
+        where: 'type = ? AND name = ?',
+        whereArgs: ['table', 'commercial_contribution_queue'],
+      ),
+      isNotEmpty,
+    );
+  });
+
+  test('commercial consent scopes, evidence and withdrawal persist locally',
+      () async {
+    final grant = CommercialConsentGrant(
+      grantUuid: '3d5f5a4a-c4a8-4ef5-b8c9-8e8e8e8e8e8e',
+      status: 'active',
+      scopes: const ['business_activity', 'product_demand'],
+      noticeVersion: 'commercial-notice-v1-draft',
+      noticeDigest:
+          'sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      schemaVersion: 'commercial-contribution-v1',
+      dictionaryVersion: 'duka-pos-data-dictionary-v2',
+      appVersion: '100+100',
+      captureMethod: 'in_app_affirmative',
+      authorityEvidence: 'owner',
+      effectiveAtUtc: '2026-11-23T00:00:00Z',
+    );
+    await DatabaseHelper.instance.saveCommercialConsentGrant(grant);
+    final db = DatabaseHelper.instance;
+    await db.database.then((database) => database.insert(
+      'commercial_contribution_queue',
+      {
+        'batch_uuid': '11111111-1111-4111-8111-111111111111',
+        'scope_codes_json': '["product_demand"]',
+        'payload_json': '{}',
+        'status': 'queued',
+        'created_at_utc': '2026-11-23T00:00:00Z',
+      },
+    ));
+    final saved =
+        await DatabaseHelper.instance.getActiveCommercialConsentGrant();
+    expect(saved?.grantUuid, grant.grantUuid);
+    expect(saved?.scopes, ['business_activity', 'product_demand']);
+
+    await DatabaseHelper.instance.withdrawCommercialConsentGrants();
+    expect(
+      await DatabaseHelper.instance.getActiveCommercialConsentGrant(),
+      isNull,
+    );
+    final queued = await db.database.then((database) => database.query(
+      'commercial_contribution_queue',
+      where: "status = 'queued'",
+    ));
+    expect(queued, isEmpty);
   });
 
   test('offline KeSIC index has distinct codes and all official sections', () {

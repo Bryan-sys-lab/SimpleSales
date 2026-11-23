@@ -49,6 +49,7 @@ import '../services/workspace_service.dart';
 import '../services/roles.dart';
 import '../profile/shop_profile.dart';
 import '../profile/business_context.dart';
+import '../profile/commercial_consent.dart';
 
 class _SnapshotMediaRollback {
   const _SnapshotMediaRollback(this.oldBytes, {this.documents});
@@ -942,6 +943,9 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       if (existingReceiptTables.contains('stock_receipt_items')) {
         await db.execute('CREATE INDEX IF NOT EXISTS idx_receipt_items_purchase_order_line ON stock_receipt_items (purchase_order_line_id)');
       }
+    }
+    if (oldVersion < 92) {
+      await _createCommercialConsentGrantTable(db);
     }
   }
 
@@ -3005,6 +3009,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     )''');
     await _createShopProfileTable(db);
     await _createBusinessContextTable(db);
+    await _createCommercialConsentGrantTable(db);
     await _ensureProductIdentityColumns(db);
     await db.execute('''CREATE TABLE IF NOT EXISTS staff (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3099,6 +3104,42 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       schema_version INTEGER NOT NULL DEFAULT 1,
       updated_at_utc TEXT NOT NULL
     )''');
+  }
+
+  Future<void> _createCommercialConsentGrantTable(DatabaseExecutor db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS commercial_consent_grants (
+      grant_uuid TEXT PRIMARY KEY,
+      status TEXT NOT NULL,
+      scopes_json TEXT NOT NULL,
+      notice_version TEXT NOT NULL,
+      notice_digest TEXT NOT NULL,
+      schema_version TEXT NOT NULL,
+      dictionary_version TEXT NOT NULL,
+      app_version TEXT NOT NULL,
+      capture_method TEXT NOT NULL,
+      authority_evidence TEXT NOT NULL,
+      effective_at_utc TEXT NOT NULL,
+      withdrawn_at_utc TEXT,
+      processing_state TEXT NOT NULL DEFAULT 'none',
+      created_at_utc TEXT NOT NULL,
+      updated_at_utc TEXT NOT NULL
+    )''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_commercial_consent_status '
+        'ON commercial_consent_grants(status, effective_at_utc)');
+    await db.execute('''CREATE TABLE IF NOT EXISTS commercial_contribution_queue (
+      batch_uuid TEXT PRIMARY KEY,
+      scope_codes_json TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'queued',
+      created_at_utc TEXT NOT NULL,
+      attempt_count INTEGER NOT NULL DEFAULT 0,
+      last_attempt_at_utc TEXT,
+      withdrawn_at_utc TEXT
+    )''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_commercial_contribution_queue_status '
+        'ON commercial_contribution_queue(status, created_at_utc)');
   }
 
   Future<void> _createFinancialEventTable(Database db) async {
@@ -5883,6 +5924,60 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         'business_context',
         row,
         conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    });
+  }
+
+  Future<void> saveCommercialConsentGrant(
+      CommercialConsentGrant grant) async {
+    grant.validate();
+    final db = await database;
+    final now = DateTime.now().toUtc().toIso8601String();
+    await db.insert(
+      'commercial_consent_grants',
+      {
+        ...grant.toRow(),
+        'processing_state': grant.status == 'active'
+            ? 'awaiting_backend'
+            : 'purge_queued_unsubmitted',
+        'created_at_utc': now,
+        'updated_at_utc': now,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<CommercialConsentGrant?> getActiveCommercialConsentGrant() async {
+    final rows = await (await database).query(
+      'commercial_consent_grants',
+      where: 'status = ?',
+      whereArgs: ['active'],
+      orderBy: 'effective_at_utc DESC',
+      limit: 1,
+    );
+    return rows.isEmpty
+        ? null
+        : CommercialConsentGrant.fromRow(rows.first);
+  }
+
+  Future<void> withdrawCommercialConsentGrants() async {
+    final db = await database;
+    final now = DateTime.now().toUtc().toIso8601String();
+    await db.transaction((txn) async {
+      await txn.update(
+        'commercial_consent_grants',
+        {
+          'status': 'withdrawn',
+          'withdrawn_at_utc': now,
+          'processing_state': 'purge_queued_unsubmitted',
+          'updated_at_utc': now,
+        },
+        where: 'status = ?',
+        whereArgs: ['active'],
+      );
+      await txn.delete(
+        'commercial_contribution_queue',
+        where: "status = 'queued'",
       );
     });
   }

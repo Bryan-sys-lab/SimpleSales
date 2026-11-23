@@ -108,3 +108,33 @@ Follow the supplied order: **13 → 14 → 18 → 15 → 16 → 17**. Complete a
   app analysis passed with no issues. Backend canonical/quality/control suite
   passed 13 tests; backend build and Prisma validation passed. Admin production
   build passed. No Flutter app build was run.
+
+## Patch 15 implementation update (2026-11-23)
+
+- Implemented the consent lifecycle on the mobile app: owner-only Settings
+  entry, six explicit granular scopes, default-off collection disclosure,
+  affirmative grant evidence, SHA-256 notice digest, app/schema/dictionary
+  versions, authority evidence and withdrawal.
+- Added app schema v92 with `commercial_consent_grants` and
+  `commercial_contribution_queue`. Withdrawal marks active local grants
+  withdrawn and deletes unsent queued commercial batches in the same
+  transaction. The queue is separate from owner backup and checkout.
+- Backend gained a tenant-authenticated commercial consent route. It validates
+  scope allowlists, notice evidence, schema/dictionary versions and owner or
+  authorized-representative authority. Withdrawal marks grants withdrawn and
+  changes processing state to purge queued unsubmitted work.
+- Prisma/PostgreSQL and D1 migrations add `commercial_consent_grants`.
+  Prisma schema generation and validation pass.
+- Admin commercial-policy now obtains real backend consent status counts and
+  displays scope allowlists plus controller/processor, ODPC, DPIA,
+  cross-border and partner-contract release gates. It never enables collection.
+- Production commercial contribution remains disabled. No counsel, ODPC,
+  DPIA or partner-contract approval was claimed.
+- Verification: app consent/migration suite passed 15 tests; app analysis passed
+  with no issues. Backend consent/policy/business-context suite passed 11
+  tests; Prisma generation/validation and backend build passed. Admin production
+  build passed. D1 migration SQL executed successfully in isolated SQLite and
+  required consent columns were verified.
+- Limitation: Wrangler local D1 runtime returned repeatable `write EOF` errors
+  for both existing and isolated persistence state. Live Wrangler D1
+  application remains blocked and was not claimed as pass.
