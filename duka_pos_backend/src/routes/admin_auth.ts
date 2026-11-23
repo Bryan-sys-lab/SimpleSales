@@ -136,7 +136,14 @@ router.get('/session', systemAdminMiddleware, (req, res) => res.json({
   canAssignTasks: req.adminAccess?.canAssignTasks ?? false,
 }));
 
-router.post('/ws-ticket', systemAdminMiddleware, (_req, res) => res.json({ ticket: issueAdminWebSocketTicket(), expiresIn: 30 }));
+router.post('/ws-ticket', systemAdminMiddleware, (req, res) => {
+  const isSuperAdmin = req.adminAccess?.isSuperAdmin ?? false;
+  const permissions = isSuperAdmin
+    ? [...permissionOptions]
+    : req.adminAccess?.permissions ?? [];
+  const ticket = issueAdminWebSocketTicket({ isSuperAdmin, permissions });
+  return res.json({ ticket, expiresIn: 30, isSuperAdmin, permissions });
+});
 
 router.get('/access-catalog', systemAdminMiddleware, (req, res) => {
   const access = req.adminAccess;

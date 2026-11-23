@@ -264,7 +264,8 @@ export const systemAdminMiddleware = async (req: express.Request, res: express.R
   // hide screens and controls they cannot use.
   if (
     (method === 'GET' && path === '/admin/auth/session') ||
-    (method === 'POST' && path === '/admin/auth/refresh')
+    (method === 'POST' && path === '/admin/auth/refresh') ||
+    (method === 'POST' && path === '/admin/auth/ws-ticket')
   ) return next();
   const permission = adminPermissionFor(method, path);
   if (!permission || !permissions.includes(permission)) return res.status(403).json({ error: 'Administrator permission required', permission, requestId: req.requestId });
@@ -282,6 +283,7 @@ export function adminPermissionFor(method: string, path: string): string | null 
   if (/\/org\/tasks(?:\/|$)/.test(path)) return method === 'POST' ? 'tasks:manage' : 'tasks:read';
   if (/\/users(?:\/|$)/.test(path)) return method === 'GET' ? 'users:read' : 'users:manage';
   if (/\/tenants(?:\/|$)/.test(path)) return method === 'GET' ? 'tenants:read' : 'tenants:manage';
+  if (/\/telemetry(?:\/|$)/.test(path)) return method === 'GET' ? 'sessions:read' : 'sessions:manage';
   if (/\/sessions(?:\/|$)/.test(path)) return method === 'GET' ? 'sessions:read' : 'sessions:manage';
   if (/\/diagnostics(?:\/|$)/.test(path)) return method === 'GET' ? 'diagnostics:read' : 'diagnostics:manage';
   if (/\/commercial\/(?:ledger|aggregate-preview|quality)/.test(path)) return method === 'GET' ? 'commercial:read' : 'commercial:manage';

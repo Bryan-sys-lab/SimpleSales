@@ -10,7 +10,9 @@ import { withAdminLivePublisher } from "./services/admin_live_broker.js";
 import {
   consumeAdminLiveTicket,
   registerAdminLiveTicket,
+  type AdminLiveAccess,
 } from "./services/admin_ws_ticket_store.js";
+import { adminLiveInvalidationFor } from "./services/admin_live_invalidation.js";
 
 function makeSocket(): Duplex {
   const socket = new Duplex({
@@ -141,9 +143,19 @@ export default {
       request.method === "POST" &&
       response.ok
     ) {
-      let payload: { ticket?: unknown; expiresIn?: unknown };
+      let payload: {
+        ticket?: unknown;
+        expiresIn?: unknown;
+        isSuperAdmin?: unknown;
+        permissions?: unknown;
+      };
       try {
-        payload = await response.clone().json() as { ticket?: unknown; expiresIn?: unknown };
+        payload = await response.clone().json() as {
+          ticket?: unknown;
+          expiresIn?: unknown;
+          isSuperAdmin?: unknown;
+          permissions?: unknown;
+        };
       } catch {
         return Response.json({ error: "Admin live ticket response was invalid" }, { status: 502 });
       }
@@ -156,7 +168,12 @@ export default {
           new Request("https://admin-live.internal/ticket", {
             method: "POST",
             headers: { "x-admin-live-internal": "1", "content-type": "application/json" },
-            body: JSON.stringify(payload),
+            body: JSON.stringify({
+              ticket: payload.ticket,
+              expiresIn: payload.expiresIn,
+              isSuperAdmin: payload.isSuperAdmin === true,
+              permissions: Array.isArray(payload.permissions) ? payload.permissions : [],
+            }),
           }),
         );
       } catch (error) {
@@ -188,6 +205,25 @@ export default {
             }),
           }),
         );
+      }
+    }
+    const invalidation = adminLiveInvalidationFor(request.method, url.pathname);
+    if (invalidation && response.status >= 200 && response.status < 300) {
+      try {
+        const published = await adminLive().fetch(
+          new Request("https://admin-live.internal/broadcast", {
+            method: "POST",
+            headers: { "x-admin-live-internal": "1" },
+            body: JSON.stringify({
+              type: "admin_data_changed",
+              ...invalidation,
+              at: new Date().toISOString(),
+            }),
+          }),
+        );
+        if (!published.ok) console.error("admin data invalidation publish failed", published.status);
+      } catch (error) {
+        console.error("admin data invalidation publish failed", error);
       }
     }
     return response;
@@ -269,8 +305,24 @@ export class AdminLiveHub extends DurableObject {
       url.pathname === "/broadcast"
     ) {
       const message = await request.text();
+      let requiredPermissions: string[] = [];
+      try {
+        const payload = JSON.parse(message) as { requiredPermission?: unknown; requiredPermissions?: unknown };
+        requiredPermissions = Array.isArray(payload.requiredPermissions)
+          ? payload.requiredPermissions.filter((permission): permission is string => typeof permission === "string")
+          : typeof payload.requiredPermission === "string" ? [payload.requiredPermission] : [];
+      } catch {
+        return new Response("Invalid event message", { status: 400 });
+      }
       for (const socket of this.ctx.getWebSockets()) {
-        if (socket.readyState === WebSocket.OPEN) socket.send(message);
+        if (socket.readyState !== WebSocket.OPEN) continue;
+        const access = socket.deserializeAttachment() as AdminLiveAccess | null;
+        if (
+          requiredPermissions.length > 0 &&
+          !access?.isSuperAdmin &&
+          !requiredPermissions.some((permission) => access?.permissions.includes(permission))
+        ) continue;
+        socket.send(message);
       }
       return new Response(null, { status: 204 });
     }
@@ -279,7 +331,12 @@ export class AdminLiveHub extends DurableObject {
       request.method === "POST" &&
       url.pathname === "/ticket"
     ) {
-      const payload = await request.json() as { ticket?: unknown; expiresIn?: unknown };
+      const payload = await request.json() as {
+        ticket?: unknown;
+        expiresIn?: unknown;
+        isSuperAdmin?: unknown;
+        permissions?: unknown;
+      };
       if (
         typeof payload.ticket !== "string" ||
         !/^[A-Za-z0-9_-]{43}$/.test(payload.ticket) ||
@@ -294,6 +351,13 @@ export class AdminLiveHub extends DurableObject {
         this.ctx.storage,
         payload.ticket,
         payload.expiresIn,
+        Date.now(),
+        {
+          isSuperAdmin: payload.isSuperAdmin === true,
+          permissions: Array.isArray(payload.permissions)
+            ? payload.permissions.filter((permission): permission is string => typeof permission === "string")
+            : [],
+        },
       );
       if (!registered) return new Response("Invalid ticket", { status: 400 });
       return new Response(null, { status: 204 });
@@ -308,12 +372,13 @@ export class AdminLiveHub extends DurableObject {
     if (!ticket || !/^[A-Za-z0-9_-]{43}$/.test(ticket)) {
       return new Response("Invalid or expired ticket", { status: 401 });
     }
-    const valid = await consumeAdminLiveTicket(this.ctx.storage, ticket);
-    if (!valid) return new Response("Invalid or expired ticket", { status: 401 });
+    const access = await consumeAdminLiveTicket(this.ctx.storage, ticket);
+    if (!access) return new Response("Invalid or expired ticket", { status: 401 });
 
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
     this.ctx.acceptWebSocket(server);
+    server.serializeAttachment(access);
     server.send(JSON.stringify({ type: "connected", at: new Date().toISOString() }));
     return new Response(null, { status: 101, webSocket: client });
   }

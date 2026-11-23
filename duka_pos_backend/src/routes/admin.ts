@@ -165,8 +165,38 @@ router.post('/diagnostics', authMiddleware, requireRole('admin', 'manager', 'cas
     (count, index) => count + (results[index]?.meta.changes ?? 0),
     0,
   );
+  const entriesByKind = { crash: 0, error: 0, warning: 0 };
+  const insertedEntries: Array<{ kind: 'crash' | 'error' | 'warning'; createdAt: string }> = [];
+  entryResultIndexes.forEach((resultIndex, entryIndex) => {
+    if ((results[resultIndex]?.meta.changes ?? 0) > 0) {
+      const entry = input.crashes[entryIndex];
+      entriesByKind[entry.kind] += 1;
+      insertedEntries.push({
+        kind: entry.kind,
+        createdAt: entry.createdAt ? new Date(entry.createdAt).toISOString() : now.toISOString(),
+      });
+    }
+  });
   const diagnostic = { id: diagnosticId, insertedCount };
-  await broadcastAdmin({ type: 'device_diagnostic_reported', tenantId, diagnosticId: diagnostic.id, crashes: diagnostic.insertedCount, at: now.toISOString() });
+  await broadcastAdmin({
+    type: 'device_diagnostic_reported',
+    requiredPermission: 'diagnostics:read',
+    tenantId,
+    diagnosticId: diagnostic.id,
+    deviceId,
+    platform: input.platform,
+    osVersion: input.osVersion,
+    appVersion: input.appVersion,
+    buildNumber: input.buildNumber,
+    locale: input.locale,
+    manufacturer: input.manufacturer ?? null,
+    model: input.model ?? null,
+    lastSeen: now.toISOString(),
+    insertedCount: diagnostic.insertedCount,
+    entriesByKind,
+    entries: insertedEntries,
+    at: now.toISOString(),
+  });
   return res.status(201).json({ id: diagnostic.id, crashesReceived: diagnostic.insertedCount });
 }));
 
@@ -782,6 +812,121 @@ router.get(
   })
 );
 
+const telemetryAdminListQuerySchema = z.object({
+  tenantId: tenantIdentifier.optional(),
+  name: z.string().trim().min(1).max(120).regex(/^[A-Za-z0-9_.-]+$/).optional(),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+  cursor: z.string().trim().min(1).max(120).optional(),
+  limit: z.coerce.number().int().positive().max(200).default(100),
+}).strict().superRefine((query, context) => {
+  if (query.from && query.to && new Date(query.from) > new Date(query.to)) {
+    context.addIssue({
+      code: 'custom',
+      path: ['to'],
+      message: 'End date must be on or after start date',
+    });
+  }
+});
+
+router.get('/telemetry/events', asyncHandler(async (req: Request, res: Response) => {
+  const query = parseBody(telemetryAdminListQuerySchema, req.query);
+  const where: Record<string, unknown> = {};
+  if (query.tenantId) where.tenantId = query.tenantId;
+  if (query.name) where.name = query.name;
+  if (query.from || query.to) {
+    where.at = {
+      ...(query.from ? { gte: new Date(query.from) } : {}),
+      ...(query.to ? { lte: new Date(query.to) } : {}),
+    };
+  }
+  const records = await prisma.telemetryEvent.findMany({
+    where,
+    select: {
+      id: true,
+      tenantId: true,
+      deviceId: true,
+      sessionJti: true,
+      name: true,
+      at: true,
+      route: true,
+      createdAt: true,
+      tenant: { select: { id: true, shopName: true } },
+    },
+    orderBy: [{ at: 'desc' }, { id: 'desc' }],
+    ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+    take: query.limit + 1,
+  });
+  const hasMore = records.length > query.limit;
+  const events = hasMore ? records.slice(0, query.limit) : records;
+  return res.json({
+    events,
+    nextCursor: hasMore ? events[events.length - 1]?.id ?? null : null,
+  });
+}));
+
+const observabilityRangeSchema = z.object({
+  range: z.enum(['24h', '7d', '30d']).default('24h'),
+}).strict();
+
+function rangeStart(range: '24h' | '7d' | '30d'): Date {
+  const durationMs = range === '24h'
+    ? 24 * 60 * 60 * 1000
+    : range === '7d'
+      ? 7 * 24 * 60 * 60 * 1000
+      : 30 * 24 * 60 * 60 * 1000;
+  return new Date(Date.now() - durationMs);
+}
+
+router.get('/observability/telemetry', asyncHandler(async (req: Request, res: Response) => {
+  const { range } = parseBody(observabilityRangeSchema, req.query);
+  const from = rangeStart(range);
+  const where = { at: { gte: from } };
+  const [eventCount, eventTypes, trend] = await Promise.all([
+    prisma.telemetryEvent.count({ where }),
+    prisma.telemetryEvent.groupBy({
+      by: ['name'],
+      where,
+      _count: { _all: true },
+      orderBy: { _count: { name: 'desc' } },
+      take: 8,
+    }),
+    getD1DatabaseBinding().prepare(`
+      SELECT strftime('%Y-%m-%dT%H:00:00Z', at) AS hour, COUNT(*) AS count
+      FROM telemetry_events
+      WHERE at >= ?
+      GROUP BY hour
+      ORDER BY hour ASC
+    `).bind(from.toISOString()).all<{ hour: string; count: number }>(),
+  ]);
+  return res.json({
+    range,
+    from: from.toISOString(),
+    eventCount,
+    eventTypes: eventTypes.map((row) => ({ name: row.name, count: row._count._all })),
+    trend: trend.results ?? [],
+  });
+}));
+
+router.get('/observability/diagnostics', asyncHandler(async (req: Request, res: Response) => {
+  const { range } = parseBody(observabilityRangeSchema, req.query);
+  const from = rangeStart(range);
+  const [deviceCount, entries] = await Promise.all([
+    prisma.deviceDiagnostic.count(),
+    prisma.deviceCrashEntry.groupBy({
+      by: ['kind'],
+      where: { createdAt: { gte: from } },
+      _count: { _all: true },
+    }),
+  ]);
+  return res.json({
+    range,
+    from: from.toISOString(),
+    deviceCount,
+    entries: entries.map((row) => ({ kind: row.kind, count: row._count._all })),
+  });
+}));
+
 router.get('/sessions/:sessionJti/replay', asyncHandler(async (req: Request, res: Response) => {
   const sessionJti = req.params.sessionJti as string;
   if (!/^[A-Za-z0-9_-]{8,128}$/.test(sessionJti)) return res.status(400).json({ error: 'Invalid session identifier' });
@@ -805,13 +950,23 @@ router.get('/sessions/:sessionJti/replay', asyncHandler(async (req: Request, res
 }));
 
 // ---------------------------------------------------------------------------
-// GET /api/admin/tenants — all tenants with active-profile and sale counts
+// GET /api/admin/tenants — tenant counts, with optional bounded activity data
 // ---------------------------------------------------------------------------
 
 router.get(
   '/tenants',
-  asyncHandler(async (_req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response) => {
+    const limitValue = req.query.limit;
+    let take: number | undefined;
+    if (limitValue !== undefined) {
+      if (typeof limitValue !== 'string' || !/^\d+$/.test(limitValue) || Number(limitValue) < 1) {
+        return res.status(400).json({ error: 'limit must be a positive integer' });
+      }
+      take = Math.min(Number(limitValue), 100);
+    }
+    const includeActivity = req.query.activity === '30d';
     const tenants = await prisma.tenant.findMany({
+      ...(take ? { take } : {}),
       include: {
         _count: {
           select: {
@@ -822,7 +977,28 @@ router.get(
       },
       orderBy: { createdAt: 'desc' },
     });
-    return res.json({ tenants });
+    const activityRows = includeActivity && tenants.length > 0
+      ? await prisma.sale.groupBy({
+          by: ['tenantId'],
+          where: {
+            tenantId: { in: tenants.map((tenant) => tenant.id) },
+            createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+          },
+          _count: { _all: true },
+          _max: { createdAt: true },
+        })
+      : [];
+    const activityByTenant = new Map(activityRows.map((row) => [row.tenantId, {
+      salesCount: row._count._all,
+      lastSaleAt: row._max.createdAt?.toISOString() ?? null,
+    }]));
+    const responseTenants = includeActivity
+      ? tenants.map((tenant) => ({
+        ...tenant,
+        activity30d: activityByTenant.get(tenant.id) ?? { salesCount: 0, lastSaleAt: null },
+      }))
+      : tenants;
+    return res.json({ tenants: responseTenants });
   })
 );
 
@@ -1293,13 +1469,14 @@ const diagnosticListQuerySchema = z.object({
   kind: z.enum(['crash', 'error', 'warning']).optional().nullable(),
   from: z.string().datetime().optional().nullable(),
   to: z.string().datetime().optional().nullable(),
+  cursor: z.string().trim().min(1).max(120).optional(),
   limit: z.coerce.number().int().positive().max(500).default(100),
 }).strict();
 
 router.get(
   '/diagnostics',
   asyncHandler(async (req: Request, res: Response) => {
-    const { tenantId, platform, kind, from, to, limit } = parseBody(diagnosticListQuerySchema, req.query);
+    const { tenantId, platform, kind, from, to, cursor, limit } = parseBody(diagnosticListQuerySchema, req.query);
 
     const where: Record<string, unknown> = {};
     if (tenantId) where.tenantId = tenantId;
@@ -1310,7 +1487,7 @@ router.get(
       if (to) (where.lastSeen as Record<string, unknown>).lte = to;
     }
 
-    const diagnostics = await prisma.deviceDiagnostic.findMany({
+    const found = await prisma.deviceDiagnostic.findMany({
       where,
       include: {
         _count: { select: { crashes: true } },
@@ -1318,9 +1495,12 @@ router.get(
           ? { where: { kind }, orderBy: { createdAt: 'desc' }, take: 5 }
           : { orderBy: { createdAt: 'desc' }, take: 5 },
       },
-      orderBy: { lastSeen: 'desc' },
-      take: limit,
+      orderBy: [{ lastSeen: 'desc' }, { id: 'desc' }],
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      take: limit + 1,
     });
+    const hasMore = found.length > limit;
+    const diagnostics = hasMore ? found.slice(0, limit) : found;
 
     return res.json({
       diagnostics: diagnostics.map((d) => ({
@@ -1349,6 +1529,7 @@ router.get(
           createdAt: c.createdAt,
         })),
       })),
+      nextCursor: hasMore ? diagnostics[diagnostics.length - 1]?.id ?? null : null,
     });
   })
 );

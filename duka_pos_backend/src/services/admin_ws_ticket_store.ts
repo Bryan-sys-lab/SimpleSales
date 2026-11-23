@@ -3,8 +3,15 @@ export type AdminTicketTransaction = {
   delete(key: string): Promise<boolean>;
 };
 
+export type AdminLiveAccess = {
+  isSuperAdmin: boolean;
+  permissions: string[];
+};
+
+export type StoredAdminTicket = AdminLiveAccess & { expiresAt: number };
+
 export type AdminTicketStorage = {
-  put(key: string, value: number): Promise<void>;
+  put(key: string, value: StoredAdminTicket): Promise<void>;
   transaction<T>(callback: (storage: AdminTicketTransaction) => Promise<T>): Promise<T>;
 };
 
@@ -15,6 +22,7 @@ export async function registerAdminLiveTicket(
   ticket: unknown,
   expiresIn: unknown,
   now = Date.now(),
+  access: AdminLiveAccess = { isSuperAdmin: false, permissions: [] },
 ): Promise<boolean> {
   if (
     typeof ticket !== 'string' ||
@@ -22,11 +30,22 @@ export async function registerAdminLiveTicket(
     typeof expiresIn !== 'number' ||
     !Number.isInteger(expiresIn) ||
     expiresIn < 1 ||
-    expiresIn > 60
+    expiresIn > 60 ||
+    typeof access.isSuperAdmin !== 'boolean' ||
+    !Array.isArray(access.permissions) ||
+    access.permissions.length > 100 ||
+    access.permissions.some((permission) =>
+      typeof permission !== 'string' ||
+      !/^[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]*$/.test(permission),
+    )
   ) {
     return false;
   }
-  await storage.put(await storageKey(ticket), now + expiresIn * 1000);
+  await storage.put(await storageKey(ticket), {
+    expiresAt: now + expiresIn * 1000,
+    isSuperAdmin: access.isSuperAdmin,
+    permissions: [...new Set(access.permissions)],
+  });
   return true;
 }
 
@@ -34,13 +53,26 @@ export async function consumeAdminLiveTicket(
   storage: Pick<AdminTicketStorage, 'transaction'>,
   ticket: string,
   now = Date.now(),
-): Promise<boolean> {
-  if (!TICKET_PATTERN.test(ticket)) return false;
+): Promise<AdminLiveAccess | null> {
+  if (!TICKET_PATTERN.test(ticket)) return null;
   const key = await storageKey(ticket);
   return storage.transaction(async (transaction) => {
-    const expiresAt = await transaction.get<number>(key);
+    const stored = await transaction.get<StoredAdminTicket>(key);
     await transaction.delete(key);
-    return typeof expiresAt === 'number' && expiresAt > now;
+    if (
+      !stored ||
+      !Number.isFinite(stored.expiresAt) ||
+      stored.expiresAt <= now ||
+      typeof stored.isSuperAdmin !== 'boolean' ||
+      !Array.isArray(stored.permissions)
+    ) return null;
+    return {
+      isSuperAdmin: stored.isSuperAdmin,
+      permissions: stored.permissions.filter((permission): permission is string =>
+        typeof permission === 'string' &&
+        /^[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]*$/.test(permission),
+      ),
+    };
   });
 }
 

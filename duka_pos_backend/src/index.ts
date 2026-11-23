@@ -58,8 +58,9 @@ import businessContextRoutes from './routes/business_context';
 import saleEvidenceRoutes from './routes/sale_evidence';
 import { verifyAccessToken } from './lib/jwt';
 import { addLiveClient, broadcastAll, broadcastTenantChange, removeLiveClient } from './services/live_broker';
-import { addAdminLiveClient, removeAdminLiveClient } from './services/admin_live_broker';
+import { addAdminLiveClient, broadcastAdmin, removeAdminLiveClient } from './services/admin_live_broker';
 import { consumeAdminWebSocketTicket } from './services/admin_ws_tickets';
+import { adminLiveInvalidationFor } from './services/admin_live_invalidation';
 
 if (typeof module !== 'undefined') { dotenv.config(); }
 
@@ -328,6 +329,22 @@ app.use('/callback/mpesa', mpesaWebhookRoutes);
 
 // Admin routes authenticate their own credential domain. Mount them before
 // shop-profile auth so the platform token is never treated as a till user.
+if (isNode) {
+  app.use('/api', (req, res, next) => {
+    const invalidation = adminLiveInvalidationFor(req.method, req.originalUrl);
+    if (invalidation) {
+      res.once('finish', () => {
+        if (res.statusCode < 200 || res.statusCode >= 300) return;
+        void broadcastAdmin({
+          type: 'admin_data_changed',
+          ...invalidation,
+          at: new Date().toISOString(),
+        }).catch((error) => console.error('admin data invalidation publish failed', error));
+      });
+    }
+    next();
+  });
+}
 app.use('/api/admin/auth', adminAuthRoutes);
 app.use('/api/admin/org', adminOrgRoutes);
 app.use('/api/admin/membership', adminMembershipRoutes);
@@ -444,11 +461,12 @@ if (isNode && require.main === module) {
     const ticket = requestUrl.searchParams.get('ticket') ?? '';
     const expectedOrigin = process.env.ADMIN_APP_ORIGIN;
     const origin = request.headers.origin;
-    if ((expectedOrigin && origin !== expectedOrigin) || !consumeAdminWebSocketTicket(ticket)) {
+    const access = consumeAdminWebSocketTicket(ticket);
+    if ((expectedOrigin && origin !== expectedOrigin) || !access) {
       ws.close(1008, 'System administrator access required');
       return;
     }
-    const client = { socket: ws };
+    const client = { socket: ws, ...access };
     addAdminLiveClient(client);
     ws.once('close', () => removeAdminLiveClient(client));
     ws.on('message', (raw) => {
