@@ -86,8 +86,15 @@ try {
   $env:BASE_URL = $stagingUri.GetLeftPart([UriPartial]::Authority)
 
   Write-Host 'Checking the restricted staging auth secret name...'
-  $stagingSecretOutput = & $wranglerPath secret list --env staging --config $configPath --format json 2>&1
-  if ($LASTEXITCODE -ne 0) {
+  $previousErrorActionPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    $stagingSecretOutput = & $wranglerPath secret list --env staging --config $configPath --format json 2>$null
+    $stagingSecretExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+  if ($stagingSecretExitCode -ne 0) {
     throw 'Could not list staging Worker secret names. Deployment was stopped.'
   }
   try {
@@ -117,8 +124,15 @@ try {
   }
 
   Write-Host 'Checking required Worker secrets (names only)...'
-  $secretOutput = & $wranglerPath secret list --config $configPath --format json 2>&1
-  if ($LASTEXITCODE -ne 0) {
+  $previousErrorActionPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    $secretOutput = & $wranglerPath secret list --config $configPath --format json 2>$null
+    $secretExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+  if ($secretExitCode -ne 0) {
     throw 'Could not list Worker secret names. Deployment was stopped.'
   }
   try {
