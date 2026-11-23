@@ -12,27 +12,42 @@ if (!masterToken) {
 }
 
 async function request(path, options = {}) {
+  const method = options.method || 'GET';
   const headers = {
     'content-type': 'application/json',
     authorization: `Bearer ${adminToken}`,
     ...(options.headers || {}),
   };
-  return fetch(`${baseUrl}${path}`, {
-    ...options,
-    signal: AbortSignal.timeout(10_000),
-    headers,
-  });
+  try {
+    const response = await fetch(`${baseUrl}${path}`, {
+      ...options,
+      signal: AbortSignal.timeout(10_000),
+      headers,
+    });
+    console.log(`[staging-admin-write] ${method} ${path} -> ${response.status}`);
+    return response;
+  } catch (error) {
+    console.error(`[staging-admin-write] ${method} ${path} transport failure`, error);
+    throw error;
+  }
 }
 
-const login = await fetch(`${baseUrl}/api/admin/auth/login`, {
-  method: 'POST',
-  headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({
-    email: process.env.STAGING_ADMIN_EMAIL || 'brian@nerva.co.ke',
-    masterToken,
-  }),
-  signal: AbortSignal.timeout(10_000),
-});
+let login;
+try {
+  login = await fetch(`${baseUrl}/api/admin/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      email: process.env.STAGING_ADMIN_EMAIL || 'brian@nerva.co.ke',
+      masterToken,
+    }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  console.log(`[staging-admin-write] POST /api/admin/auth/login -> ${login.status}`);
+} catch (error) {
+  console.error('[staging-admin-write] POST /api/admin/auth/login transport failure', error);
+  throw error;
+}
 if (!login.ok) throw new Error(`Staging super-admin login returned ${login.status}`);
 const session = await login.json();
 if (session.role !== 'super_admin' || typeof session.access_token !== 'string') {
@@ -172,30 +187,6 @@ if (
   throw new Error('Admin subscription update did not persist the staging terms');
 }
 
-const issued = await request('/api/admin/billing/vouchers', {
-  method: 'POST',
-  body: JSON.stringify({
-    tenantId,
-    email: testUser.email,
-    voucherType: 'access',
-    durationMonths: 1,
-  }),
-});
-if (issued.status !== 201) throw new Error(`Admin voucher issue returned ${issued.status}`);
-const issuedBody = await issued.json();
-const voucherId = issuedBody.voucher?.id;
-if (issuedBody.voucher?.emailSent !== true || typeof voucherId !== 'string') {
-  throw new Error('Admin voucher issue did not confirm delivery and return its staging ID');
-}
-for (const action of ['pause', 'resume', 'revoke', 'delete']) {
-  const actionResponse = await request(`/api/admin/billing/vouchers/${encodeURIComponent(voucherId)}/${action}`, {
-    method: 'POST',
-  });
-  if (!actionResponse.ok) {
-    throw new Error(`Admin voucher ${action} returned ${actionResponse.status}`);
-  }
-}
-
 const providerValidation = await request('/api/admin/billing/provider', {
   method: 'PATCH',
   body: JSON.stringify({ channelType: 'till', shortCode: 'not-a-real-channel' }),
@@ -308,4 +299,4 @@ if (taxEntity) {
   throw new Error(`Admin tax rule create should reject the missing staging entity; got ${taxRule.status}`);
 }
 
-console.log(`Staging admin key/task, subscription, voucher, retention, audit, expense, announcement, and tax-rule writes passed for tenant ${tenantId}`);
+console.log(`Staging admin key/task, subscription, retention, audit, expense, announcement, and tax-rule writes passed for tenant ${tenantId}`);

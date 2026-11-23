@@ -53,6 +53,10 @@
         {
           "binding": "BACKUP_BUCKET",
           "bucket_name": "duka-pos-backups-staging"
+        },
+        {
+          "binding": "PROFILE_IMAGE_BUCKET",
+          "bucket_name": "duka-pos-profile-photos-staging"
         }
       ],
       "durable_objects": {
