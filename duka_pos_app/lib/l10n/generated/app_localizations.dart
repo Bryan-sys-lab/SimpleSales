@@ -2,13 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/intl.dart' as intl;
+import 'package:material_ui/material_ui.dart' show GlobalMaterialLocalizations;
 
 import 'app_localizations_en.dart';
 import 'app_localizations_sw.dart';
 
-// ignore_for_file: type=lint, deprecated_member_use
+// ignore_for_file: type=lint
 
 /// Callers can lookup localized strings with an instance of AppLocalizations
 /// returned by `AppLocalizations.of(context)`.
@@ -78,8 +78,7 @@ abstract class AppLocalizations {
   /// delegates.
   ///
   /// Returns a list of localizations delegates containing this delegate along with
-  /// GlobalMaterialLocalizations.delegate, GlobalCupertinoLocalizations.delegate,
-  /// and GlobalWidgetsLocalizations.delegate.
+  /// the Material and Widgets delegates.
   ///
   /// Additional delegates can be added by appending to this list in
   /// MaterialApp. This list does not have to be used at all if a custom list
@@ -87,9 +86,7 @@ abstract class AppLocalizations {
   static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
       <LocalizationsDelegate<dynamic>>[
     delegate,
-    GlobalMaterialLocalizations.delegate,
-    GlobalCupertinoLocalizations.delegate,
-    GlobalWidgetsLocalizations.delegate,
+    ...GlobalMaterialLocalizations.delegates,
   ];
 
   /// A list of this localizations delegate's supported locales.
