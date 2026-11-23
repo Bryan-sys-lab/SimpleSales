@@ -52,6 +52,9 @@ describe("verification email branding", () => {
     expect(sent.html).toContain("123456");
     expect(sent.html).toContain("font-family:ui-monospace");
     expect(sent.html).not.toContain("NERVA_LOGO_URL");
+    expect(sent.subject).toContain("verification code");
+    expect(sent.text).not.toMatch(/voucher/i);
+    expect(sent.html).not.toMatch(/voucher/i);
     expect(sent.to).toEqual(["owner@example.com"]);
     expect(sent.attachments).toEqual([
       expect.objectContaining({

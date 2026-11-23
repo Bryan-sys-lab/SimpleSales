@@ -6,6 +6,11 @@ import { verifyAccessToken } from "./lib/jwt.js";
 import { setCloudflareEmailBinding } from "./lib/email_sender.js";
 import { setD1DatabaseBinding } from "./lib/prisma.js";
 import type { BackupStorage, ProfileImageStorage } from "./lib/r2.js";
+import { withAdminLivePublisher } from "./services/admin_live_broker.js";
+import {
+  consumeAdminLiveTicket,
+  registerAdminLiveTicket,
+} from "./services/admin_ws_ticket_store.js";
 
 function makeSocket(): Duplex {
   const socket = new Duplex({
@@ -24,11 +29,21 @@ export default {
     setCloudflareEmailBinding(
       env?.EMAIL && typeof env.EMAIL.send === "function" ? env.EMAIL : null,
     );
+    const adminLive = () => env.ADMIN_LIVE.get(env.ADMIN_LIVE.idFromName("admin"));
     for (const [k, v] of Object.entries(env || {})) {
       if (typeof v === "string") process.env[k] = v;
     }
 
     const url = new URL(request.url);
+    if (url.pathname === "/api/admin/live") {
+      if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
+        return new Response("Expected websocket", { status: 426 });
+      }
+      if (request.headers.get("Origin") !== env?.ADMIN_APP_ORIGIN) {
+        return new Response("Invalid origin", { status: 403 });
+      }
+      return adminLive().fetch(request);
+    }
     if (url.pathname === "/live" || url.pathname === "/api/live") {
       const token = request.headers
         .get("authorization")
@@ -107,11 +122,51 @@ export default {
         return origEnd(chunk, ...args);
       };
 
-      app(req as any, res as any);
+      withAdminLivePublisher(async (message) => {
+        const published = await adminLive().fetch(
+          new Request("https://admin-live.internal/broadcast", {
+            method: "POST",
+            headers: { "x-admin-live-internal": "1" },
+            body: message,
+          }),
+        );
+        if (!published.ok) throw new Error(`Admin live broadcast returned ${published.status}`);
+      }, () => app(req as any, res as any));
 
       if (bodyText) req.push(Buffer.from(bodyText));
       req.push(null);
     });
+    if (
+      url.pathname === "/api/admin/auth/ws-ticket" &&
+      request.method === "POST" &&
+      response.ok
+    ) {
+      let payload: { ticket?: unknown; expiresIn?: unknown };
+      try {
+        payload = await response.clone().json() as { ticket?: unknown; expiresIn?: unknown };
+      } catch {
+        return Response.json({ error: "Admin live ticket response was invalid" }, { status: 502 });
+      }
+      if (typeof payload.ticket !== "string") {
+        return Response.json({ error: "Admin live ticket was missing" }, { status: 502 });
+      }
+      let registered: Response;
+      try {
+        registered = await adminLive().fetch(
+          new Request("https://admin-live.internal/ticket", {
+            method: "POST",
+            headers: { "x-admin-live-internal": "1", "content-type": "application/json" },
+            body: JSON.stringify(payload),
+          }),
+        );
+      } catch (error) {
+        console.error("admin live ticket registration failed", error);
+        return Response.json({ error: "Admin live service is unavailable" }, { status: 503 });
+      }
+      if (!registered.ok) {
+        return Response.json({ error: "Admin live ticket could not be registered" }, { status: 503 });
+      }
+    }
     if (
       request.method !== "GET" &&
       request.method !== "HEAD" &&
@@ -203,4 +258,82 @@ export class LiveRoom extends DurableObject {
       if (s.readyState === 1) s.send(message);
     }
   }
+}
+
+export class AdminLiveHub extends DurableObject {
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    if (
+      request.headers.get("x-admin-live-internal") === "1" &&
+      request.method === "POST" &&
+      url.pathname === "/broadcast"
+    ) {
+      const message = await request.text();
+      for (const socket of this.ctx.getWebSockets()) {
+        if (socket.readyState === WebSocket.OPEN) socket.send(message);
+      }
+      return new Response(null, { status: 204 });
+    }
+    if (
+      request.headers.get("x-admin-live-internal") === "1" &&
+      request.method === "POST" &&
+      url.pathname === "/ticket"
+    ) {
+      const payload = await request.json() as { ticket?: unknown; expiresIn?: unknown };
+      if (
+        typeof payload.ticket !== "string" ||
+        !/^[A-Za-z0-9_-]{43}$/.test(payload.ticket) ||
+        typeof payload.expiresIn !== "number" ||
+        !Number.isInteger(payload.expiresIn) ||
+        payload.expiresIn < 1 ||
+        payload.expiresIn > 60
+      ) {
+        return new Response("Invalid ticket", { status: 400 });
+      }
+      const registered = await registerAdminLiveTicket(
+        this.ctx.storage,
+        payload.ticket,
+        payload.expiresIn,
+      );
+      if (!registered) return new Response("Invalid ticket", { status: 400 });
+      return new Response(null, { status: 204 });
+    }
+    if (
+      (url.pathname !== "/api/admin/live" && url.pathname !== "/live") ||
+      request.headers.get("Upgrade")?.toLowerCase() !== "websocket"
+    ) {
+      return new Response("Expected websocket", { status: 426 });
+    }
+    const ticket = url.searchParams.get("ticket");
+    if (!ticket || !/^[A-Za-z0-9_-]{43}$/.test(ticket)) {
+      return new Response("Invalid or expired ticket", { status: 401 });
+    }
+    const valid = await consumeAdminLiveTicket(this.ctx.storage, ticket);
+    if (!valid) return new Response("Invalid or expired ticket", { status: 401 });
+
+    const pair = new WebSocketPair();
+    const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
+    this.ctx.acceptWebSocket(server);
+    server.send(JSON.stringify({ type: "connected", at: new Date().toISOString() }));
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): Promise<void> {
+    if (typeof message !== "string") return;
+    try {
+      const payload = JSON.parse(message) as { type?: unknown };
+      if (payload.type === "ping") socket.send(JSON.stringify({ type: "pong" }));
+    } catch {
+      // Ignore malformed optional signal frames.
+    }
+  }
+
+  async webSocketClose(socket: WebSocket, code: number, reason: string): Promise<void> {
+    if (code >= 1000 && code < 5000 && ![1004, 1005, 1006, 1015].includes(code)) {
+      socket.close(code, reason);
+    } else {
+      socket.close();
+    }
+  }
+
 }

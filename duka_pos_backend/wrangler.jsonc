@@ -11,6 +11,10 @@
       {
         "name": "LIVE_ROOM",
         "class_name": "LiveRoom"
+      },
+      {
+        "name": "ADMIN_LIVE",
+        "class_name": "AdminLiveHub"
       }
     ]
   },
@@ -56,6 +60,10 @@
           {
             "name": "LIVE_ROOM",
             "class_name": "LiveRoom"
+          },
+          {
+            "name": "ADMIN_LIVE",
+            "class_name": "AdminLiveHub"
           }
         ]
       },
@@ -64,6 +72,12 @@
           "tag": "v1",
           "new_sqlite_classes": [
             "LiveRoom"
+          ]
+        },
+        {
+          "tag": "v2",
+          "new_sqlite_classes": [
+            "AdminLiveHub"
           ]
         }
       ],
@@ -86,6 +100,12 @@
       "tag": "v1",
       "new_sqlite_classes": [
         "LiveRoom"
+      ]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": [
+        "AdminLiveHub"
       ]
     }
   ],

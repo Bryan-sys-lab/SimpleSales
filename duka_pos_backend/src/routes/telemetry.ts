@@ -66,7 +66,7 @@ router.post(
     const result = newEvents.length > 0
       ? await prisma.telemetryEvent.createMany({ data: newEvents })
       : { count: 0 };
-    if (result.count > 0) broadcastAdmin({ type: 'session_activity', tenantId, at: new Date().toISOString() });
+    if (result.count > 0) await broadcastAdmin({ type: 'session_activity', tenantId, at: new Date().toISOString() });
     return res.status(201).json({ ingested: result.count });
   })
 );
@@ -175,7 +175,7 @@ router.post(
         tenantId,
         at: new Date().toISOString(),
       });
-      broadcastAdmin({
+      await broadcastAdmin({
         type: 'subscription_quote_requested',
         tenantId,
         at: new Date().toISOString(),

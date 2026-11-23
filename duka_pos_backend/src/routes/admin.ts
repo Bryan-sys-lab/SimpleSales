@@ -166,7 +166,7 @@ router.post('/diagnostics', authMiddleware, requireRole('admin', 'manager', 'cas
     0,
   );
   const diagnostic = { id: diagnosticId, insertedCount };
-  broadcastAdmin({ type: 'device_diagnostic_reported', tenantId, diagnosticId: diagnostic.id, crashes: diagnostic.insertedCount, at: now.toISOString() });
+  await broadcastAdmin({ type: 'device_diagnostic_reported', tenantId, diagnosticId: diagnostic.id, crashes: diagnostic.insertedCount, at: now.toISOString() });
   return res.status(201).json({ id: diagnostic.id, crashesReceived: diagnostic.insertedCount });
 }));
 
@@ -266,12 +266,30 @@ router.post('/billing/vouchers', asyncHandler(async (req: Request, res: Response
       code: 'EMAIL_NOT_CONFIGURED',
     });
   }
-  if (input.profileId) {
-    const profile = await prisma.profile.findUnique({
+  let profile = input.profileId
+    ? await prisma.profile.findUnique({
       where: { id: input.profileId },
-      select: { tenantId: true, email: true },
+      select: { id: true, tenantId: true, email: true, user: { select: { email: true } } },
+    })
+    : null;
+  if (!profile && input.tenantId && !input.email) {
+    profile = await prisma.profile.findFirst({
+      where: { tenantId: input.tenantId, role: 'admin', active: true, deletedAt: null },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, tenantId: true, email: true, user: { select: { email: true } } },
     });
-    if (!profile || profile.email?.toLowerCase() !== input.email) {
+  }
+  const profileEmail = profile?.user?.email?.trim().toLowerCase() ||
+    profile?.email?.trim().toLowerCase();
+  const recipientEmail = input.email ?? profileEmail;
+  if (!recipientEmail) {
+    return res.status(400).json({
+      error: 'A recipient email is required when the selected shop has no owner email',
+      code: 'VOUCHER_RECIPIENT_REQUIRED',
+    });
+  }
+  if (profile) {
+    if (profileEmail !== recipientEmail) {
       return res.status(400).json({
         error: 'Voucher email must match the selected profile',
         code: 'VOUCHER_RECIPIENT_MISMATCH',
@@ -284,14 +302,16 @@ router.post('/billing/vouchers', asyncHandler(async (req: Request, res: Response
       });
     }
   }
+  const tenantId = input.tenantId ?? profile?.tenantId;
+  const profileId = input.profileId ?? (input.tenantId && !input.email ? profile?.id : undefined);
   const generated = generateVoucher();
   const voucher = await prisma.accessVoucher.create({
     data: {
       codeHash: generated.hash,
       codePrefix: generated.prefix,
-      tenantId: input.tenantId,
-      issuedToProfileId: input.profileId,
-      issuedToEmail: input.email,
+      tenantId,
+      issuedToProfileId: profileId,
+      issuedToEmail: recipientEmail,
       expiresAt: null,
       durationMonths: input.durationMonths,
       createdBy: req.auth?.sub ?? 'unknown',
@@ -301,7 +321,7 @@ router.post('/billing/vouchers', asyncHandler(async (req: Request, res: Response
   try {
     await mailer.send({
       kind: 'access_voucher',
-      to: input.email,
+      to: recipientEmail,
       code: generated.code,
       durationMonths: input.durationMonths,
     });
@@ -316,7 +336,7 @@ router.post('/billing/vouchers', asyncHandler(async (req: Request, res: Response
         action: 'access_voucher_email_failed',
         targetType: 'access_voucher',
         targetId: voucher.id,
-        tenantId: input.tenantId ?? null,
+        tenantId: tenantId ?? null,
       },
     });
     log('error', 'admin.voucher_email_failed', {
@@ -331,7 +351,7 @@ router.post('/billing/vouchers', asyncHandler(async (req: Request, res: Response
   await prisma.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: 'create_access_voucher', targetType: 'access_voucher', targetId: voucher.id, tenantId: input.tenantId ?? null } });
   // The plaintext is returned exactly once. It is never persisted or exposed
   // in list/audit responses.
-  return res.status(201).json({ voucher: { id: voucher.id, code: generated.code, codePrefix: voucher.codePrefix, tenantId: voucher.tenantId, email: input.email, durationMonths: input.durationMonths, expiresAt: null, emailSent: true } });
+  return res.status(201).json({ voucher: { id: voucher.id, code: generated.code, codePrefix: voucher.codePrefix, tenantId: voucher.tenantId, email: recipientEmail, durationMonths: input.durationMonths, expiresAt: null, emailSent: true } });
 }));
 
 router.get('/billing/vouchers', asyncHandler(async (_req: Request, res: Response) => {
@@ -576,7 +596,7 @@ router.post('/announcement', asyncHandler(async (req: Request, res: Response) =>
     }, db),
   ]);
   platformAnnouncementNotifier?.({ id, title: input.title, body: input.body });
-  broadcastAdmin({ type: 'platform_announcement', announcement: { id, title: input.title, body: input.body } });
+  await broadcastAdmin({ type: 'platform_announcement', announcement: { id, title: input.title, body: input.body } });
   return res.status(201).json({ id, title: input.title, body: input.body, active: input.active });
 }));
 
@@ -584,7 +604,7 @@ router.delete('/announcement', asyncHandler(async (req: Request, res: Response) 
   await prisma.systemSettings.updateMany({ where: { key: 'platform_announcement_active' }, data: { value: 'false' } });
   await prisma.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: 'clear_platform_announcement', targetType: 'platform_announcement', tenantId: null } });
   platformAnnouncementNotifier?.({ id: '', title: '', body: '' });
-  broadcastAdmin({ type: 'platform_announcement_cleared' });
+  await broadcastAdmin({ type: 'platform_announcement_cleared' });
   return res.status(204).send();
 }));
 

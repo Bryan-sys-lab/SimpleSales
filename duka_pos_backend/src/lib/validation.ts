@@ -525,7 +525,7 @@ export const subscriptionUpdateSchema = z.object({
 export const voucherCreateSchema = z.object({
   tenantId: z.string().trim().min(1).max(120).optional(),
   profileId: z.string().trim().min(1).max(120).optional(),
-  email: z.string().trim().toLowerCase().email().max(254),
+  email: z.string().trim().toLowerCase().email().max(254).optional(),
   durationMonths: z.union([
     z.literal(1),
     z.literal(3),

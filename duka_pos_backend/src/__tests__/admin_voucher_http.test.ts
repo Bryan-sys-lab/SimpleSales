@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
     },
     profile: {
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
     },
   },
   sendEmail: vi.fn(),
@@ -105,6 +106,51 @@ describe('admin access voucher issuance', () => {
       code: 'SS-TEST-CLAIM-CODE',
       durationMonths: 6,
     });
+  });
+
+  it('uses the selected shop owner email when the admin leaves it blank', async () => {
+    mocks.prisma.profile.findFirst.mockResolvedValue({
+      id: 'profile-1',
+      tenantId: 'tenant-1',
+      email: null,
+      user: { email: 'owner@example.com' },
+    });
+
+    const response = await supertest(app).post('/admin/billing/vouchers').send({
+      tenantId: 'tenant-1',
+      durationMonths: 3,
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.body.voucher).toMatchObject({
+      email: 'owner@example.com',
+      durationMonths: 3,
+      tenantId: 'tenant-1',
+    });
+    expect(mocks.prisma.accessVoucher.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        tenantId: 'tenant-1',
+        issuedToProfileId: 'profile-1',
+        issuedToEmail: 'owner@example.com',
+      }),
+    });
+    expect(mocks.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'access_voucher',
+        to: 'owner@example.com',
+      }),
+    );
+  });
+
+  it('requires an email when no shop owner recipient can be resolved', async () => {
+    const response = await supertest(app).post('/admin/billing/vouchers').send({
+      durationMonths: 1,
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe('VOUCHER_RECIPIENT_REQUIRED');
+    expect(mocks.generateVoucher).not.toHaveBeenCalled();
+    expect(mocks.prisma.accessVoucher.create).not.toHaveBeenCalled();
   });
 
   it('rejects unsupported durations before generating a code', async () => {
