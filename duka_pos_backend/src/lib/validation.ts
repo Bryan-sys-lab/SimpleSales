@@ -526,13 +526,22 @@ export const voucherCreateSchema = z.object({
   tenantId: z.string().trim().min(1).max(120).optional(),
   profileId: z.string().trim().min(1).max(120).optional(),
   email: z.string().trim().toLowerCase().email().max(254).optional(),
+  voucherType: z.enum(['access', 'discount']).default('access'),
   durationMonths: z.union([
     z.literal(1),
     z.literal(3),
     z.literal(6),
     z.literal(12),
   ]),
-}).strict();
+  discountPercent: z.number().int().min(0).max(99).default(0),
+}).strict().superRefine((value, context) => {
+  if (value.voucherType === 'discount' && value.discountPercent === 0) {
+    context.addIssue({ code: 'custom', path: ['discountPercent'], message: 'A discount voucher must include a discount from 1 to 99 percent' });
+  }
+  if (value.voucherType === 'access' && value.discountPercent !== 0) {
+    context.addIssue({ code: 'custom', path: ['discountPercent'], message: 'Access vouchers cannot include a price discount' });
+  }
+});
 
 export const billingProviderSchema = z.object({
   channelType: z.enum(['till', 'paybill', 'bank']),

@@ -130,4 +130,76 @@ if (staffSession.staff_id !== staffRows.synced[0].remoteId || typeof staffSessio
   throw new Error('staff login did not return the synced staff session');
 }
 
-console.log(`Email verification, admin-issued voucher claim, staff sync, and staff login passed for tenant ${session.tenant_id}`);
+const diagnostic = await request('/api/admin/diagnostics', {
+  method: 'POST',
+  headers: tenantHeaders,
+  body: JSON.stringify({
+    deviceId: `ci-device-${suffix}`,
+    platform: 'android',
+    osVersion: 'staging-test',
+    appVersion: '2.0.0',
+    buildNumber: 'ci',
+    locale: 'en',
+    manufacturer: 'CI',
+    model: 'Staging test device',
+    crashes: [],
+  }),
+});
+if (diagnostic.status !== 201) {
+  throw new Error(`tenant diagnostic upload returned ${diagnostic.status}`);
+}
+
+const discountSuffix = randomUUID().slice(0, 8);
+const discountEmail = `ci-discount-${discountSuffix}@example.com`;
+const discountShopName = `CI Discount ${discountSuffix}`;
+const discountLink = await request('/api/auth/link', {
+  method: 'POST',
+  body: JSON.stringify({
+    email: discountEmail,
+    password: '123456',
+    shopName: discountShopName,
+    ownerName: 'CI Discount Owner',
+  }),
+});
+if (discountLink.status !== 200) {
+  throw new Error(`discount auth/link returned ${discountLink.status}`);
+}
+const discountChallenge = await discountLink.json();
+const discountVerificationCode = discountChallenge.debug_code || fallbackCode;
+if (!/^\d{6}$/.test(discountVerificationCode || '')) {
+  throw new Error('No verification code was available for the reserved discount test account');
+}
+const discountVerified = await request('/api/auth/verify', {
+  method: 'POST',
+  body: JSON.stringify({
+    email: discountEmail,
+    password: '123456',
+    code: discountVerificationCode,
+    shopName: discountShopName,
+    ownerName: 'CI Discount Owner',
+  }),
+});
+if (discountVerified.status !== 200) {
+  throw new Error(`discount auth/verify returned ${discountVerified.status}`);
+}
+const discountSession = await discountVerified.json();
+if (
+  typeof discountSession.access_token !== 'string' ||
+  discountSession.voucher_redeemed !== false
+) {
+  throw new Error('The discount test account did not verify without auto-granting access');
+}
+await issueAndClaimStagingVoucher({
+  baseUrl,
+  email: discountEmail,
+  tenantHeaders: {
+    authorization: `Bearer ${discountSession.access_token}`,
+    'x-tenant-id': discountSession.tenant_id,
+  },
+  request,
+  voucherType: 'discount',
+  durationMonths: 3,
+  discountPercent: 25,
+});
+
+console.log(`Email verification, access and discount voucher journeys, staff sync, and staff login passed for tenant ${session.tenant_id}`);

@@ -313,7 +313,9 @@ router.post('/billing/vouchers', asyncHandler(async (req: Request, res: Response
       issuedToProfileId: profileId,
       issuedToEmail: recipientEmail,
       expiresAt: null,
+      voucherType: input.voucherType,
       durationMonths: input.durationMonths,
+      discountPercent: input.discountPercent,
       createdBy: req.auth?.sub ?? 'unknown',
       autoIssued: false,
     },
@@ -323,7 +325,9 @@ router.post('/billing/vouchers', asyncHandler(async (req: Request, res: Response
       kind: 'access_voucher',
       to: recipientEmail,
       code: generated.code,
+      voucherType: input.voucherType,
       durationMonths: input.durationMonths,
+      discountPercent: input.discountPercent,
     });
   } catch (error) {
     await prisma.accessVoucher.update({
@@ -348,14 +352,14 @@ router.post('/billing/vouchers', asyncHandler(async (req: Request, res: Response
       code: 'VOUCHER_EMAIL_UNAVAILABLE',
     });
   }
-  await prisma.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: 'create_access_voucher', targetType: 'access_voucher', targetId: voucher.id, tenantId: input.tenantId ?? null } });
+  await prisma.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: input.voucherType === 'discount' ? 'create_discount_voucher' : 'create_access_voucher', targetType: 'access_voucher', targetId: voucher.id, tenantId: input.tenantId ?? null } });
   // The plaintext is returned exactly once. It is never persisted or exposed
   // in list/audit responses.
-  return res.status(201).json({ voucher: { id: voucher.id, code: generated.code, codePrefix: voucher.codePrefix, tenantId: voucher.tenantId, email: recipientEmail, durationMonths: input.durationMonths, expiresAt: null, emailSent: true } });
+  return res.status(201).json({ voucher: { id: voucher.id, code: generated.code, codePrefix: voucher.codePrefix, tenantId: voucher.tenantId, email: recipientEmail, voucherType: input.voucherType, durationMonths: input.durationMonths, discountPercent: input.discountPercent, expiresAt: null, emailSent: true } });
 }));
 
 router.get('/billing/vouchers', asyncHandler(async (_req: Request, res: Response) => {
-  const vouchers = await prisma.accessVoucher.findMany({ select: { id: true, codePrefix: true, tenantId: true, issuedToProfileId: true, issuedToEmail: true, expiresAt: true, durationMonths: true, redeemedAt: true, revokedAt: true, pausedAt: true, deletedAt: true, autoIssued: true, createdAt: true }, orderBy: { createdAt: 'desc' } });
+  const vouchers = await prisma.accessVoucher.findMany({ select: { id: true, codePrefix: true, tenantId: true, issuedToProfileId: true, issuedToEmail: true, expiresAt: true, voucherType: true, durationMonths: true, discountPercent: true, redeemedAt: true, revokedAt: true, pausedAt: true, deletedAt: true, autoIssued: true, createdAt: true }, orderBy: { createdAt: 'desc' } });
   return res.json({ vouchers });
 }));
 

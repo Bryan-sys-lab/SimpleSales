@@ -10,6 +10,7 @@ export type Entitlement = {
   currency: string;
   billingInterval: string;
   currentPeriodEnd: string | null;
+  discountVoucherDurationMonths?: number;
 };
 
 const secret = () => process.env.AUTH_JWT_SECRET ?? 'development-entitlement-secret';
@@ -49,9 +50,21 @@ export async function tenantEntitlement(tenantId: string): Promise<Entitlement> 
   // Missing billing schema must never silently grant production access. This
   // also makes partial migrations fail closed until the database is repaired.
   if (!subscriptionModel) return { allowed: false, status: 'pending', reason: 'subscription_required', priceMinor: null, discountPercent: 0, currency: 'KES', billingInterval: 'monthly', currentPeriodEnd: null };
-  const subscription = await subscriptionModel.findUnique({ where: { tenantId } });
+  const subscription = await subscriptionModel.findUnique({
+    where: { tenantId },
+    include: { voucher: { select: { voucherType: true, discountPercent: true, durationMonths: true } } },
+  });
   const now = new Date();
   if (!subscription) return { allowed: false, status: 'pending', reason: 'subscription_required', priceMinor: null, discountPercent: 0, currency: 'KES', billingInterval: 'monthly', currentPeriodEnd: null };
+  const discountPercent = subscription.voucher?.voucherType === 'discount'
+    ? Math.max(subscription.discountPercent ?? 0, subscription.voucher.discountPercent)
+    : subscription.discountPercent ?? 0;
+  const discountVoucherDurationMonths = subscription.voucher?.voucherType === 'discount'
+    ? subscription.voucher.durationMonths
+    : undefined;
+  const voucherTerms = discountVoucherDurationMonths === undefined
+    ? {}
+    : { discountVoucherDurationMonths };
   const end = subscription.currentPeriodEnd;
   const grace = subscription.graceUntil;
   // A voucher is a time-bounded entitlement, just like a paid period.  The
@@ -60,11 +73,11 @@ export async function tenantEntitlement(tenantId: string): Promise<Entitlement> 
   // Keep vouchers with no expiry valid for the explicit no-expiry admin case,
   // but never let an elapsed first-month voucher bypass the paywall.
   if (subscription.status === 'voucher' && (!end || end > now)) {
-    return { allowed: true, status: 'voucher', reason: 'voucher', priceMinor: subscription.priceMinor, discountPercent: subscription.discountPercent ?? 0, currency: subscription.currency, billingInterval: subscription.billingInterval, currentPeriodEnd: end?.toISOString() ?? null };
+    return { allowed: true, status: 'voucher', reason: 'voucher', priceMinor: subscription.priceMinor, discountPercent, currency: subscription.currency, billingInterval: subscription.billingInterval, currentPeriodEnd: end?.toISOString() ?? null, ...voucherTerms };
   }
-  if (subscription.status === 'active' && (!end || end > now)) return { allowed: true, status: 'active', reason: 'active', priceMinor: subscription.priceMinor, discountPercent: subscription.discountPercent ?? 0, currency: subscription.currency, billingInterval: subscription.billingInterval, currentPeriodEnd: end?.toISOString() ?? null };
-  if (grace && grace > now) return { allowed: true, status: 'grace', reason: 'grace', priceMinor: subscription.priceMinor, discountPercent: subscription.discountPercent ?? 0, currency: subscription.currency, billingInterval: subscription.billingInterval, currentPeriodEnd: end?.toISOString() ?? null };
-  return { allowed: false, status: subscription.status, reason: end && end <= now ? 'expired' : 'subscription_required', priceMinor: subscription.priceMinor, discountPercent: subscription.discountPercent ?? 0, currency: subscription.currency, billingInterval: subscription.billingInterval, currentPeriodEnd: end?.toISOString() ?? null };
+  if (subscription.status === 'active' && (!end || end > now)) return { allowed: true, status: 'active', reason: 'active', priceMinor: subscription.priceMinor, discountPercent, currency: subscription.currency, billingInterval: subscription.billingInterval, currentPeriodEnd: end?.toISOString() ?? null, ...voucherTerms };
+  if (grace && grace > now) return { allowed: true, status: 'grace', reason: 'grace', priceMinor: subscription.priceMinor, discountPercent, currency: subscription.currency, billingInterval: subscription.billingInterval, currentPeriodEnd: end?.toISOString() ?? null, ...voucherTerms };
+  return { allowed: false, status: subscription.status, reason: end && end <= now ? 'expired' : 'subscription_required', priceMinor: subscription.priceMinor, discountPercent, currency: subscription.currency, billingInterval: subscription.billingInterval, currentPeriodEnd: end?.toISOString() ?? null, ...voucherTerms };
 }
 
 export function entitlementPayload(entitlement: Entitlement) {

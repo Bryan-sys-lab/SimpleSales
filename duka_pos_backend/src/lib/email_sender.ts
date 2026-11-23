@@ -23,6 +23,8 @@ export type AccessVoucherEmail = {
   to: string;
   code: string;
   durationMonths: number;
+  voucherType?: 'access' | 'discount';
+  discountPercent?: number;
 };
 
 export type EmailMessage = VerificationEmail | AccessVoucherEmail;
@@ -104,16 +106,33 @@ export function createCloudflareEmailTransport(
     if (message.kind === "access_voucher") {
       const safeVoucher = escapeHtml(message.code);
       const duration = `${message.durationMonths} month${message.durationMonths === 1 ? "" : "s"}`;
-      const subject = `${appName} — your access voucher`;
+      const isDiscount = message.voucherType === 'discount';
+      const discountPercent = message.discountPercent ?? 0;
+      const subject = isDiscount
+        ? `${appName} — your ${discountPercent}% subscription discount`
+        : `${appName} — your access voucher`;
+      const title = isDiscount
+        ? 'Your subscription discount voucher is ready'
+        : 'Your access voucher is ready';
+      const description = isDiscount
+        ? `Your administrator issued ${discountPercent}% off the set subscription price for a ${duration} plan. Claiming the code saves the discount for your next checkout; complete payment to activate access.`
+        : `Your administrator has issued ${duration} of SimpleSales access.`;
+      const instructions = isDiscount
+        ? 'This code does not expire. After claiming, the discount is applied once to the matching plan checkout; it does not grant free access.'
+        : 'This code does not expire. Its access period starts when claimed. Open the SimpleSales paywall and tap <strong>Claim voucher</strong>, or enter the code manually.';
       const text = [
         appName,
         "",
-        "Your access voucher is ready",
+        title,
         "",
         `Voucher: ${message.code}`,
-        `Access duration: ${duration}`,
-        "This code does not expire. Its access period begins when you claim it in the app.",
-        "Open the SimpleSales paywall and choose Claim voucher, or enter the code manually.",
+        isDiscount ? `Discount: ${discountPercent}% off the set price` : `Access duration: ${duration}`,
+        isDiscount
+          ? `Discounted plan term: ${duration}. This code does not expire. Claim it in the app, then complete payment to activate access.`
+          : "This code does not expire. Its access period begins when you claim it in the app.",
+        isDiscount
+          ? "The discount is applied once to the matching plan checkout and does not grant free access."
+          : "Open the SimpleSales paywall and choose Claim voucher, or enter the code manually.",
         "",
         "If you did not expect this message, contact SimpleSales support.",
       ].join("\n");
@@ -125,12 +144,12 @@ export function createCloudflareEmailTransport(
     <tr><td align="center">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border:1px solid #e5e7eb;border-radius:18px;padding:40px 36px;">
         <tr><td align="center" style="padding-bottom:4px;">${logoHtml}</td></tr>
-        <tr><td style="font-size:24px;line-height:1.25;font-weight:750;color:#111;padding-bottom:16px;">Your access voucher is ready</td></tr>
-        <tr><td style="font-size:15px;line-height:1.6;color:#4b5563;padding-bottom:20px;">Your administrator has issued ${escapeHtml(duration)} of SimpleSales access.</td></tr>
+        <tr><td style="font-size:24px;line-height:1.25;font-weight:750;color:#111;padding-bottom:16px;">${escapeHtml(title)}</td></tr>
+        <tr><td style="font-size:15px;line-height:1.6;color:#4b5563;padding-bottom:20px;">${escapeHtml(description)}</td></tr>
         <tr><td align="center" style="padding:4px 0 20px;">
           <div style="display:inline-block;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:12px;padding:18px 24px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:20px;line-height:1.2;font-weight:800;letter-spacing:1px;color:#111;">${safeVoucher}</div>
         </td></tr>
-        <tr><td style="font-size:13px;line-height:1.6;color:#4b5563;">This code does not expire. Its access period starts when claimed. Open the SimpleSales paywall and tap <strong>Claim voucher</strong>, or enter the code manually.</td></tr>
+        <tr><td style="font-size:13px;line-height:1.6;color:#4b5563;">${instructions}</td></tr>
         <tr><td style="font-size:12px;line-height:1.5;color:#9ca3af;padding-top:24px;"><em>If you did not expect this message, contact SimpleSales support.</em></td></tr>
       </table>
     </td></tr>

@@ -45,12 +45,38 @@ describe('voucher redemption D1 batch', () => {
     expect(mocks.batch).toHaveBeenCalledTimes(1);
     expect(mocks.batch.mock.calls[0][0]).toHaveLength(2);
     expect(mocks.statements[0].sql).toContain('redeemed_at IS NULL');
+    expect(mocks.statements[0].sql).toContain('voucher_type = ?');
     expect(mocks.statements[0].sql).toContain('issued_to_email = ?');
     expect(mocks.statements[0].sql).not.toContain('expires_at = ?');
     expect(mocks.statements[0].values).toContain('owner@example.com');
+    expect(mocks.statements[0].values).toContain('access');
     expect(mocks.statements[1].sql).toContain('WHERE changes() = 1');
     expect(mocks.statements[1].sql).toContain('ON CONFLICT (tenant_id)');
     expect(mocks.statements[1].values).toContain('2026-04-01T12:00:00.000Z');
+  });
+
+  it('claims a discount voucher without granting voucher access', async () => {
+    await expect(redeemVoucherAtomically({
+      voucherId: 'discount-voucher-1',
+      tenantId: 'tenant-1',
+      profileId: 'profile-1',
+      email: 'owner@example.com',
+      now: new Date('2026-03-01T12:00:00.000Z'),
+      durationMonths: 6,
+      voucherType: 'discount',
+    })).resolves.toBe(true);
+
+    expect(mocks.statements[0].values).toContain('discount');
+    expect(mocks.statements[1].sql).toContain("'pending'");
+    expect(mocks.statements[1].sql).toContain('WHERE changes() = 1');
+    expect(mocks.statements[1].sql).not.toContain('current_period_end');
+    expect(mocks.statements[1].values).toEqual([
+      expect.any(String),
+      'tenant-1',
+      'discount-voucher-1',
+      '2026-03-01T12:00:00.000Z',
+      '2026-03-01T12:00:00.000Z',
+    ]);
   });
 
   it('does not report redemption when another request already claimed the voucher', async () => {

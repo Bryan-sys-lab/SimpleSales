@@ -399,6 +399,7 @@ router.post('/verify', verifyLimiter, asyncHandler(async (req: Request, res: Res
       email,
       now,
       durationMonths: voucher.durationMonths,
+      voucherType: voucher.voucherType === 'discount' ? 'discount' : 'access',
     });
     if (!redeemed) {
       return res.status(409).json({
@@ -422,7 +423,10 @@ router.post('/verify', verifyLimiter, asyncHandler(async (req: Request, res: Res
     refresh_token: refresh.token,
     expires_in_seconds: access.expiresIn,
     refresh_expires_in_seconds: REFRESH_TOKEN_TTL_MS / 1000,
-    voucher_redeemed: Boolean(voucher),
+    voucher_redeemed: Boolean(voucher && voucher.voucherType !== 'discount'),
+    voucher_claimed: Boolean(voucher),
+    voucher_type: voucher ? (voucher.voucherType === 'discount' ? 'discount' : 'access') : null,
+    voucher_discount_percent: voucher?.discountPercent ?? null,
     voucher_duration_months: voucher?.durationMonths ?? null,
   });
 }));
@@ -509,11 +513,17 @@ router.post('/voucher/redeem', authMiddleware, asyncHandler(async (req: Request,
     email: (req.auth?.email ?? '').toLowerCase(),
     now,
     durationMonths: voucher.durationMonths,
+    voucherType: voucher.voucherType === 'discount' ? 'discount' : 'access',
   });
   if (!claimed) {
     return res.status(400).json({ error: 'Voucher is invalid, expired, or already used', code: 'VOUCHER_INVALID' });
   }
-  return res.json({ status: 'voucher_redeemed', entitlement: await tenantEntitlement(profile.tenantId) });
+  const voucherType = voucher.voucherType === 'discount' ? 'discount' : 'access';
+  return res.json({
+    status: voucherType === 'discount' ? 'discount_voucher_applied' : 'voucher_redeemed',
+    voucher: { voucherType, durationMonths: voucher.durationMonths, discountPercent: voucher.discountPercent ?? 0 },
+    entitlement: await tenantEntitlement(profile.tenantId),
+  });
 }));
 
 router.post('/voucher/claim', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
@@ -540,7 +550,7 @@ router.post('/voucher/claim', authMiddleware, asyncHandler(async (req: Request, 
   });
   if (!voucher) {
     return res.status(404).json({
-      error: 'No active access voucher is assigned to this account yet',
+      error: 'No active voucher is assigned to this account yet',
       code: 'VOUCHER_UNAVAILABLE',
     });
   }
@@ -552,6 +562,7 @@ router.post('/voucher/claim', authMiddleware, asyncHandler(async (req: Request, 
     email,
     now,
     durationMonths: voucher.durationMonths,
+    voucherType: voucher.voucherType === 'discount' ? 'discount' : 'access',
   });
   if (!claimed) {
     return res.status(409).json({
@@ -560,8 +571,12 @@ router.post('/voucher/claim', authMiddleware, asyncHandler(async (req: Request, 
     });
   }
   return res.json({
-    status: 'voucher_redeemed',
-    voucher: { durationMonths: voucher.durationMonths },
+    status: voucher.voucherType === 'discount' ? 'discount_voucher_applied' : 'voucher_redeemed',
+    voucher: {
+      voucherType: voucher.voucherType === 'discount' ? 'discount' : 'access',
+      durationMonths: voucher.durationMonths,
+      discountPercent: voucher.discountPercent ?? 0,
+    },
     entitlement: await tenantEntitlement(profile.tenantId),
   });
 }));

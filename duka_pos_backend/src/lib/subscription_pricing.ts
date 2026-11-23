@@ -1,5 +1,21 @@
 const BILLING_DURATIONS = new Set([1, 3, 6, 12]);
 
+export function effectiveSubscriptionDiscountPercent(
+  negotiatedPercent: number | null | undefined,
+  voucherType: string | null | undefined,
+  voucherPercent: number | null | undefined,
+): number {
+  const negotiated = negotiatedPercent ?? 0;
+  const voucher = voucherPercent ?? 0;
+  if (!Number.isInteger(negotiated) || negotiated < 0 || negotiated > 99) {
+    throw new RangeError('Negotiated subscription discount must be between 0 and 99 percent');
+  }
+  if (!Number.isInteger(voucher) || voucher < 0 || voucher > 99) {
+    throw new RangeError('Voucher discount must be between 0 and 99 percent');
+  }
+  return voucherType === 'discount' ? Math.max(negotiated, voucher) : negotiated;
+}
+
 export function calculateSubscriptionQuote(
   priceMinor: number,
   durationMonths: number,

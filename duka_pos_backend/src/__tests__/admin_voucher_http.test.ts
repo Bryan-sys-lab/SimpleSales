@@ -20,11 +20,19 @@ const mocks = vi.hoisted(() => ({
   },
   sendEmail: vi.fn(),
   generateVoucher: vi.fn(),
+  registerPaymentChannel: vi.fn(),
+  database: {
+    prepare: vi.fn(),
+    batch: vi.fn(),
+  },
 }));
 
 vi.mock('../lib/prisma', () => ({
   prisma: mocks.prisma,
-  getD1DatabaseBinding: vi.fn(),
+  getD1DatabaseBinding: () => mocks.database,
+}));
+vi.mock('../services/payhero', () => ({
+  registerPaymentChannel: mocks.registerPaymentChannel,
 }));
 vi.mock('../lib/email_sender', () => ({
   createCloudflareEmailTransport: () => ({
@@ -60,6 +68,10 @@ describe('admin access voucher issuance', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.database.prepare.mockImplementation((sql: string) => ({
+      bind: (...values: unknown[]) => ({ sql, values }),
+    }));
+    mocks.database.batch.mockResolvedValue([]);
     mocks.generateVoucher.mockReturnValue({
       code: 'SS-TEST-CLAIM-CODE',
       hash: 'voucher-hash',
@@ -74,6 +86,7 @@ describe('admin access voucher issuance', () => {
     mocks.prisma.accessVoucher.update.mockResolvedValue({});
     mocks.prisma.adminAuditLog.create.mockResolvedValue({});
     mocks.sendEmail.mockResolvedValue(undefined);
+    mocks.registerPaymentChannel.mockResolvedValue({ id: 12345 });
   });
 
   it('creates a no-expiry voucher and emails its claim details', async () => {
@@ -104,7 +117,9 @@ describe('admin access voucher issuance', () => {
       kind: 'access_voucher',
       to: 'owner@example.com',
       code: 'SS-TEST-CLAIM-CODE',
+      voucherType: 'access',
       durationMonths: 6,
+      discountPercent: 0,
     });
   });
 
@@ -140,6 +155,73 @@ describe('admin access voucher issuance', () => {
         to: 'owner@example.com',
       }),
     );
+  });
+
+  it('issues a no-expiry discount voucher through the existing voucher endpoint', async () => {
+    const response = await supertest(app).post('/admin/billing/vouchers').send({
+      email: 'owner@example.com',
+      voucherType: 'discount',
+      durationMonths: 3,
+      discountPercent: 25,
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.body.voucher).toMatchObject({
+      voucherType: 'discount',
+      durationMonths: 3,
+      discountPercent: 25,
+      expiresAt: null,
+    });
+    expect(mocks.prisma.accessVoucher.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        voucherType: 'discount',
+        durationMonths: 3,
+        discountPercent: 25,
+        expiresAt: null,
+      }),
+    });
+    expect(mocks.sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'access_voucher',
+      voucherType: 'discount',
+      durationMonths: 3,
+      discountPercent: 25,
+    }));
+  });
+
+  it('rejects a discount voucher with no discount percentage', async () => {
+    const response = await supertest(app).post('/admin/billing/vouchers').send({
+      email: 'owner@example.com',
+      voucherType: 'discount',
+      durationMonths: 3,
+      discountPercent: 0,
+    });
+
+    expect(response.status).toBe(400);
+    expect(mocks.generateVoucher).not.toHaveBeenCalled();
+    expect(mocks.prisma.accessVoucher.create).not.toHaveBeenCalled();
+  });
+
+  it('registers a billing destination and persists the returned provider channel', async () => {
+    const response = await supertest(app).patch('/admin/billing/provider').send({
+      channelType: 'till',
+      shortCode: '12345',
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.provider).toMatchObject({
+      channelType: 'till',
+      shortCode: '12345',
+      channelId: 12345,
+    });
+    expect(mocks.registerPaymentChannel).toHaveBeenCalledWith({
+      channelType: 'till',
+      shortCode: '12345',
+    });
+    expect(mocks.database.batch).toHaveBeenCalledTimes(1);
+    expect(mocks.database.batch.mock.calls[0][0]).toHaveLength(4);
+    expect(mocks.prisma.adminAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ action: 'update_billing_provider' }),
+    });
   });
 
   it('requires an email when no shop owner recipient can be resolved', async () => {

@@ -116,4 +116,31 @@ describe("verification email branding", () => {
     expect(sent.html).toContain("3 months");
     expect(sent.html).toContain("Claim voucher");
   });
+
+  it("explains that a discount voucher requires payment and applies once", async () => {
+    setCloudflareEmailBinding(null);
+    let sent: any;
+    const transport = createCloudflareEmailTransport({
+      accountId: "account-1",
+      apiToken: "token-1",
+      post: async (_url, init) => {
+        sent = JSON.parse(init.body);
+        return { status: 200, text: async () => "" };
+      },
+    });
+
+    await transport.send({
+      kind: "access_voucher",
+      to: "owner@example.com",
+      code: "SS-DISCOUNT-CODE",
+      voucherType: "discount",
+      durationMonths: 6,
+      discountPercent: 25,
+    });
+
+    expect(sent.subject).toContain("25%");
+    expect(sent.text).toContain("25% off the set price");
+    expect(sent.text).toContain("does not grant free access");
+    expect(sent.html).toContain("matching plan checkout");
+  });
 });

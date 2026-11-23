@@ -17,6 +17,7 @@
     "test:live:auth": "node scripts/auth-journey.mjs",
     "test:live:analytics": "node scripts/analytics-journey.mjs",
     "test:live:backup": "node scripts/backup-journey.mjs",
+    "test:live:admin-writes": "node scripts/admin-write-journey.mjs",
     "test:load": "node scripts/load-test.mjs",
     "test:watch": "vitest",
     "lint": "eslint src --max-warnings 0"

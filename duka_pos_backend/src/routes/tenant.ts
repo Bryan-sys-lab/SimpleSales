@@ -22,7 +22,7 @@ import { readableTenantId } from '../lib/tenant_id';
 import { issueStaffSessionToken, verifyStaffSessionToken } from '../lib/jwt';
 import { broadcastTenantChange } from '../services/live_broker';
 import { tenantEntitlement } from '../lib/entitlements';
-import { calculateSubscriptionQuote } from '../lib/subscription_pricing';
+import { calculateSubscriptionQuote, effectiveSubscriptionDiscountPercent } from '../lib/subscription_pricing';
 import { isVerifiedEmailMatch } from '../lib/identity';
 import { activateSubscriptionPaymentAtomically } from '../lib/subscription_settlement';
 
@@ -237,7 +237,7 @@ router.get('/subscription', asyncHandler(async (req, res) => {
             { OR: [{ issuedToProfileId: null }, { issuedToProfileId: req.user.id }] },
           ],
         },
-        select: { durationMonths: true },
+        select: { voucherType: true, durationMonths: true, discountPercent: true },
         orderBy: { createdAt: 'desc' },
       })
     : null;
@@ -246,7 +246,11 @@ router.get('/subscription', asyncHandler(async (req, res) => {
     support: {
       whatsappUrl,
       availableVoucher: availableVoucher
-        ? { durationMonths: availableVoucher.durationMonths }
+        ? {
+            voucherType: availableVoucher.voucherType,
+            durationMonths: availableVoucher.durationMonths,
+            discountPercent: availableVoucher.discountPercent,
+          }
         : null,
     },
   });
@@ -255,9 +259,25 @@ router.get('/subscription', asyncHandler(async (req, res) => {
 router.post('/subscription/payment', asyncHandler(async (req, res) => {
   if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Shop owner access required' });
   const input = parseBody(subscriptionPaymentSchema, req.body);
-  const subscription = await prisma.tenantSubscription.findUnique({ where: { tenantId: req.user.tenantId } });
+  const subscription = await prisma.tenantSubscription.findUnique({
+    where: { tenantId: req.user.tenantId },
+    include: { voucher: { select: { voucherType: true, durationMonths: true, discountPercent: true } } },
+  });
   if (!subscription?.priceMinor) return res.status(409).json({ error: 'Subscription price has not been set by the system administrator' });
-  const discountPercent = subscription.discountPercent ?? 0;
+  const discountVoucher = subscription.voucher?.voucherType === 'discount'
+    ? subscription.voucher
+    : null;
+  if (discountVoucher && input.durationMonths !== discountVoucher.durationMonths) {
+    return res.status(409).json({
+      error: `This discount voucher applies to a ${discountVoucher.durationMonths}-month plan`,
+      code: 'VOUCHER_DURATION_MISMATCH',
+    });
+  }
+  const discountPercent = effectiveSubscriptionDiscountPercent(
+    subscription.discountPercent,
+    discountVoucher ? 'discount' : null,
+    discountVoucher?.discountPercent,
+  );
   const provider = await prisma.systemSettings.findMany({ where: { key: { in: ['billing_channel_id'] } } });
   const channelId = Number(provider.find((row) => row.key === 'billing_channel_id')?.value);
   if (!Number.isSafeInteger(channelId) || channelId <= 0) return res.status(503).json({ error: 'Subscription payment destination is not configured' });

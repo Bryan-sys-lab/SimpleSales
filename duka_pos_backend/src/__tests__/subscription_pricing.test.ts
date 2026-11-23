@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { calculateSubscriptionQuote } from '../lib/subscription_pricing';
+import {
+  calculateSubscriptionQuote,
+  effectiveSubscriptionDiscountPercent,
+} from '../lib/subscription_pricing';
 
 describe('subscription pricing', () => {
   it('applies the administrator discount to the full selected term', () => {
@@ -13,5 +16,11 @@ describe('subscription pricing', () => {
   it('rejects unsupported billing terms and discounts', () => {
     expect(() => calculateSubscriptionQuote(10_000, 2, 10)).toThrow(RangeError);
     expect(() => calculateSubscriptionQuote(10_000, 12, 100)).toThrow(RangeError);
+  });
+
+  it('uses the larger of a voucher and negotiated discount without stacking', () => {
+    expect(effectiveSubscriptionDiscountPercent(10, 'discount', 25)).toBe(25);
+    expect(effectiveSubscriptionDiscountPercent(30, 'discount', 25)).toBe(30);
+    expect(effectiveSubscriptionDiscountPercent(10, 'access', 25)).toBe(10);
   });
 });

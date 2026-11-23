@@ -116,7 +116,7 @@ try {
   }
 
   Write-Host 'Running authenticated staging journeys...'
-  foreach ($journey in @('test:live:auth', 'test:live:analytics', 'test:live:backup')) {
+  foreach ($journey in @('test:live:auth', 'test:live:admin-writes', 'test:live:analytics', 'test:live:backup')) {
     & npm.cmd run $journey
     if ($LASTEXITCODE -ne 0) {
       throw "Staging journey $journey failed; production migration and deployment were stopped."
