@@ -5,6 +5,7 @@ export default defineConfig({
     name: "analytics",
     entrypoint: "vinext/server/fetch-handler",
     compatibilityDate: "2026-11-17",
+    compatibilityFlags: ["nodejs_compat"],
     assets: {
       htmlHandling: "none",
       notFoundHandling: "none",
@@ -12,6 +13,7 @@ export default defineConfig({
     },
     env: {
       ASSETS: bindings.assets(),
+      ADMIN_BACKEND_URL: bindings.text("https://duka-pos-backend.brianbmk332.workers.dev"),
     },
   }),
 });

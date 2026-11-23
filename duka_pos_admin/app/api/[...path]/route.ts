@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { TOKEN_COOKIE } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
-type Context = { params: { path: string[] } };
+type Context = { params: Promise<{ path: string[] }> };
 const methods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const;
 
 async function proxy(request: NextRequest, context: Context) {
-  const path = context.params.path.join('/');
+  const { path: segments } = await context.params;
+  const path = segments.join('/');
   const isLogin = path === 'admin/auth/login' && request.method === 'POST';
   const isLogout = path === 'admin/auth/logout' && request.method === 'POST';
   const isWsUrl = path === 'admin/auth/ws-url' && request.method === 'GET';
