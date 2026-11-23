@@ -25,4 +25,12 @@ Department credentials are minted from **Admin access**. A key is shown once, is
 
 Apply backend Prisma migrations before enabling the new admin screens, then deploy the backend and admin Workers. `SYSTEM_ADMIN_TOKEN` and `AUTH_JWT_SECRET` are Worker secrets and must be set separately in each environment. Keep `ADMIN_BACKEND_URL` on HTTPS outside local development.
 
+For the admin Worker GitHub Actions deployment, configure the repository secret
+`CLOUDFLARE_ADMIN_API_TOKEN` in **SimpleSales → Settings → Secrets and variables
+→ Actions**. Use a Cloudflare API token with **Workers Editor** access scoped to
+the `analytics` Worker. The existing `CLOUDFLARE_ACCOUNT_ID` Actions variable
+identifies the account. This deploy token is not a Worker runtime secret and is
+separate from the backend CI token. Replace the placeholder secret value before
+rerunning the deployment workflow.
+
 The admin session is an HttpOnly, Secure, SameSite cookie with a one-hour lifetime. Browser requests use the same-origin admin proxy; the proxy forwards the bearer token server-side. Session activity replays contain event names, sanitized routes, time, and a tenant-scoped device hash, while crash reports show their bounded diagnostic trail. User-entered telemetry details are not uploaded.

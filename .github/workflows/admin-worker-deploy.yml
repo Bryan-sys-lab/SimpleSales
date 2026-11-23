@@ -59,10 +59,20 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+      - name: Check admin deployment token
+        env:
+          CLOUDFLARE_ADMIN_API_TOKEN: ${{ secrets.CLOUDFLARE_ADMIN_API_TOKEN }}
+        run: |
+          if [ -z "$CLOUDFLARE_ADMIN_API_TOKEN" ] ||
+            [ "$CLOUDFLARE_ADMIN_API_TOKEN" = "REPLACE_WITH_REAL_CLOUDFLARE_ADMIN_API_TOKEN" ]; then
+            echo "::error::Set the CLOUDFLARE_ADMIN_API_TOKEN repository secret to a Cloudflare API token with Workers Editor access for analytics."
+            exit 1
+          fi
+
       - name: Deploy production Worker
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_ADMIN_API_TOKEN }}
         run: npx cf deploy --prebuilt --mode production
 
       - name: Verify admin UI and backend auth proxy
