@@ -18,7 +18,11 @@ export default function TenantsPage() {
     setError(null);
     try {
       const res = await fetchJson<{ tenants: Tenant[] }>('/api/admin/tenants');
-      setData(res.tenants);
+      setData(res.tenants.map((tenant) => ({
+        ...tenant,
+        activeProfiles: tenant._count?.profiles ?? 0,
+        salesCount: tenant._count?.sales ?? 0,
+      })));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load tenants');
     } finally {
@@ -55,8 +59,8 @@ export default function TenantsPage() {
           columns={[
             { key: 'shopName', label: 'Shop name' },
             { key: 'admin', label: 'Admin' },
-            { key: '_count.profiles', label: 'Active profiles', sortable: true, align: 'right' },
-            { key: '_count.sales', label: 'Total sales', sortable: true, align: 'right' },
+            { key: 'activeProfiles', label: 'Active profiles', sortable: true, align: 'right' },
+            { key: 'salesCount', label: 'Sales count', sortable: true, align: 'right' },
             { key: 'mpesaEnabled', label: 'M-Pesa' },
             { key: 'etimsEnabled', label: 'eTIMS' },
             { key: 'businessContext', label: 'Business details' },
@@ -67,8 +71,8 @@ export default function TenantsPage() {
           renderCell={(row, key) => {
             if (key === 'shopName') return <span className="text-base-900">{row.shopName}</span>;
             if (key === 'admin') return <span className="text-base-900">{row.admin ?? '—'}</span>;
-            if (key === '_count.profiles') return <span className="font-mono tabular-nums text-base-900">{row._count?.profiles ?? 0}</span>;
-            if (key === '_count.sales') return <span className="font-mono tabular-nums text-base-900">{row._count?.sales ?? 0}</span>;
+            if (key === 'activeProfiles') return <span className="font-mono tabular-nums text-base-900">{row.activeProfiles ?? 0}</span>;
+            if (key === 'salesCount') return <span className="font-mono tabular-nums text-base-900">{row.salesCount ?? 0}</span>;
             if (key === 'mpesaEnabled') return <span className={`badge ${(row as any).mpesaEnabled ? 'badge-none' : 'badge-high'}`}>{(row as any).mpesaEnabled ? 'On' : 'Off'}</span>;
             if (key === 'etimsEnabled') return <span className={`badge ${(row as any).etimsEnabled ? 'badge-none' : 'badge-high'}`}>{(row as any).etimsEnabled ? 'On' : 'Off'}</span>;
             if (key === 'businessContext') return <Link className="button-secondary inline-flex min-h-11 items-center" href={`/tenants/${encodeURIComponent(row.id)}/business-context`} onClick={(e) => e.stopPropagation()}>View details</Link>;

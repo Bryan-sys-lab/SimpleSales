@@ -26,7 +26,11 @@ export default function DashboardPage() {
         ]);
         if (!cancelled) {
           setStats(statsRes);
-          setTenants(tenantsRes.tenants);
+          setTenants(tenantsRes.tenants.map((tenant) => ({
+            ...tenant,
+            activeProfiles: tenant._count?.profiles ?? 0,
+            salesCount: tenant._count?.sales ?? 0,
+          })));
           setSys(sysRes);
         }
       } catch (err) {
@@ -92,18 +96,18 @@ export default function DashboardPage() {
             <h3 className="text-sm font-semibold text-base-900 mb-4">Tenant health</h3>
             <DataTable
               columns={[
-                { key: 'shopName', label: 'Shop' },
-                { key: 'activeProfiles', label: 'Active profiles', sortable: true },
-                { key: 'sales', label: 'Total sales', sortable: true },
+                { key: 'shopName', label: 'Shop', sortable: true },
+                { key: 'activeProfiles', label: 'Active profiles', sortable: true, align: 'right' },
+                { key: 'salesCount', label: 'Sales count', sortable: true, align: 'right' },
               ]}
               data={tenants}
               rowKey={(t) => t.id}
-              renderCell={(row) => (
-                <div className="flex items-center gap-3">
-                  <span className="text-base-900">{row.shopName}</span>
-                  <span className="ml-auto text-base-500">{row._count?.profiles ?? 0}</span>
-                </div>
-              )}
+              renderCell={(row, key) => {
+                if (key === 'shopName') return <span className="text-base-900">{row.shopName}</span>;
+                if (key === 'activeProfiles') return <span>{row.activeProfiles ?? 0}</span>;
+                if (key === 'salesCount') return <span>{row.salesCount ?? 0}</span>;
+                return null;
+              }}
               emptyMessage="No tenants"
             />
           </div>

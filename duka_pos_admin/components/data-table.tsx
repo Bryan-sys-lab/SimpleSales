@@ -5,6 +5,15 @@ import { EmptyState } from '@/components/empty-state';
 
 type SortDirection = 'asc' | 'desc';
 
+function getSortValue(row: unknown, key: string): unknown {
+  let value = row;
+  for (const part of key.split('.')) {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+    value = (value as Record<string, unknown>)[part];
+  }
+  return value;
+}
+
 export interface DataTableProps<T> {
   columns: { key: string; label: string; sortable?: boolean; align?: 'left' | 'right' | 'center' }[];
   data: T[];
@@ -36,8 +45,8 @@ export function DataTable<T>({
     if (!sortKey) return data;
     const dir = sortDir === 'asc' ? 1 : -1;
     return [...data].sort((a, b) => {
-      const av = (a as unknown as Record<string, unknown>)[sortKey];
-      const bv = (b as unknown as Record<string, unknown>)[sortKey];
+      const av = getSortValue(a, sortKey);
+      const bv = getSortValue(b, sortKey);
       if (av === bv) return 0;
       if (av == null) return dir;
       if (bv == null) return -dir;

@@ -1,8 +1,8 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { fetchJson } from '@/lib/api';
-import { ShellLayout } from '@/components/layout';
+import { ShellLayout, useAdminAccess } from '@/components/layout';
 import { EmptyState } from '@/components/empty-state';
 
 type Subscription = { tenantId: string; status: string; priceMinor: number | null; discountPercent: number; currency: string; billingInterval: string; currentPeriodEnd: string | null; tenant?: { id: string; shopName: string; profiles?: Array<{ id: string; name: string; email: string | null; user?: { email: string } | null }> } };
@@ -14,6 +14,10 @@ function getErrorMessage(error: unknown): string {
 }
 
 export default function BillingPage() {
+  const { access, can } = useAdminAccess();
+  const canManageBilling = can('billing:manage');
+  const canReadProvider = can('configuration:read');
+  const canManageProvider = can('configuration:manage');
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -34,20 +38,30 @@ export default function BillingPage() {
   const [shortCode, setShortCode] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
 
-  const load = async () => {
-    const [s, v, p, t, pay] = await Promise.all([
+  const load = useCallback(async () => {
+    const providerRequest = canReadProvider
+      ? fetchJson<{ provider: { channelType?: string; shortCode?: string; accountNumber?: string } }>('/api/admin/billing/provider')
+      : Promise.resolve(null);
+    const [s, v, t, pay, provider] = await Promise.all([
       fetchJson<{ subscriptions: Subscription[] }>('/api/admin/billing/subscriptions'),
       fetchJson<{ vouchers: Voucher[] }>('/api/admin/billing/vouchers'),
-      fetchJson<{ provider: { channelType?: string; shortCode?: string; accountNumber?: string } }>('/api/admin/billing/provider'),
-      fetchJson<{ tenants: { id: string; shopName: string }[] }>('/api/admin/tenants'),
+      fetchJson<{ tenants: { id: string; shopName: string }[] }>('/api/admin/billing/shop-options'),
       fetchJson<{ payments: Payment[] }>('/api/admin/billing/payments?limit=50'),
+      providerRequest,
     ]);
     setSubscriptions(s.subscriptions); setVouchers(v.vouchers);
     setPayments(pay.payments);
     setTenants(t.tenants);
-    setChannelType(p.provider.channelType ?? 'till'); setShortCode(p.provider.shortCode ?? ''); setAccountNumber(p.provider.accountNumber ?? '');
-  };
-  useEffect(() => { void load().catch(cause => setError(getErrorMessage(cause))); }, []);
+    if (provider) {
+      setChannelType(provider.provider.channelType ?? 'till');
+      setShortCode(provider.provider.shortCode ?? '');
+      setAccountNumber(provider.provider.accountNumber ?? '');
+    }
+  }, [canReadProvider]);
+  useEffect(() => {
+    if (!access) return;
+    void load().catch(cause => setError(getErrorMessage(cause)));
+  }, [access, load]);
 
   async function saveSubscription(event: FormEvent) {
     event.preventDefault(); setMessage(null); setError(null);
@@ -94,6 +108,7 @@ export default function BillingPage() {
     {message && <div className="rounded-xl border border-accent-200 bg-accent-50 px-4 py-3 text-sm text-accent-800">{message}{newCode && <code className="ml-2 rounded bg-white px-2 py-1 font-semibold">{newCode}</code>}</div>}
     {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">{error}</div>}
     <div className="grid gap-4 lg:grid-cols-2">
+      {canManageBilling && <>
       <form onSubmit={saveSubscription} className="card space-y-4 p-5"><h3 className="font-semibold">Shop subscription</h3><select className="input" required value={tenantId} onChange={e => {
         const selectedTenantId = e.target.value;
         const existing = subscriptions.find(subscription => subscription.tenantId === selectedTenantId);
@@ -109,10 +124,12 @@ export default function BillingPage() {
   <option value="">Choose a shop (optional if email is entered)</option>
   {tenants.map((t) => <option key={t.id} value={t.id}>{t.shopName}</option>)}
  </select><input className="input" type="email" placeholder="Recipient email (defaults to the selected shop owner)" value={voucherEmail} onChange={e => setVoucherEmail(e.target.value)} required={!voucherTarget} /><select className="input" value={voucherType} onChange={e => setVoucherType(e.target.value === 'discount' ? 'discount' : 'access')}><option value="access">Access voucher</option><option value="discount">Discount voucher</option></select>{voucherType === 'discount' && <label className="block space-y-1 text-sm"><span>Discount off the set price (%)</span><input className="input" required type="number" min="1" max="99" step="1" value={voucherDiscountPercent} onChange={e => setVoucherDiscountPercent(e.target.value)} /></label>}<select className="input" value={duration} onChange={e => setDuration(e.target.value)}><option value="1">1 month</option><option value="3">3 months</option><option value="6">6 months</option><option value="12">12 months</option></select><button className="button-primary" type="submit">Generate and email voucher</button><p className="text-xs text-base-500">{voucherType === 'discount' ? 'The no-expiry code applies once to the selected plan at checkout and does not grant free access. If the shop already has a negotiated discount, the larger discount is used.' : 'The no-expiry code grants the selected access term when claimed. The code is stored hashed and cannot be recovered later.'}</p></form>
-      <form onSubmit={saveProvider} className="card space-y-4 p-5"><h3 className="font-semibold">PayHero destination</h3><select className="input" value={channelType} onChange={e => setChannelType(e.target.value)}><option value="till">Till</option><option value="paybill">Paybill</option><option value="bank">Bank</option></select><input className="input" required placeholder="Till / Paybill / bank short code" value={shortCode} onChange={e => setShortCode(e.target.value)} />{channelType === 'bank' && <input className="input" required placeholder="Bank account number" value={accountNumber} onChange={e => setAccountNumber(e.target.value)} />}<button className="button-primary" type="submit">Save PayHero destination</button><p className="text-xs text-base-500">The backend registers this destination with PayHero using its server-side credentials.</p></form>
+      </>}
+      {!canManageBilling && <section className="card p-5 text-sm text-base-600">Your account can view billing records but cannot change subscription terms or manage vouchers.</section>}
+      {canManageProvider && <form onSubmit={saveProvider} className="card space-y-4 p-5"><h3 className="font-semibold">PayHero destination</h3><select className="input" value={channelType} onChange={e => setChannelType(e.target.value)}><option value="till">Till</option><option value="paybill">Paybill</option><option value="bank">Bank</option></select><input className="input" required placeholder="Till / Paybill / bank short code" value={shortCode} onChange={e => setShortCode(e.target.value)} />{channelType === 'bank' && <input className="input" required placeholder="Bank account number" value={accountNumber} onChange={e => setAccountNumber(e.target.value)} />}<button className="button-primary" type="submit">Save PayHero destination</button><p className="text-xs text-base-500">The backend registers this destination with PayHero using its server-side credentials.</p></form>}
     </div>
     <section className="card p-5"><h3 className="mb-4 font-semibold">Shop access</h3>{subscriptions.length === 0 ? <EmptyState message="No shop access records" compact /> : <div className="space-y-2">{subscriptions.map(s => <div key={s.tenantId} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-base-200 px-3 py-3 text-sm"><span><b>{s.tenant?.shopName ?? s.tenantId}</b><span className="ml-2 text-base-500">{s.tenant?.profiles?.[0]?.name ?? 'Owner not linked'} · {s.tenant?.profiles?.[0]?.user?.email ?? s.tenant?.profiles?.[0]?.email ?? 'email unavailable'} · {s.status}</span></span><span>{s.priceMinor == null ? 'Price not set' : `${s.currency} ${(s.priceMinor / 100).toFixed(2)} / ${s.billingInterval}`} · {s.discountPercent ?? 0}% discount {s.currentPeriodEnd && `· ends ${new Date(s.currentPeriodEnd).toLocaleDateString()}`}</span></div>)}</div>}</section>
-    <section className="card p-5"><h3 className="mb-4 font-semibold">Vouchers</h3>{vouchers.length === 0 ? <EmptyState message="No vouchers have been generated" compact /> : <div className="space-y-2">{vouchers.map(v => <details key={v.id} className="rounded-lg border border-base-200 px-3 py-3 text-sm"><summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3"><span><code>{v.codePrefix}…</code>{v.autoIssued && <span className="ml-2 rounded bg-accent-50 px-1.5 py-0.5 text-accent-700">Legacy auto-issued</span>}</span><span>{v.deletedAt ? 'Deleted' : v.revokedAt ? 'Revoked' : v.pausedAt ? 'Paused' : v.redeemedAt ? 'Redeemed' : 'Ready to claim'}</span></summary><div className="mt-3 grid gap-1 text-base-600"><span>Issued to: {v.issuedToEmail ?? 'Shop owner'}</span><span>Shop: {v.tenantId ?? 'Assigned on redemption'}</span><span>Type: {v.voucherType === 'discount' ? `${v.discountPercent}% checkout discount` : 'Access'}</span><span>Plan term: {v.durationMonths} month(s)</span><span>Claim deadline: {v.expiresAt ? new Date(v.expiresAt).toLocaleDateString() : 'None'}</span>{v.redeemedAt && <span>Redeemed: {new Date(v.redeemedAt).toLocaleString()}</span>}</div>{!v.deletedAt && !v.revokedAt && !v.redeemedAt && <div className="mt-3 flex flex-wrap gap-2"><button className="button-secondary" onClick={() => void voucherAction(v.id, v.pausedAt ? 'resume' : 'pause')}>{v.pausedAt ? 'Resume' : 'Pause'}</button><button className="button-secondary" onClick={() => void voucherAction(v.id, 'revoke')}>Revoke</button><button className="button-secondary" onClick={() => void voucherAction(v.id, 'delete')}>Delete</button></div>}</details>)}</div>}</section>
+    <section className="card p-5"><h3 className="mb-4 font-semibold">Vouchers</h3>{vouchers.length === 0 ? <EmptyState message="No vouchers have been generated" compact /> : <div className="space-y-2">{vouchers.map(v => <details key={v.id} className="rounded-lg border border-base-200 px-3 py-3 text-sm"><summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3"><span><code>{v.codePrefix}…</code>{v.autoIssued && <span className="ml-2 rounded bg-accent-50 px-1.5 py-0.5 text-accent-700">Legacy auto-issued</span>}</span><span>{v.deletedAt ? 'Deleted' : v.revokedAt ? 'Revoked' : v.pausedAt ? 'Paused' : v.redeemedAt ? 'Redeemed' : 'Ready to claim'}</span></summary><div className="mt-3 grid gap-1 text-base-600"><span>Issued to: {v.issuedToEmail ?? 'Shop owner'}</span><span>Shop: {v.tenantId ?? 'Assigned on redemption'}</span><span>Type: {v.voucherType === 'discount' ? `${v.discountPercent}% checkout discount` : 'Access'}</span><span>Plan term: {v.durationMonths} month(s)</span><span>Claim deadline: {v.expiresAt ? new Date(v.expiresAt).toLocaleDateString() : 'None'}</span>{v.redeemedAt && <span>Redeemed: {new Date(v.redeemedAt).toLocaleString()}</span>}</div>{canManageBilling && !v.deletedAt && !v.revokedAt && !v.redeemedAt && <div className="mt-3 flex flex-wrap gap-2"><button className="button-secondary" onClick={() => void voucherAction(v.id, v.pausedAt ? 'resume' : 'pause')}>{v.pausedAt ? 'Resume' : 'Pause'}</button><button className="button-secondary" onClick={() => void voucherAction(v.id, 'revoke')}>Revoke</button><button className="button-secondary" onClick={() => void voucherAction(v.id, 'delete')}>Delete</button></div>}</details>)}</div>}</section>
     <section className="card p-5"><h3 className="mb-4 font-semibold">Recent subscription payments</h3>{payments.length === 0 ? <EmptyState message="No checkout attempts yet" compact /> : <div className="space-y-2">{payments.map(p => <details key={p.id} className="rounded-lg border border-base-200 px-3 py-3 text-sm"><summary className="flex cursor-pointer list-none flex-wrap justify-between gap-2"><span><b>{p.tenant?.shopName ?? p.tenantId}</b> · {p.tenant?.subscription?.currency ?? 'KES'} {(p.amountMinor / 100).toFixed(2)} · {p.status}</span><span className="text-base-500">{new Date(p.createdAt).toLocaleString()}</span></summary><div className="mt-3 grid gap-1 text-base-600"><span>Reference: {p.reference}</span><span>Term: {p.durationMonths} month(s)</span><span>Provider: {p.providerStatus ?? 'No provider update'}</span><span>M-Pesa receipt: {p.mpesaReceiptCode ?? 'Not recorded'}</span></div></details>)}</div>}</section>
   </div></ShellLayout>;
 }

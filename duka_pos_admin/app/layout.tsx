@@ -3,6 +3,7 @@ import './globals.css';
 import { AppProviders } from '@/components/app-providers';
 import { ThemeProvider } from '@/components/theme-provider';
 import { ServiceWorkerRegistrar } from '@/components/sw-registrar';
+import { ToastProvider } from '@/components/toast-provider';
 
 export const metadata: Metadata = {
   title: 'SimplerAnalytics',
@@ -38,7 +39,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="font-sans">
-      <body className="antialiased"><ThemeProvider><AppProviders>{children}</AppProviders></ThemeProvider><ServiceWorkerRegistrar /></body>
+      <body className="antialiased"><ThemeProvider><ToastProvider><AppProviders>{children}</AppProviders></ToastProvider></ThemeProvider><ServiceWorkerRegistrar /></body>
     </html>
   );
 }

@@ -4,7 +4,7 @@ export type Tenant = {
   admin?: string | null;
   _count?: { profiles: number; sales: number };
   activeProfiles?: number;
-  totalSales?: number;
+  salesCount?: number;
   lastActivity?: string | null;
   settings?: { mpesa?: boolean; etims?: boolean; payhero?: boolean } | null;
 };

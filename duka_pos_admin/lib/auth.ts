@@ -1,3 +1,5 @@
+import { showToast } from '@/lib/toast';
+
 export const TOKEN_COOKIE = '__Host-duka_admin_session';
 
 export function getToken(): null {
@@ -11,7 +13,14 @@ export function setToken(_token: string): void {
 }
 
 export async function removeToken(): Promise<void> {
-  if (typeof window !== 'undefined') await fetch('/api/admin/auth/logout', { method: 'POST', credentials: 'same-origin' });
+  if (typeof window === 'undefined') return;
+  try {
+    const response = await fetch('/api/admin/auth/logout', { method: 'POST', credentials: 'same-origin' });
+    if (!response.ok) throw new Error(response.statusText || 'Sign out failed.');
+    showToast('success', 'Signed out successfully.');
+  } catch (cause) {
+    showToast('error', cause instanceof Error ? cause.message : 'Sign out failed.');
+  }
 }
 
 export function isAuthenticated(): boolean {

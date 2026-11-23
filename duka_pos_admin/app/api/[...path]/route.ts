@@ -11,7 +11,7 @@ function setSessionCookie(response: NextResponse, token: string, expiresIn: numb
     secure: true,
     sameSite: 'lax',
     path: '/',
-    maxAge: Math.min(Math.max(expiresIn, 60), 3600),
+    maxAge: Math.min(Math.max(expiresIn, 60), 30 * 24 * 60 * 60),
   });
 }
 

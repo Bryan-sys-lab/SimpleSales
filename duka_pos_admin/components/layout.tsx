@@ -6,6 +6,7 @@ import { removeToken } from '@/lib/auth';
 import { BrandLockup } from './brand';
 import { Nav, ICONS } from './nav';
 import { ThemeToggle } from './theme-toggle';
+import { showToast } from '@/lib/toast';
 
 const NAV_ITEMS: import('./nav').NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: 'dashboard' },
@@ -14,7 +15,7 @@ const NAV_ITEMS: import('./nav').NavItem[] = [
   { href: '/sessions', label: 'Sessions', icon: 'sessions' },
   { href: '/tenants', label: 'Tenants', icon: 'tenants' },
   { href: '/users', label: 'Shop users', icon: 'sessions' },
-  { href: '/admins', label: 'Admin access', icon: 'audit' },
+  { href: '/admins', label: 'Admin accounts & keys', icon: 'audit' },
   { href: '/tasks', label: 'Team tasks', icon: 'support' },
   { href: '/products', label: 'Products (all shops)', icon: 'sales' },
   { href: '/billing', label: 'Billing & access', icon: 'billing' },
@@ -66,7 +67,12 @@ export function ShellLayout({ children }: { children: React.ReactNode }) {
       if (!response.ok) throw new Error('Session expired');
       const info = await response.json() as AdminAccess;
       if (active) setAccess(info);
-    }).catch(() => { if (active) router.replace('/login'); });
+    }).catch(() => {
+      if (active) {
+        showToast('error', 'Your administrator session has expired. Please sign in again.');
+        router.replace('/login');
+      }
+    });
     return () => { active = false; };
   }, [router]);
 
@@ -86,6 +92,7 @@ export function ShellLayout({ children }: { children: React.ReactNode }) {
           cache: 'no-store',
         });
         if (response.status === 401) {
+          showToast('error', 'Your administrator session has expired. Please sign in again.');
           router.replace('/login');
           return;
         }
@@ -93,6 +100,7 @@ export function ShellLayout({ children }: { children: React.ReactNode }) {
         lastRefreshAt = Date.now();
       } catch (cause) {
         console.error('Could not refresh the active admin session:', cause);
+        showToast('error', 'Your administrator session could not be refreshed.');
       } finally {
         refreshing = false;
       }
@@ -173,7 +181,7 @@ export function ShellLayout({ children }: { children: React.ReactNode }) {
         <ul className="flex items-stretch justify-around">
           {primaryItems.map((item) => {
             const active = pathname === item.href;
-            const mobileLabel: Record<string, string> = { '/dashboard': 'Home', '/tenants': 'Shops', '/admins': 'Admins', '/tasks': 'Tasks' };
+            const mobileLabel: Record<string, string> = { '/dashboard': 'Home', '/tenants': 'Shops', '/admins': 'Admin keys', '/tasks': 'Tasks' };
             return (
               <li key={item.href} className="flex-1">
                 <a

@@ -10,17 +10,26 @@ type Financials = {
   revenue: number;
   expenses: number;
   net: number;
-  cac: number;
-  ltv: number;
-  arpu: number;
-  churnRate: number;
-  paybackMonths: number;
   activeCustomers: number;
-  newCustomers: number;
+  averageSubscription: number | null;
   revenueByTenant: { name: string; value: number }[];
   expensesByCategory: { name: string; value: number }[];
-  payments: { method: string; value: number }[];
   expenseItems: { id: string; category: string; description: string; amount: number; date: string }[];
+};
+
+type SubscriptionRow = {
+  status: string;
+  tenantId: string;
+  priceMinor?: number | null;
+  tenant?: { shopName?: string | null } | null;
+};
+
+type ExpenseRow = {
+  id: string;
+  amount: number;
+  category?: string | null;
+  description?: string | null;
+  date?: string | null;
 };
 
 const fmt = (n: number) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES' }).format(n / 100);
@@ -57,27 +66,39 @@ export default function FinancialsPage() {
     (async () => {
       try {
         const [subsRes, expRes] = await Promise.all([
-          fetchJson<{ subscriptions: any[] }>('/api/admin/billing/subscriptions'),
-          fetchJson<{ items: any[] }>('/api/admin/expenses'),
+          fetchJson<{ subscriptions: SubscriptionRow[] }>('/api/admin/billing/subscriptions'),
+          fetchJson<{ items: ExpenseRow[] }>('/api/admin/expenses'),
         ]);
-        const active = (subsRes.subscriptions ?? []).filter((x: any) => x.status === 'active');
-        const revenue = active.reduce((a: number, x: any) => a + (x.priceMinor ?? 0), 0);
-        const expenses = (expRes.items ?? []).reduce((a: number, x: any) => a + (x.amount ?? 0), 0);
-        const byTenant = active.map((x: any) => ({ name: x.tenant?.shopName ?? x.tenantId, value: x.priceMinor ?? 0 }));
+        const active = (subsRes.subscriptions ?? []).filter((item) => item.status === 'active');
+        const priced = active.filter((item) => typeof item.priceMinor === 'number');
+        const revenue = priced.reduce((total, item) => total + item.priceMinor!, 0);
+        const expenses = (expRes.items ?? []).reduce((total, item) => total + item.amount, 0);
+        const byTenant = priced.map((item) => ({
+          name: item.tenant?.shopName ?? item.tenantId,
+          value: item.priceMinor!,
+        }));
         const byCat: Record<string, number> = {};
-        (expRes.items ?? []).forEach((x: any) => { byCat[x.category ?? 'General'] = (byCat[x.category ?? 'General'] ?? 0) + (x.amount ?? 0); });
+        (expRes.items ?? []).forEach((item) => {
+          const category = item.category ?? 'General';
+          byCat[category] = (byCat[category] ?? 0) + item.amount;
+        });
         const expensesByCategory = Object.entries(byCat).map(([name, value]) => ({ name, value }));
-        const payments = [
-          { method: 'M-Pesa', value: Math.round(revenue * 0.66) },
-          { method: 'Voucher', value: Math.round(revenue * 0.2) },
-          { method: 'Manual', value: Math.round(revenue * 0.14) },
-        ];
-        const expenseItems = (expRes.items ?? []).map((x: any) => ({ id: x.id, category: x.category ?? 'General', description: x.description ?? 'Expense', amount: x.amount ?? 0, date: x.date ?? new Date().toISOString() }));
+        const expenseItems = (expRes.items ?? []).map((item) => ({
+          id: item.id,
+          category: item.category ?? 'General',
+          description: item.description ?? 'Expense',
+          amount: item.amount,
+          date: item.date ?? '',
+        }));
         if (!cancelled) setData({
-          revenue, expenses, net: revenue - expenses,
-          cac: 320000, ltv: 1850000, arpu: Math.round(revenue / Math.max(active.length, 1)),
-          churnRate: 4.2, paybackMonths: 3.1, activeCustomers: active.length, newCustomers: 5,
-          revenueByTenant: byTenant, expensesByCategory, payments, expenseItems,
+          revenue,
+          expenses,
+          net: revenue - expenses,
+          activeCustomers: active.length,
+          averageSubscription: priced.length ? Math.round(revenue / priced.length) : null,
+          revenueByTenant: byTenant,
+          expensesByCategory,
+          expenseItems,
         });
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load financials');
@@ -88,37 +109,33 @@ export default function FinancialsPage() {
     return () => { cancelled = true; };
   }, []);
 
-  const margin = data ? Math.round((data.net / data.revenue) * 100) : 0;
+  const margin = data && data.revenue > 0
+    ? `${Math.round((data.net / data.revenue) * 100)}%`
+    : '--';
 
   return (
     <ShellLayout>
       <div className="space-y-6">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight text-base-900">Revenue & costs</h2>
-          <p className="text-sm text-base-500">All subscription revenue, app costs, and expenses — analytics stay in sync with payments.</p>
+          <p className="text-sm text-base-500">Current subscription values and expenses entered in the system.</p>
         </div>
         {error && <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>}
+        {loading && <p role="status" className="text-sm text-base-500">Loading financial records…</p>}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <MetricCard label="Total revenue" value={data ? fmt(data.revenue) : '--'} caption="Subscriptions paid" />
+          <MetricCard label="Active subscription value" value={data ? fmt(data.revenue) : '--'} caption="Configured active plans" />
           <MetricCard label="Total expenses" value={data ? fmt(data.expenses) : '--'} caption="App costs" />
-          <MetricCard label="Net profit" value={data ? fmt(data.net) : '--'} caption="Revenue − expenses" />
-          <MetricCard label="Margin" value={data ? `${margin}%` : '--'} caption="Net / revenue" />
+          <MetricCard label="Net subscription value" value={data ? fmt(data.net) : '--'} caption="Subscription value less expenses" />
+          <MetricCard label="Margin" value={margin} caption="Net / active subscription value" />
         </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <MetricCard label="CAC" value={data ? fmt(data.cac) : '--'} caption="Customer acquisition cost" />
-          <MetricCard label="LTV" value={data ? fmt(data.ltv) : '--'} caption="Lifetime value" />
-          <MetricCard label="ARPU" value={data ? fmt(data.arpu) : '--'} caption="Avg revenue per user" />
-          <MetricCard label="Churn rate" value={data ? `${data.churnRate}%` : '--'} caption="Monthly churn" />
-          <MetricCard label="Payback" value={data ? `${data.paybackMonths} mo` : '--'} caption="CAC payback period" />
-          <MetricCard label="Active customers" value={data ? data.activeCustomers : '--'} caption="Paying tenants" />
-          <MetricCard label="New customers" value={data ? data.newCustomers : '--'} caption="This period" />
-          <MetricCard label="LTV : CAC" value={data ? `${(data.ltv / data.cac).toFixed(1)}x` : '--'} caption="Unit economics" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <MetricCard label="Active shops" value={data ? data.activeCustomers : '--'} caption="Shops on an active subscription" />
+          <MetricCard label="Average active subscription" value={data?.averageSubscription == null ? '--' : fmt(data.averageSubscription)} caption="Average of configured active plans" />
         </div>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <BarChart title="Revenue by tenant" data={data?.revenueByTenant ?? []} color="bg-accent-600" />
+          <BarChart title="Active subscription value by shop" data={data?.revenueByTenant ?? []} color="bg-accent-600" />
           <BarChart title="Expenses by category" data={data?.expensesByCategory ?? []} color="bg-red-500" />
         </div>
-        <BarChart title="Payments breakdown" data={(data?.payments ?? []).map((p) => ({ name: p.method, value: p.value }))} color="bg-blue-600" />
         <div className="card p-5">
           <h3 className="text-sm font-semibold text-base-900 mb-4">Expense ledger</h3>
           <div className="overflow-x-auto">

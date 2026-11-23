@@ -32,21 +32,6 @@
     border-color: theme('colors.base.700');
   }
 
-  .dark [class~='bg-white'] { background-color: theme('colors.base.900'); }
-  .dark [class~='bg-base-50'] { background-color: theme('colors.base.950'); }
-  .dark [class~='bg-base-100'] { background-color: theme('colors.base.900'); }
-  .dark [class~='bg-base-200'] { background-color: theme('colors.base.800'); }
-  .dark [class~='bg-base-300'] { background-color: theme('colors.base.700'); }
-  .dark [class~='text-base-900'] { color: theme('colors.base.100'); }
-  .dark [class~='text-base-800'] { color: theme('colors.base.200'); }
-  .dark [class~='text-base-700'] { color: theme('colors.base.300'); }
-  .dark [class~='text-base-600'] { color: theme('colors.base.400'); }
-  .dark [class~='text-base-500'] { color: theme('colors.base.400'); }
-  .dark [class~='text-base-400'] { color: theme('colors.base.500'); }
-  .dark [class~='border-base-100'] { border-color: theme('colors.base.800'); }
-  .dark [class~='border-base-200'] { border-color: theme('colors.base.700'); }
-  .dark [class~='border-base-300'] { border-color: theme('colors.base.600'); }
-
   *:focus-visible {
     outline: 3px solid theme('colors.accent.700');
     outline-offset: 2px;
@@ -107,9 +92,10 @@
   .dark .label { @apply text-base-300; }
   .table-wrap { @apply overflow-x-auto; }
   .table { @apply w-full text-sm text-left border-collapse; }
-  .table th { @apply px-4 py-3 text-xs font-semibold text-base-500 uppercase tracking-wider border-b border-base-200 bg-base-50/60; }
+  .table th { @apply px-4 py-3 text-xs font-semibold text-base-600 uppercase tracking-wider border-b border-base-200 bg-base-50/60; }
   .table td { @apply px-4 py-3.5 border-b border-base-100 text-base-900; }
   .dark .table th { @apply bg-base-900/80 text-base-400 border-base-700; }
+  .dark .table td { @apply text-base-100; }
   .table tbody tr { @apply transition-colors duration-150; }
   .table tbody tr:hover td { @apply bg-base-50/80; }
   .dark .table tbody tr:hover td { @apply bg-base-900; }
@@ -118,6 +104,10 @@
   .badge-low { @apply border-electric-200 bg-electric-50 text-electric-800; }
   .badge-medium { @apply border-coral-200 bg-coral-50 text-coral-800; }
   .badge-high { @apply border-coral-300 bg-coral-100 text-coral-900; }
+  .dark .badge-none { @apply border-sage-700 bg-sage-950 text-sage-200; }
+  .dark .badge-low { @apply border-electric-700 bg-electric-950 text-electric-200; }
+  .dark .badge-medium { @apply border-coral-700 bg-coral-950 text-coral-200; }
+  .dark .badge-high { @apply border-coral-600 bg-coral-900 text-coral-100; }
   .brand-loading-name {
     animation: brand-name-pulse 1.8s ease-in-out infinite;
   }
@@ -149,3 +139,48 @@
   .mobile-record summary::-webkit-details-marker { display: none; }
   .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
 }
+
+[class~='text-base-400'],
+[class~='text-base-500'] {
+  color: theme('colors.base.600');
+}
+
+.input::placeholder {
+  color: theme('colors.base.600');
+  opacity: 1;
+}
+
+.dark [class~='bg-white']:not([class*='dark:bg-']) { background-color: theme('colors.base.900'); }
+.dark [class~='bg-base-50']:not([class*='dark:bg-']) { background-color: theme('colors.base.950'); }
+.dark [class~='bg-base-100']:not([class*='dark:bg-']) { background-color: theme('colors.base.900'); }
+.dark [class~='bg-base-200']:not([class*='dark:bg-']) { background-color: theme('colors.base.800'); }
+.dark [class~='bg-base-300']:not([class*='dark:bg-']) { background-color: theme('colors.base.700'); }
+.dark [class~='text-base-900']:not([class*='dark:text-']) { color: theme('colors.base.100'); }
+.dark [class~='text-base-800']:not([class*='dark:text-']) { color: theme('colors.base.200'); }
+.dark [class~='text-base-700']:not([class*='dark:text-']) { color: theme('colors.base.300'); }
+.dark [class~='text-base-600']:not([class*='dark:text-']) { color: theme('colors.base.300'); }
+.dark [class~='text-base-500']:not([class*='dark:text-']),
+.dark [class~='text-base-400']:not([class*='dark:text-']) { color: theme('colors.base.300'); }
+.dark .input::placeholder { color: theme('colors.base.300'); }
+.dark [class~='border-base-100']:not([class*='dark:border-']) { border-color: theme('colors.base.800'); }
+.dark [class~='border-base-200']:not([class*='dark:border-']) { border-color: theme('colors.base.700'); }
+.dark [class~='border-base-300']:not([class*='dark:border-']) { border-color: theme('colors.base.600'); }
+.dark [class~='bg-accent-50']:not([class*='dark:bg-']) { background-color: theme('colors.accent.900'); }
+.dark [class~='bg-accent-100']:not([class*='dark:bg-']) { background-color: theme('colors.accent.800'); }
+.dark [class~='bg-sage-50']:not([class*='dark:bg-']) { background-color: theme('colors.sage.950'); }
+.dark [class~='bg-electric-50']:not([class*='dark:bg-']) { background-color: theme('colors.electric.950'); }
+.dark [class~='bg-coral-50']:not([class*='dark:bg-']) { background-color: theme('colors.coral.950'); }
+.dark [class~='bg-coral-100']:not([class*='dark:bg-']) { background-color: theme('colors.coral.900'); }
+.dark [class~='text-accent-600']:not([class*='dark:text-']),
+.dark [class~='text-accent-700']:not([class*='dark:text-']),
+.dark [class~='text-accent-800']:not([class*='dark:text-']) { color: theme('colors.electric.300'); }
+.dark [class~='text-accent-900']:not([class*='dark:text-']) { color: theme('colors.electric.200'); }
+.dark [class~='text-sage-800']:not([class*='dark:text-']) { color: theme('colors.sage.200'); }
+.dark [class~='text-electric-800']:not([class*='dark:text-']) { color: theme('colors.electric.200'); }
+.dark [class~='text-coral-800']:not([class*='dark:text-']) { color: theme('colors.coral.200'); }
+.dark [class~='text-coral-900']:not([class*='dark:text-']) { color: theme('colors.coral.100'); }
+.dark [class~='bg-red-50']:not([class*='dark:bg-']) { background-color: theme('colors.coral.950'); }
+.dark [class~='bg-red-100']:not([class*='dark:bg-']) { background-color: theme('colors.coral.900'); }
+.dark [class~='text-red-800']:not([class*='dark:text-']) { color: theme('colors.coral.200'); }
+.dark [class~='text-red-900']:not([class*='dark:text-']) { color: theme('colors.coral.100'); }
+.dark [class~='border-red-200']:not([class*='dark:border-']) { border-color: theme('colors.coral.700'); }

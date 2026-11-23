@@ -3,6 +3,7 @@
 import { useSearchParams, useRouter } from 'next/navigation';
 import { FormEvent, Suspense, useState } from 'react';
 import { BrandLockup, BrandLoader } from '@/components/brand';
+import { showToast } from '@/lib/toast';
 
 function LoginContent() {
   const search = useSearchParams();
@@ -11,6 +12,7 @@ function LoginContent() {
   const [masterToken, setMasterToken] = useState('');
   const [phone, setPhone] = useState('');
   const [key, setKey] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
   const [departmentLogin, setDepartmentLogin] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -22,15 +24,18 @@ function LoginContent() {
       const response = await fetch('/api/admin/auth/login', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(departmentLogin ? { email, phone, key } : { email, masterToken }),
+        body: JSON.stringify(departmentLogin ? { email, phone, key, rememberMe } : { email, masterToken, rememberMe }),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? 'Sign in failed');
+      showToast('success', 'Signed in successfully.');
       const requested = search.get('returnTo') ?? '/dashboard';
       router.replace(requested.startsWith('/') && !requested.startsWith('//') ? requested : '/dashboard');
       router.refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Sign in failed');
+      const message = cause instanceof Error ? cause.message : 'Sign in failed';
+      setError(message);
+      showToast('error', message);
     } finally { setBusy(false); }
   }
 
@@ -60,6 +65,20 @@ function LoginContent() {
             <label className="label" htmlFor="master-token">System access token</label>
             <input id="master-token" className="input" type="password" autoComplete="current-password" required value={masterToken} onChange={(e) => setMasterToken(e.target.value)} />
           </div>}
+          <label className="flex items-start gap-3 text-sm text-base-700 dark:text-base-200">
+            <input
+              type="checkbox"
+              className="mt-1 accent-accent-700"
+              checked={rememberMe}
+              onChange={(event) => setRememberMe(event.target.checked)}
+            />
+            <span>
+              <span className="font-medium">Remember this device for 30 days</span>
+              <span className="mt-0.5 block text-xs text-base-500 dark:text-base-400">
+                Saves a secure session cookie, not your administrator key.
+              </span>
+            </span>
+          </label>
           {error && <p className="rounded-lg border border-coral-200 bg-coral-50 px-3 py-2 text-sm text-coral-900" role="alert">{error}</p>}
           <button className="btn btn-accent min-h-11 w-full" type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in securely'}</button>
           <button type="button" className="w-full py-2 text-sm font-medium text-accent-800 underline-offset-4 hover:underline dark:text-electric-300" onClick={() => { setDepartmentLogin((v) => !v); setError(''); }}>
