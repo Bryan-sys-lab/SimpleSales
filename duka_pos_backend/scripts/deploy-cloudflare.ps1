@@ -121,7 +121,7 @@ try {
     throw 'Could not read the Worker secret-name list. Deployment was stopped.'
   }
   $secretNames = @($secrets | ForEach-Object { $_.name })
-  $requiredSecrets = @('AUTH_JWT_SECRET', 'EMAIL_VERIFICATION_SECRET')
+  $requiredSecrets = @('AUTH_JWT_SECRET', 'EMAIL_VERIFICATION_SECRET', 'SYSTEM_ADMIN_TOKEN')
   $missingSecrets = @($requiredSecrets | Where-Object { $_ -notin $secretNames })
   if ($missingSecrets.Count -gt 0) {
     throw "Required Worker secrets are missing: $($missingSecrets -join ', '). Add them in the Cloudflare dashboard; values are never read by this script."

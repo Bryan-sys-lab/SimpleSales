@@ -36,9 +36,8 @@ const verificationCode = challenge.debug_code || fallbackCode;
 if (!/^\d{6}$/.test(verificationCode || '')) {
   throw new Error('No verification code was available; configure the test inbox or test-only debug codes');
 }
-const voucherCode = challenge.debug_first_voucher_code;
-if (typeof voucherCode !== 'string' || !voucherCode.startsWith('SS-')) {
-  throw new Error('auth/link did not return the first-registration voucher in the test environment');
+if ('debug_first_voucher_code' in challenge) {
+  throw new Error('auth/link must not generate a voucher before an administrator issues one');
 }
 
 const verified = await request('/api/auth/verify', {
@@ -47,7 +46,6 @@ const verified = await request('/api/auth/verify', {
     email,
     password: '123456',
     code: verificationCode,
-    voucherCode,
     shopName: `CI Auth ${suffix}`,
     ownerName: 'CI Owner',
   }),
@@ -57,8 +55,8 @@ const session = await verified.json();
 if (typeof session.access_token !== 'string' || typeof session.tenant_id !== 'string') {
   throw new Error('auth/verify did not return a usable session');
 }
-if (session.voucher_redeemed !== true) {
-  throw new Error('auth/verify did not redeem the first-registration voucher');
+if (session.voucher_redeemed !== false) {
+  throw new Error('email verification must not auto-issue or redeem a voucher');
 }
 
 const tenantHeaders = {
@@ -129,4 +127,4 @@ if (staffSession.staff_id !== staffRows.synced[0].remoteId || typeof staffSessio
   throw new Error('staff login did not return the synced staff session');
 }
 
-console.log(`Email verification, first-month voucher, staff sync, and staff login passed for tenant ${session.tenant_id}`);
+console.log(`Email verification without an auto-issued voucher, staff sync, and staff login passed for tenant ${session.tenant_id}`);

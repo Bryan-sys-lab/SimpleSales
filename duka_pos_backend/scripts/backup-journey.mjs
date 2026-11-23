@@ -29,8 +29,8 @@ const challenge = await link.json();
 if (!/^\d{6}$/.test(challenge.debug_code || '')) {
   throw new Error('auth/link did not return a test code; enable test-only verification debug codes');
 }
-if (!challenge.debug_first_voucher_code) {
-  throw new Error('first-registration voucher was not created before email verification');
+if ('debug_first_voucher_code' in challenge) {
+  throw new Error('auth/link must not generate a voucher before an administrator issues one');
 }
 const verified = await request('/api/auth/verify', {
   method: 'POST',
@@ -38,15 +38,14 @@ const verified = await request('/api/auth/verify', {
     email,
     password,
     code: challenge.debug_code,
-    voucherCode: challenge.debug_first_voucher_code,
     shopName,
     ownerName,
   }),
 });
 if (!verified.ok) throw new Error(`auth/verify returned ${verified.status}`);
 const session = await verified.json();
-if (session.voucher_redeemed !== true) {
-  throw new Error('verified account did not redeem the first-registration voucher');
+if (session.voucher_redeemed !== false) {
+  throw new Error('email verification must not auto-issue or redeem a voucher');
 }
 const headers = {
   authorization: `Bearer ${session.access_token}`,
