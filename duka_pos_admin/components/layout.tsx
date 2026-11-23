@@ -18,6 +18,7 @@ const NAV_ITEMS: import('./nav').NavItem[] = [
   { href: '/tasks', label: 'Team tasks', icon: 'support' },
   { href: '/products', label: 'Products (all shops)', icon: 'sales' },
   { href: '/billing', label: 'Billing & access', icon: 'billing' },
+  { href: '/membership', label: 'Membership requests', icon: 'commercial-ledger' },
   { href: '/financials', label: 'Revenue & costs', icon: 'dashboard' },
   { href: '/expenses', label: 'Expenses settings', icon: 'commercial-quality' },
   { href: '/commercial-policy', label: 'Commercial policy', icon: 'commercial-policy' },
@@ -34,6 +35,7 @@ const NAV_SCOPE: Record<string, string> = {
   '/dashboard':'analytics:read','/churn':'analytics:read','/sales':'analytics:read','/sessions':'sessions:read',
   '/tenants':'tenants:read','/users':'users:read','/admins':'keys:read','/tasks':'tasks:read','/products':'analytics:read',
   '/billing':'configuration:read','/financials':'analytics:read','/expenses':'analytics:read',
+  '/membership':'membership:read',
   '/commercial-policy':'commercial:read','/commercial-ledger':'commercial:read','/commercial-quality':'commercial:read',
   '/support':'support:read','/audit':'audit:read','/diagnostics':'diagnostics:read','/announcements':'configuration:read',
 };
