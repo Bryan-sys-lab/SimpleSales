@@ -63,8 +63,12 @@ async function deriveStaffPin(pin: string, salt: Uint8Array, iterations: number,
 }
 
 function decodeBase64Url(value: string): Uint8Array {
-  const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
-  const decoded = atob(base64 + '='.repeat((4 - base64.length % 4) % 4));
+  // Accept padded or unpadded base64url (Dart base64UrlEncode is padded; Node
+  // base64url helpers may be unpadded). Strip any existing padding before
+  // normalizing so we never append extra '=' (which breaks atob in Workers).
+  const base64 = value.replace(/-/g, '+').replace(/_/g, '/').replace(/=+$/g, '');
+  const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+  const decoded = atob(padded);
   return Uint8Array.from(decoded, (character) => character.charCodeAt(0));
 }
 
