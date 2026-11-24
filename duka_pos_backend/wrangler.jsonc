@@ -85,6 +85,22 @@
           ]
         }
       ],
+      "observability": {
+        "logs": {
+          "enabled": true,
+          "head_sampling_rate": 1,
+          "invocation_logs": true,
+          "persist": true
+        },
+        "traces": {
+          "enabled": true,
+          "head_sampling_rate": 1,
+          "persist": true
+        },
+        "issues": {
+          "enabled": true
+        }
+      },
       "vars": {
         "APP_RELEASE_REPOSITORY": "Bryan-sys-lab/SimpleSales",
         "APP_RELEASE_MANIFEST_URL": "https://pub-304b56b967d4462f8ca28cdb5a6fc43a.r2.dev/current.json",
@@ -117,6 +133,22 @@
     "crons": [
       "*/5 * * * *"
     ]
+  },
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "invocation_logs": true,
+      "persist": true
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "persist": true
+    },
+    "issues": {
+      "enabled": true
+    }
   },
   "vars": {
     "APP_RELEASE_REPOSITORY": "Bryan-sys-lab/SimpleSales",
