@@ -202,6 +202,17 @@ class AppStageController extends ChangeNotifier {
   }
 
   Future<void> _restoreStartupState() async {
+    if (kIsWeb) {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      _prefs = prefs;
+      _flagsReadFor = _state.workspaceKey;
+      _onboardingComplete = true;
+      _permissionsAsked = true;
+      _subscriptionRequired = false;
+      await _state.loadOwner();
+      await _state.loadRememberedStaff();
+      return;
+    }
     await _state.loadOwner();
     await _state.loadRememberedStaff();
     final SharedPreferences prefs = await SharedPreferences.getInstance();

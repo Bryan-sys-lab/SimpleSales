@@ -343,12 +343,15 @@ class _SettingsScreenState extends State<SettingsScreen>
       ),
     );
     controller.dispose();
-    if (pin == null || !RegExp(r'^\d{4}$').hasMatch(pin)) return;
+    final String? temporaryPin = pin?.trim();
+    if (temporaryPin == null || !RegExp(r'^\d{4}$').hasMatch(temporaryPin)) {
+      return;
+    }
     if (!mounted) return;
     final state = context.read<AppState>();
     try {
       await BackendService.resetStaffPinFromRequest(
-          requestId: requestId, temporaryPin: pin);
+          requestId: requestId, temporaryPin: temporaryPin);
       await recordActionAudit(
         state,
         action: AuditAction.staffPinReset,
@@ -3720,7 +3723,7 @@ class _StaffDialogState extends State<_StaffDialog> {
           onPressed: () => Navigator.pop(context, {
             'name': _name.text.trim(),
             'username': _username.text.trim(),
-            'pin': _pin.text,
+            'pin': _pin.text.trim(),
             'role': _role
           }),
           child: Text(AppLocalizations.of(context).settingsSaveAction),

@@ -53,12 +53,13 @@ class BuildConfiguration {
   /// Defaults to `local_only` so a developer can run the till without a
   /// backend. A connected release must be compiled with
   /// `--dart-define=DEPLOYMENT_MODE=connected` and a real `BACKEND_URL`.
+  static const String _deploymentModeRaw = String.fromEnvironment(
+    'DEPLOYMENT_MODE',
+    defaultValue: 'local_only',
+  );
+
   static DeploymentMode get deploymentMode {
-    final raw = String.fromEnvironment(
-      'DEPLOYMENT_MODE',
-      defaultValue: 'local_only',
-    );
-    switch (raw) {
+    switch (_deploymentModeRaw) {
       case 'connected':
         return DeploymentMode.connected;
       case 'local_only':

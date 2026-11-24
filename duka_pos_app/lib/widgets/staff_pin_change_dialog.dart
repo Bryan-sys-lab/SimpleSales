@@ -15,16 +15,34 @@ Future<void> showStaffPinChangeDialog(BuildContext context, AppState state) asyn
     builder: (dialogContext) => StatefulBuilder(
       builder: (context, setState) {
         Future<void> submit() async {
-          if (state.currentStaffId == null || current.text.length != 4 || next.text.length != 4 || confirm.text != next.text) {
+          final String currentPin = current.text.trim();
+          final String newPin = next.text.trim();
+          final String confirmPin = confirm.text.trim();
+          if (state.currentStaffId == null ||
+              currentPin.length != 4 ||
+              newPin.length != 4 ||
+              confirmPin != newPin) {
             setState(() => error = 'Enter four digits and make the new PINs match.');
             return;
           }
-          setState(() { saving = true; error = null; });
+          setState(() {
+            saving = true;
+            error = null;
+          });
           try {
-            await BackendService.changeStaffPin(staffId: state.currentStaffId!, currentPin: current.text, newPin: next.text);
+            await BackendService.changeStaffPin(
+                staffId: state.currentStaffId!,
+                currentPin: currentPin,
+                newPin: newPin);
             if (dialogContext.mounted) Navigator.pop(dialogContext);
           } catch (_) {
-            if (dialogContext.mounted) setState(() { saving = false; error = 'PIN change failed. Check your current PIN and connection.'; });
+            if (dialogContext.mounted) {
+              setState(() {
+                saving = false;
+                error =
+                    'PIN change failed. Check your current PIN and connection.';
+              });
+            }
           }
         }
         Widget field(String label, TextEditingController controller) => Padding(

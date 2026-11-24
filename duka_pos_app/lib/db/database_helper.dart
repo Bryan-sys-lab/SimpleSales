@@ -4475,17 +4475,30 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     required String pinHash,
   }) async {
     final db = await database;
-    final existing = await db.query(
+    final normalizedUsername = username.trim().toLowerCase();
+    final existingByRemote = await db.query(
       'staff',
-      where: 'remote_id = ? OR username = ?',
-      whereArgs: [remoteId, username],
+      columns: const ['id'],
+      where: 'remote_id = ?',
+      whereArgs: [remoteId],
       limit: 1,
     );
+    final existing = existingByRemote.isNotEmpty
+        ? existingByRemote
+        : normalizedUsername.isEmpty
+            ? const <Map<String, Object?>>[]
+            : await db.query(
+                'staff',
+                columns: const ['id'],
+                where: 'LOWER(username) = ?',
+                whereArgs: [normalizedUsername],
+                limit: 1,
+              );
     int id;
     if (existing.isEmpty) {
       id = await db.insert('staff', {
         'name': name,
-        'username': username,
+        'username': normalizedUsername,
         'pin_hash': pinHash,
         'active': 1,
         'remote_id': remoteId,
@@ -4497,7 +4510,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         'staff',
         {
           'name': name,
-          'username': username,
+          'username': normalizedUsername,
           'pin_hash': pinHash,
           'active': 1,
           'remote_id': remoteId,

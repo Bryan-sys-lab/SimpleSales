@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart' show sha256;
 import 'package:flutter/foundation.dart'
-    show debugPrint, kReleaseMode, visibleForTesting;
+    show debugPrint, kDebugMode, kReleaseMode, visibleForTesting;
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -1812,7 +1812,24 @@ class BackendService {
     String? tenantId,
   }) async {
     await ensureInitialized();
+    final Uri endpoint = Uri.parse('$backendUrl/tenant/staff/authenticate');
+    final Map<String, dynamic> diagnostics = <String, dynamic>{
+      'backendUrl': backendUrl,
+      'endpoint': endpoint.toString(),
+      'method': 'POST',
+      'tenantId': tenantId,
+      'username': username,
+      'pinLength': pin.length,
+      'hasTenantHeader': tenantId != null && tenantId.trim().isNotEmpty,
+      'timestamp': DateTime.now().toIso8601String(),
+    };
     try {
+      if (kDebugMode) {
+        debugPrint(
+          '[StaffAuth] POST ${endpoint.toString()} tenant=$tenantId '
+          'user=$username pinLen=${pin.length}',
+        );
+      }
       final response = await _dio.post('$backendUrl/tenant/staff/authenticate',
           data: {'username': username, 'pin': pin},
           options: tenantId == null || tenantId.trim().isEmpty
@@ -1821,33 +1838,146 @@ class BackendService {
                   extra: <String, Object>{'staffTenantOverride': tenantId},
                   headers: <String, String>{'x-tenant-id': tenantId},
                 ));
-      final data = response.data as Map<String, dynamic>? ?? const {};
+      diagnostics['statusCode'] = response.statusCode;
+      diagnostics['responseHeaders'] = response.headers.map.map(
+        (String key, List<String> value) => MapEntry(key, value.join(',')),
+      );
+      diagnostics['responseData'] = _sanitizeStaffAuthDiagnosticsValue(
+        response.data,
+      );
+      final data = response.data is Map<String, dynamic>
+          ? Map<String, dynamic>.from(response.data as Map<String, dynamic>)
+          : response.data is Map
+              ? Map<String, dynamic>.from(
+                  (response.data as Map).map(
+                    (dynamic key, dynamic value) =>
+                        MapEntry(key.toString(), value),
+                  ),
+                )
+              : <String, dynamic>{};
       final localId = data['local_id'];
       final sessionToken = data['session_token'];
       if (localId is int && sessionToken is String && sessionToken.isNotEmpty) {
         await StaffCredentialCache.storeSessionToken(localId, sessionToken);
       }
-      return data.isNotEmpty ? data : null;
+      if (data.isEmpty) {
+        diagnostics['classification'] = 'empty_response';
+        if (kDebugMode) {
+          debugPrint('[StaffAuth] empty response body (status ${response.statusCode})');
+        }
+        return <String, dynamic>{
+          '_emptyResponse': true,
+          '_diagnostics': diagnostics,
+        };
+      }
+      diagnostics['classification'] = 'success_payload';
+      data['_diagnostics'] = diagnostics;
+      if (kDebugMode) {
+        debugPrint('[StaffAuth] success/status ${response.statusCode}');
+      }
+      return data;
     } on DioException catch (error) {
+      diagnostics['dioType'] = error.type.name;
+      diagnostics['message'] = error.message;
+      diagnostics['statusCode'] = error.response?.statusCode;
+      diagnostics['requestUri'] = error.requestOptions.uri.toString();
+      diagnostics['responseHeaders'] = error.response?.headers.map.map(
+        (String key, List<String> value) => MapEntry(key, value.join(',')),
+      );
+      diagnostics['responseData'] = _sanitizeStaffAuthDiagnosticsValue(
+        error.response?.data,
+      );
+      diagnostics['error'] = error.error?.toString();
       // A reachable backend that rejected the credentials is authoritative:
       // do not silently turn an online deactivation or wrong PIN into an
       // offline login. Only transport failures and 5xx responses may use the
       // local roster as an offline fallback.
       final status = error.response?.statusCode;
       if (status != null && status < 500) {
-        return const <String, dynamic>{'_rejected': true};
+        diagnostics['classification'] = 'rejected';
+        if (kDebugMode) {
+          debugPrint(
+            '[StaffAuth] rejected status=$status type=${error.type.name} '
+            'data=${diagnostics['responseData']}',
+          );
+        }
+        return <String, dynamic>{'_rejected': true, '_diagnostics': diagnostics};
       }
-      return null;
+      diagnostics['classification'] = 'transport_failure';
+      if (kDebugMode) {
+        debugPrint(
+          '[StaffAuth] transport/server failure status=$status '
+          'type=${error.type.name} message=${error.message} err=${error.error}',
+        );
+      }
+      return <String, dynamic>{
+        '_transportFailure': true,
+        '_diagnostics': diagnostics,
+      };
+    } catch (error, stackTrace) {
+      diagnostics['classification'] = 'exception';
+      diagnostics['exceptionType'] = error.runtimeType.toString();
+      diagnostics['exception'] = error.toString();
+      diagnostics['stackTrace'] = stackTrace.toString();
+      if (kDebugMode) {
+        debugPrint('[StaffAuth] exception ${error.runtimeType}: $error');
+        debugPrint(stackTrace.toString());
+      }
+      return <String, dynamic>{
+        '_transportFailure': true,
+        '_diagnostics': diagnostics,
+      };
     }
   }
 
   /// A non-null `_rejected` response is authoritative: the backend was
-  /// reachable and rejected the profile or credentials. A null response is
-  /// reserved for transport/5xx failures, where offline login may continue.
+  /// reachable and rejected the profile or credentials. Transport/5xx failures
+  /// are not authoritative and may allow local/offline fallback.
   static bool isAuthoritativeStaffAuthenticationRejection(
     Map<String, dynamic>? response,
   ) =>
       response?['_rejected'] == true;
+
+  static Map<String, dynamic>? staffAuthenticationDiagnostics(
+    Map<String, dynamic>? response,
+  ) {
+    final raw = response?['_diagnostics'];
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) {
+      return raw.map(
+        (dynamic key, dynamic value) => MapEntry(key.toString(), value),
+      );
+    }
+    return null;
+  }
+
+  static Object? _sanitizeStaffAuthDiagnosticsValue(Object? value) {
+    if (value == null) return null;
+    if (value is String || value is num || value is bool) return value;
+    if (value is List) {
+      return value
+          .take(20)
+          .map(_sanitizeStaffAuthDiagnosticsValue)
+          .toList(growable: false);
+    }
+    if (value is Map) {
+      final Map<String, Object?> sanitized = <String, Object?>{};
+      for (final MapEntry<dynamic, dynamic> entry in value.entries.take(30)) {
+        final String key = entry.key.toString();
+        final String lower = key.toLowerCase();
+        if (lower.contains('pin') ||
+            lower.contains('password') ||
+            lower.contains('token') ||
+            lower.contains('secret')) {
+          sanitized[key] = '[redacted]';
+        } else {
+          sanitized[key] = _sanitizeStaffAuthDiagnosticsValue(entry.value);
+        }
+      }
+      return sanitized;
+    }
+    return value.toString();
+  }
 
   static Future<void> changeStaffPin({
     required int staffId,

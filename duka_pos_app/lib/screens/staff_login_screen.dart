@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode, kIsWeb;
 import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -42,6 +44,8 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
   bool _loading = false;
   bool _obscurePassword = true;
   String? _error;
+  Map<String, dynamic>? _lastAuthDiagnostics;
+  String? _lastAuthSummary;
   List<LocalShop> _shops = const <LocalShop>[];
   bool _shopChosen = false;
   bool _askingShop = false;
@@ -224,32 +228,127 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
       if (!mounted) return;
       setState(
           () => _error = 'Request sent. Ask the owner for your temporary PIN.');
-    } catch (_) {
-      if (mounted) {
-        setState(() => _error =
-            'Could not send the request. Check the connection and try again.');
-      }
+    } catch (e, st) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Could not send the request: $e';
+        _lastAuthSummary = 'PIN reset request failed';
+        _lastAuthDiagnostics = <String, dynamic>{
+          'phase': 'request_staff_pin_reset',
+          'tenantId': tenantId,
+          'username': username,
+          'backendUrl': BackendService.backendUrl,
+          'exceptionType': e.runtimeType.toString(),
+          'exception': e.toString(),
+          'stackTrace': st.toString(),
+        };
+      });
     }
   }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate() || _loading) return;
-    if (!await _ensureShopSelected()) return;
+    if (!kIsWeb && !await _ensureShopSelected()) return;
     setState(() {
       _loading = true;
       _error = null;
+      _lastAuthDiagnostics = null;
+      _lastAuthSummary = null;
     });
     try {
       final String username = _usernameController.text.trim();
       final String password = _passwordController.text.trim();
-      // The backend's unauthenticated staff-bootstrap exception is deliberately
-      // tenant-scoped. Existing local shops already have a tenant id; passing
-      // null here made an online staff login look like a missing bearer-token
-      // request even though the correct shop was selected on this device.
-      final String? activeTenant = await BackendService.tenantId;
       final String shopIdField = _shopIdController.text.trim().toLowerCase();
+      String? activeTenant;
+      if (!kIsWeb) {
+        try {
+          activeTenant = await BackendService.tenantId;
+        } catch (e) {
+          activeTenant = null;
+          if (kDebugMode) {
+            debugPrint('[StaffLogin] Failed to read active tenant: $e');
+          }
+        }
+      }
       final String? requestedTenant =
           activeTenant ?? (shopIdField.isNotEmpty ? shopIdField : null);
+      final Map<String, dynamic> baseDiagnostics = <String, dynamic>{
+        'phase': 'submit_start',
+        'mode': kIsWeb ? 'web_diagnostic' : 'native',
+        'backendUrl': BackendService.backendUrl,
+        'endpoint': '${BackendService.backendUrl}/tenant/staff/authenticate',
+        'activeTenant': activeTenant,
+        'requestedTenant': requestedTenant,
+        'shopIdField': shopIdField,
+        'username': username,
+        'pinLength': password.length,
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+      if (!mounted) return;
+      setState(() {
+        _lastAuthDiagnostics = baseDiagnostics;
+        _lastAuthSummary = 'Preparing staff authentication request';
+      });
+      if (kDebugMode) {
+        debugPrint(
+          '[StaffLogin] submit mode=${baseDiagnostics['mode']} '
+          'tenant=$requestedTenant user=$username pinLen=${password.length}',
+        );
+      }
+
+      if (kIsWeb) {
+        if (requestedTenant == null || requestedTenant.isEmpty) {
+          setState(() {
+            _error = 'Enter the Shop ID to test staff login against the backend.';
+            _lastAuthSummary = 'Missing Shop ID / tenant';
+            _lastAuthDiagnostics = <String, dynamic>{
+              'backendUrl': BackendService.backendUrl,
+              'endpoint': '${BackendService.backendUrl}/tenant/staff/authenticate',
+              'tenantId': requestedTenant,
+              'username': username,
+              'note':
+                  'Web diagnostic mode calls the remote staff auth endpoint only; local device DB/session flows are unavailable in browser.',
+            };
+          });
+          return;
+        }
+        final Map<String, dynamic>? backendResponse =
+            await BackendService.authenticateStaff(
+          username: username,
+          pin: password,
+          tenantId: requestedTenant,
+        );
+        final Map<String, dynamic>? diagnostics =
+            BackendService.staffAuthenticationDiagnostics(backendResponse);
+        final bool rejected =
+            BackendService.isAuthoritativeStaffAuthenticationRejection(
+          backendResponse,
+        );
+        final bool transportFailure = backendResponse?['_transportFailure'] == true;
+        final bool success = !rejected &&
+            !transportFailure &&
+            backendResponse != null &&
+            backendResponse.isNotEmpty;
+        if (!mounted) return;
+        setState(() {
+          _lastAuthDiagnostics = diagnostics ?? _lastAuthDiagnostics;
+          _lastAuthSummary = success
+              ? 'Remote authentication succeeded'
+              : rejected
+                  ? 'Remote authentication rejected by backend'
+                  : transportFailure
+                      ? 'Remote authentication request failed (transport/server)'
+                      : 'Remote authentication returned no usable staff payload';
+          _error = success
+              ? 'Web diagnostic mode: remote staff authentication succeeded. Local sign-in/session persistence is not performed in browser.'
+              : _formatStaffAuthError(
+                  backendResponse: backendResponse,
+                  fallback: AppLocalizations.of(context).loginWrongCredentials,
+                  detailed: true,
+                );
+        });
+        return;
+      }
 
       final String userKey = username;
       if (await AuthService.isTillLockedOut()) {
@@ -283,62 +382,112 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
       }
 
       if (staff != null && localPinVerified) {
-        // Offline-first: a locally verified PIN is enough to sign in. The
-        // backend is consulted opportunistically for deactivation/updates,
-        // but a missing or stale server-side PIN must not lock a staff member
-        // out of their own till.
         await AuthService.recordSuccess(userKey);
         if (requestedTenant != null) {
           try {
+            if (!mounted) return;
+            setState(() {
+              _lastAuthSummary =
+                  'Local PIN verified; checking remote staff authentication';
+              _lastAuthDiagnostics = <String, dynamic>{
+                ...?_lastAuthDiagnostics,
+                'phase': 'remote_check_after_local_success',
+                'requestedTenant': requestedTenant,
+                'username': username,
+              };
+            });
             final backendResponse = await BackendService.authenticateStaff(
               username: username,
               pin: password,
               tenantId: requestedTenant,
             );
             onlineResponse = backendResponse;
+            _lastAuthDiagnostics =
+                BackendService.staffAuthenticationDiagnostics(backendResponse) ??
+                backendResponse;
             if (BackendService.isAuthoritativeStaffAuthenticationRejection(
                 backendResponse)) {
-              // A cached local PIN is only an offline fallback. Do not let a
-              // reachable backend rejection leave a remotely deactivated staff
-              // member signed in on this till.
               staff = null;
+              _lastAuthSummary =
+                  'Remote rejection (authoritative): ${_backendErrorSummary(backendResponse)}';
+            } else if (backendResponse?['_transportFailure'] == true ||
+                backendResponse == null ||
+                backendResponse.isEmpty) {
+              _lastAuthSummary =
+                  'Remote auth unavailable; kept locally verified staff session (${_backendErrorSummary(backendResponse)})';
             } else {
               final merged = await _mergeOnlineStaff(backendResponse, staff,
                   username: username,
                   pin: password,
                   requestedTenant: requestedTenant);
               if (merged != null) staff = merged;
+              _lastAuthSummary = 'Remote auth checked/merged successfully';
             }
-          } catch (_) {
-            // Keep the locally verified staff session.
+          } catch (e, st) {
+            _lastAuthSummary =
+                'Remote auth threw; kept locally verified staff session: ${e.runtimeType}: $e';
+            _lastAuthDiagnostics = <String, dynamic>{
+              'phase': 'remote_check_after_local_success_exception',
+              'exceptionType': e.runtimeType.toString(),
+              'exception': e.toString(),
+              'stackTrace': st.toString(),
+              'backendUrl': BackendService.backendUrl,
+              'endpoint': '${BackendService.backendUrl}/tenant/staff/authenticate',
+              'tenantId': requestedTenant,
+            };
           }
         }
       } else {
-        // A synced roster row can have no local PIN verifier, and an existing
-        // row can have an outdated verifier after a PIN change on another till.
-        // In either case, let the selected shop's remote verifier authenticate
-        // the PIN before reporting a failure.
+        if (!mounted) return;
+        setState(() {
+          _lastAuthSummary = 'Requesting remote staff authentication';
+          _lastAuthDiagnostics = <String, dynamic>{
+            ...?_lastAuthDiagnostics,
+            'phase': 'remote_auth_without_local_verification',
+            'requestedTenant': requestedTenant,
+            'username': username,
+          };
+        });
         final backendResponse = await BackendService.authenticateStaff(
           username: username,
           pin: password,
           tenantId: requestedTenant,
         );
         onlineResponse = backendResponse;
-        staff = await _mergeOnlineStaff(backendResponse, null,
-            username: username,
-            pin: password,
-            requestedTenant: requestedTenant);
-        if (staff == null) {
+        _lastAuthDiagnostics =
+            BackendService.staffAuthenticationDiagnostics(backendResponse) ??
+            backendResponse;
+        if (backendResponse?['_transportFailure'] == true) {
+          staff = null;
           await AuthService.recordFailure(userKey);
+          _lastAuthSummary =
+              'Remote auth transport/server failure: ${_backendErrorSummary(backendResponse)}';
         } else {
-          await AuthService.recordSuccess(userKey);
+          staff = await _mergeOnlineStaff(backendResponse, null,
+              username: username,
+              pin: password,
+              requestedTenant: requestedTenant);
+          if (staff == null) {
+            await AuthService.recordFailure(userKey);
+            _lastAuthSummary =
+                BackendService.isAuthoritativeStaffAuthenticationRejection(
+                        backendResponse)
+                    ? 'Remote rejection (authoritative): ${_backendErrorSummary(backendResponse)}'
+                    : 'Remote auth returned no usable staff payload: ${_backendErrorSummary(backendResponse)}';
+          } else {
+            await AuthService.recordSuccess(userKey);
+            _lastAuthSummary = 'Remote auth succeeded';
+          }
         }
       }
 
       if (staff == null) {
         if (!mounted) return;
         setState(() {
-          _error = AppLocalizations.of(context).loginWrongCredentials;
+          _error = _formatStaffAuthError(
+            backendResponse: onlineResponse,
+            fallback: AppLocalizations.of(context).loginWrongCredentials,
+          );
         });
         return;
       }
@@ -386,10 +535,30 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
           await showStaffPinChangeDialog(context, context.read<AppState>());
         }
       }
-    } catch (e) {
+    } catch (e, st) {
       if (!mounted) return;
+      final Map<String, dynamic> diagnostics = <String, dynamic>{
+        'phase': 'submit_exception',
+        'mode': kIsWeb ? 'web_diagnostic' : 'native',
+        'backendUrl': BackendService.backendUrl,
+        'endpoint': '${BackendService.backendUrl}/tenant/staff/authenticate',
+        'exceptionType': e.runtimeType.toString(),
+        'exception': e.toString(),
+        'stackTrace': st.toString(),
+        'note': kIsWeb
+            ? 'Web diagnostic mode: local DB/session operations are skipped.'
+            : null,
+      };
+      if (kDebugMode) {
+        debugPrint('[StaffLogin] submit exception: ${e.runtimeType}: $e');
+        debugPrint(st.toString());
+      }
       setState(() {
-        _error = AppLocalizations.of(context).loginNetworkError;
+        _lastAuthDiagnostics = diagnostics;
+        _lastAuthSummary =
+            'App exception during staff login: ${e.runtimeType}: $e';
+        _error =
+            '${AppLocalizations.of(context).loginNetworkError}\nApp error: ${e.runtimeType}: $e';
       });
     } finally {
       if (mounted) {
@@ -397,6 +566,117 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
           _loading = false;
         });
       }
+    }
+  }
+
+  String _formatStaffAuthError({
+    required Map<String, dynamic>? backendResponse,
+    required String fallback,
+    bool detailed = false,
+  }) {
+    final diagnostics =
+        BackendService.staffAuthenticationDiagnostics(backendResponse);
+    final status = diagnostics?['statusCode'];
+    final data = diagnostics?['responseData'];
+    String? detail;
+    if (data is Map) {
+      final dynamic message =
+          data['error'] ?? data['message'] ?? data['detail'] ?? data['code'];
+      if (message != null) detail = message.toString();
+    } else if (data is String && data.trim().isNotEmpty) {
+      detail = data.trim();
+    } else if (diagnostics?['message'] != null) {
+      detail = diagnostics!['message'].toString();
+    }
+    final bool transport = backendResponse?['_transportFailure'] == true;
+    if (transport) {
+      final String base = detail == null || detail.isEmpty
+          ? 'Could not reach backend for staff authentication.'
+          : 'Could not reach backend for staff authentication: $detail';
+      return status == null ? base : '$base (HTTP $status)';
+    }
+    final bool rejected =
+        BackendService.isAuthoritativeStaffAuthenticationRejection(
+      backendResponse,
+    );
+    if (rejected && !detailed) {
+      return fallback;
+    }
+    if (status != null || detail != null) {
+      final List<String> parts = <String>[fallback];
+      if (status != null) parts.add('HTTP $status');
+      if (detail != null && detail.isNotEmpty && detail != fallback) {
+        parts.add(detail);
+      }
+      return parts.join(' • ');
+    }
+    return fallback;
+  }
+
+  String _backendErrorSummary(Map<String, dynamic>? backendResponse) {
+    final diagnostics =
+        BackendService.staffAuthenticationDiagnostics(backendResponse);
+    if (diagnostics == null || diagnostics.isEmpty) {
+      if (backendResponse == null) return 'no response';
+      if (backendResponse['_emptyResponse'] == true) return 'empty response body';
+      return 'no diagnostics';
+    }
+    final status = diagnostics['statusCode'];
+    final detail = _backendErrorDetails(diagnostics);
+    final type = diagnostics['dioType'] ?? diagnostics['exceptionType'];
+    final parts = <String>[
+      if (status != null) 'HTTP $status',
+      if (type != null && type.toString().isNotEmpty) 'type=$type',
+      if (detail != null && detail.isNotEmpty) detail,
+    ];
+    return parts.isEmpty ? 'no backend error details' : parts.join(' • ');
+  }
+
+  String? _backendErrorDetails(Map<String, dynamic>? diagnosticsOrResponse) {
+    if (diagnosticsOrResponse == null) return null;
+    final Map<String, dynamic> diagnostics =
+        BackendService.staffAuthenticationDiagnostics(diagnosticsOrResponse) ??
+            diagnosticsOrResponse;
+    final data = diagnostics['responseData'];
+    String? detail;
+    if (data is Map) {
+      final dynamic message = data['error'] ??
+          data['message'] ??
+          data['detail'] ??
+          data['code'] ??
+          data['reason'];
+      if (message != null) detail = message.toString();
+    } else if (data is String && data.trim().isNotEmpty) {
+      detail = data.trim();
+    }
+    detail ??= diagnostics['message']?.toString();
+    detail ??= diagnostics['error']?.toString();
+    detail ??= diagnostics['exception']?.toString();
+    if (detail == null || detail.trim().isEmpty) return null;
+    return detail.trim();
+  }
+
+  String? _appErrorDetails() {
+    final diagnostics = _lastAuthDiagnostics;
+    if (diagnostics == null) return null;
+    final exception = diagnostics['exception']?.toString();
+    final exceptionType = diagnostics['exceptionType']?.toString();
+    final phase = diagnostics['phase']?.toString();
+    if (exception == null && exceptionType == null) return null;
+    final parts = <String>[
+      if (phase != null && phase.isNotEmpty) 'phase=$phase',
+      if (exceptionType != null && exceptionType.isNotEmpty) exceptionType,
+      if (exception != null && exception.isNotEmpty) exception,
+    ];
+    return parts.join(' • ');
+  }
+
+  String _formatDiagnosticsForDisplay(Map<String, dynamic> diagnostics) {
+    try {
+      const JsonEncoder encoder = JsonEncoder.withIndent('  ');
+      return encoder.convert(diagnostics);
+    } catch (_) {
+      return diagnostics.toString();
     }
   }
 
@@ -538,6 +818,114 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
                         message: _error!,
                         icon: Icons.error_outline,
                         tone: StatusTone.danger,
+                      ),
+                    if (_lastAuthSummary != null || _lastAuthDiagnostics != null)
+                      Padding(
+                        padding: EdgeInsets.only(top: spacing.md),
+                        child: Container(
+                          width: double.infinity,
+                          padding: EdgeInsets.all(spacing.md),
+                          decoration: BoxDecoration(
+                            color: colors.surfaceSunken,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: colors.outline),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                'Staff login diagnostics',
+                                style: type.titleSmall?.copyWith(
+                                  color: colors.onSurface,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              SizedBox(height: spacing.xs),
+                              Text(
+                                'Backend: ${BackendService.backendUrl}',
+                                style: type.bodySmall?.copyWith(
+                                  color: colors.onSurfaceVariant,
+                                ),
+                              ),
+                              if (_lastAuthSummary != null) ...<Widget>[
+                                SizedBox(height: spacing.xs),
+                                Text(
+                                  _lastAuthSummary!,
+                                  style: type.bodyMedium?.copyWith(
+                                    color: colors.onSurface,
+                                  ),
+                                ),
+                              ],
+                              if (_backendErrorDetails(_lastAuthDiagnostics) !=
+                                  null) ...<Widget>[
+                                SizedBox(height: spacing.xs),
+                                SelectableText(
+                                  'Backend error: ${_backendErrorDetails(_lastAuthDiagnostics)}',
+                                  style: type.bodySmall?.copyWith(
+                                    color: colors.onSurface,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                              if (_appErrorDetails() != null) ...<Widget>[
+                                SizedBox(height: spacing.xs),
+                                SelectableText(
+                                  'App error: ${_appErrorDetails()}',
+                                  style: type.bodySmall?.copyWith(
+                                    color: colors.onSurface,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                              if (_lastAuthDiagnostics != null) ...<Widget>[
+                                if (_lastAuthDiagnostics!['statusCode'] != null ||
+                                    _lastAuthDiagnostics!['classification'] !=
+                                        null ||
+                                    _lastAuthDiagnostics!['dioType'] != null ||
+                                    _lastAuthDiagnostics!['phase'] != null) ...<Widget>[
+                                  SizedBox(height: spacing.xs),
+                                  SelectableText(
+                                    [
+                                      if (_lastAuthDiagnostics!['phase'] != null)
+                                        'phase=${_lastAuthDiagnostics!['phase']}',
+                                      if (_lastAuthDiagnostics!['classification'] !=
+                                          null)
+                                        'classification=${_lastAuthDiagnostics!['classification']}',
+                                      if (_lastAuthDiagnostics!['statusCode'] !=
+                                          null)
+                                        'status=${_lastAuthDiagnostics!['statusCode']}',
+                                      if (_lastAuthDiagnostics!['dioType'] != null)
+                                        'dioType=${_lastAuthDiagnostics!['dioType']}',
+                                    ].join(' • '),
+                                    style: type.bodySmall?.copyWith(
+                                      color: colors.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                                SizedBox(height: spacing.sm),
+                                SelectableText(
+                                  _formatDiagnosticsForDisplay(
+                                    _lastAuthDiagnostics!,
+                                  ),
+                                  style: type.bodySmall?.copyWith(
+                                    color: colors.onSurface,
+                                    fontFamily: 'monospace',
+                                    height: 1.35,
+                                  ),
+                                ),
+                              ],
+                              if (kIsWeb) ...<Widget>[
+                                SizedBox(height: spacing.sm),
+                                Text(
+                                  'Web mode: remote staff authentication test only. Run with `flutter run -d chrome --dart-define=BACKEND_URL=https://duka-pos-backend.brianbmk332.workers.dev` to point at production.',
+                                  style: type.bodySmall?.copyWith(
+                                    color: colors.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
                       ),
                     SizedBox(height: spacing.md),
                     OnboardStyle.primaryButton(

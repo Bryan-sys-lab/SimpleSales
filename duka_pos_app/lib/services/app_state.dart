@@ -167,6 +167,21 @@ class AppState extends ChangeNotifier {
 
   Future<void> loadOwner() async {
     workspaceKey = await WorkspaceService.activeWorkspaceKey();
+    if (kIsWeb) {
+      owner = null;
+      shopProfile = ShopProfile.duka;
+      identityLinkPending = false;
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        identityVerified =
+            prefs.getBool(identityVerifiedKeyFor(workspaceKey)) ?? false;
+      } catch (_) {
+        identityVerified = false;
+      }
+      if (_disposed) return;
+      notifyListeners();
+      return;
+    }
     await DatabaseHelper.instance.initializeWorkspace(workspaceKey);
     owner = await DatabaseHelper.instance.getOwner();
     shopProfile = await DatabaseHelper.instance.getShopProfile();
@@ -277,9 +292,6 @@ class AppState extends ChangeNotifier {
       final String key = workspaceKey;
       rememberedStaffUsername =
           prefs.getString(_rememberedKeyFor(key, 'username')) ??
-              // The one-time adoption of the pre-scoping global key. Only for
-              // the shop that is loading, and only when it has nothing of its
-              // own yet, so shop B does not inherit shop A's cashier.
               prefs.getString(_legacyRememberedUsernameKey);
       rememberedStaffId = prefs.getInt(_rememberedKeyFor(key, 'id')) ??
           prefs.getInt(_legacyRememberedIdKey);
@@ -287,7 +299,7 @@ class AppState extends ChangeNotifier {
       // SharedPreferences is unavailable in some test environments; leave
       // the in-memory fields null.
     }
-    notifyListeners();
+    if (!_disposed) notifyListeners();
   }
 
   /// Forgets the remembered cashier.
