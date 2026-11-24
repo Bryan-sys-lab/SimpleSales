@@ -256,14 +256,18 @@ class AutoSyncService {
   /// Runs the complete local-to-server cycle. Automatic calls respect the
   /// owner's opt-in; an explicit "Sync now" action is allowed to run once
   /// without enabling the recurring backup setting.
-  static Future<void> runNow({bool force = false}) async {
+  ///
+  /// Returns the online sync report when server sync ran, or null when sync was
+  /// skipped (disabled/already running/not verified) or not attempted.
+  static Future<OwnerBusinessSyncReport?> runNow({bool force = false}) async {
     // Claim the process-local gate before the first await.  Without this,
     // startup jitter, the timer and a manual "Sync now" can all observe
     // `_running == false`, then enter together after their enabled read.
-    if (_running) return;
+    if (_running) return null;
     _running = true;
+    OwnerBusinessSyncReport? onlineReport;
     try {
-      if (!force && !await enabled) return;
+      if (!force && !await enabled) return null;
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(
           _lastAttemptKey, DateTime.now().toUtc().toIso8601String());
@@ -296,6 +300,7 @@ class AutoSyncService {
       // retries them only after identity verification.
       if (await BackendService.isIdentityVerified) {
         final report = await OwnerBusinessSyncService.run();
+        onlineReport = report;
         for (final failure in report.failed) {
           debugPrint(
               'Automatic owner business sync failed (${failure.domain}): ${failure.message}');
@@ -308,6 +313,7 @@ class AutoSyncService {
         // Rotation is housekeeping; never fail the sync because of it.
         debugPrint('Backup rotation failed: $error');
       }
+      return onlineReport;
     } finally {
       _running = false;
     }

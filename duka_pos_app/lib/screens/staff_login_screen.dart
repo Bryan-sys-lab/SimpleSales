@@ -185,12 +185,17 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
     final rawRemoteId = staffMap['remoteId'] ?? staffMap['staff_id'];
     final remoteId = rawRemoteId is String ? rawRemoteId : null;
     if (remoteId == null || remoteId.isEmpty) return null;
+    final String fallbackHash = fallback?.pinHash ?? '';
+    final bool keepFallbackHash = fallbackHash.startsWith('pbkdf2\$') &&
+        !AuthService.needsUpgrade(fallbackHash);
+    final String pinHash =
+        keepFallbackHash ? fallbackHash : await AuthService.hashPin(pin);
     return DatabaseHelper.instance.mergeAuthenticatedStaff(
       remoteId: remoteId,
       username: username,
       name: staffMap['name'] as String? ?? fallback?.name ?? username,
       role: staffMap['role'] as String? ?? fallback?.role ?? 'cashier',
-      pinHash: fallback?.pinHash ?? await AuthService.hashPin(pin),
+      pinHash: pinHash,
     );
   }
 
@@ -385,6 +390,19 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
 
       if (staff != null && localPinVerified) {
         await AuthService.recordSuccess(userKey);
+        if (AuthService.needsUpgrade(staff.pinHash) && staff.id != null) {
+          final upgradedHash = await AuthService.hashPin(password);
+          await DatabaseHelper.instance.updateStaffPin(staff.id!, upgradedHash);
+          staff = Staff(
+            id: staff.id,
+            name: staff.name,
+            username: staff.username,
+            pinHash: upgradedHash,
+            active: staff.active,
+            remoteId: staff.remoteId,
+            role: staff.role,
+          );
+        }
         if (requestedTenant != null) {
           try {
             if (!mounted) return;

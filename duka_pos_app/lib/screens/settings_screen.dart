@@ -29,7 +29,6 @@ import '../services/audit_actor.dart';
 import '../services/auth_service.dart';
 import '../services/session_refresh_mixin.dart';
 import '../services/staff_credential_cache.dart';
-import '../services/sync_service.dart';
 import '../services/app_busy.dart';
 import '../services/excel_service.dart';
 import '../services/inventory_importer.dart';
@@ -40,6 +39,7 @@ import '../app_brand.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../services/auto_sync_service.dart';
 import '../services/encrypted_backup_service.dart';
+import '../services/owner_business_sync_service.dart';
 import '../ui/brand/nerva_wordmark.dart';
 import '../ui/components/operation_result.dart';
 import '../ui/verification_message.dart';
@@ -105,7 +105,6 @@ class _MpesaChannelDetails {
 
 class _SettingsScreenState extends State<SettingsScreen>
     with SessionRefresh<SettingsScreen> {
-  final _sync = SyncService();
   final _excel = ExcelService();
   List<Staff> _staff = [];
   List<Map<String, dynamic>> _pinResetRequests = const [];
@@ -1498,33 +1497,57 @@ class _SettingsScreenState extends State<SettingsScreen>
     // for the audit/result message after the network work completes.
     final AppState state = context.read<AppState>();
     final AppLocalizations l10n = AppLocalizations.of(context);
-    final shopName = state.owner!.shopName;
     setState(() {
       _syncing = true;
       _syncStatus = null;
     });
-    // The manual action must reconcile every offline queue, not just the
-    // legacy Sheets workbook. It is a one-shot sync and does not turn on the
-    // recurring automatic-backup preference.
-    await AutoSyncService.runNow(force: true);
-    final invResult = await _sync.syncInventory(shopName);
-    final salesResult = await _sync.syncSales(shopName);
-    if (_mpesaEnabled && _backendLinked) {
-      try {
-        await BackendService.syncProductsToBackend();
-      } catch (_) {
-        // Sheets/Excel sync result still reported below; backend push
-        // failing silently here just means the drift window (documented in
-        // the backend README) stays open a bit longer — not fatal.
-      }
+
+    OwnerBusinessSyncReport? report;
+    var identityVerified = false;
+    String? failureDetail;
+    try {
+      identityVerified = await BackendService.isIdentityVerified;
+      // Run the local backup and, when the shop identity is verified, the
+      // live-server sync. This must not fall back to exporting/sharing local
+      // files (which opens the Android app chooser); "Sync now" is an online
+      // sync action.
+      report = await AutoSyncService.runNow(force: true);
+    } catch (e) {
+      failureDetail = e.toString();
     }
+
     if (!mounted) return;
-    final String statusLabel = invResult == SyncResult.pushedToSheets &&
-            salesResult == SyncResult.pushedToSheets
-        ? l10n.settingsSyncSheets
-        : (invResult == SyncResult.failed || salesResult == SyncResult.failed)
-            ? l10n.settingsSyncFailed
-            : l10n.settingsSyncOfflineExcel;
+
+    String statusLabel;
+    if (!identityVerified) {
+      statusLabel = _backendLinked
+          ? 'Verify this shop\'s identity to sync with the live server. '
+              'Local data on this device is unchanged.'
+          : 'Link this shop to your account and verify its identity to sync '
+              'with the live server. Local data on this device is unchanged.';
+    } else if (failureDetail != null) {
+      statusLabel =
+          'Could not sync with the live server. ${failureDetail.trim()}';
+    } else if (report == null) {
+      // Identity is verified but no report was produced (e.g. a sync was
+      // already in progress). Avoid claiming success.
+      statusLabel = 'Sync is already in progress. Try again in a moment.';
+    } else if (report.succeeded) {
+      statusLabel =
+          'Synced with the live server just now (${report.completed.length} '
+          '${report.completed.length == 1 ? 'area' : 'areas'} updated).';
+    } else if (report.completed.isEmpty) {
+      final failed = report.failed.map((f) => f.domain).join(', ');
+      statusLabel =
+          'Could not sync with the live server. Failed: $failed. '
+          'Check your connection and try again.';
+    } else {
+      final failed = report.failed.map((f) => f.domain).join(', ');
+      statusLabel =
+          'Synced with the live server with issues: ${report.completed.length} '
+          'updated, ${report.failed.length} failed ($failed).';
+    }
+
     setState(() {
       _syncing = false;
       _syncStatus = statusLabel;
@@ -1535,7 +1558,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       state,
       action: AuditAction.syncSettingsChanged,
       entity: AuditEntity.settings,
-      detail: 'manual sync: $statusLabel',
+      detail: 'manual live sync: $statusLabel',
     );
     if (!mounted) return;
     // And the owner is told, on a screen. A sync that pushed nothing and one
