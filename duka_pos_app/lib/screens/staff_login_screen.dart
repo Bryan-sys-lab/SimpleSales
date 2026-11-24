@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode, kIsWeb;
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -17,6 +18,7 @@ import '../services/staff_credential_cache.dart';
 import '../widgets/staff_pin_change_dialog.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_colors.dart';
+import '../utils/pin_rules.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/controls.dart';
@@ -779,7 +781,12 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
                       controller: _passwordController,
                       textInputAction: TextInputAction.done,
                       obscureText: _obscurePassword,
+                      keyboardType: TextInputType.number,
                       autofillHints: const <String>[AutofillHints.password],
+                      inputFormatters: <TextInputFormatter>[
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(PinRules.staffLength),
+                      ],
                       decoration: InputDecoration(
                         labelText: l10n.staffPasswordLabel,
                         prefixIcon: const Icon(Icons.lock_outline),
@@ -799,10 +806,16 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
                           },
                         ),
                       ),
-                      validator: (String? value) =>
-                          (value == null || value.trim().isEmpty)
-                              ? l10n.fieldRequired('') as String?
-                              : null,
+                      validator: (String? value) {
+                        final String pin = (value ?? '').trim();
+                        if (pin.isEmpty) {
+                          return l10n.fieldRequired('') as String?;
+                        }
+                        if (!PinRules.isStaffPin(pin)) {
+                          return l10n.validationPinNotFourDigits;
+                        }
+                        return null;
+                      },
                       onFieldSubmitted: (_) => _submit(),
                     ),
                     SizedBox(height: spacing.md),

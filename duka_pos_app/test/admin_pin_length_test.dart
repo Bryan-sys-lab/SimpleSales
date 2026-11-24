@@ -90,17 +90,19 @@ void main() {
     });
 
     test('the sign-in pad asks for six digits for the owner', () {
-      final String source = _read('lib/screens/login_screen.dart');
+      final String ownerSource = _read('lib/screens/login_screen.dart');
+      final String staffSource = _read('lib/screens/staff_login_screen.dart');
       expect(
-        source.contains('PinRules.adminLength'),
+        ownerSource.contains('PinRules.adminLength'),
         isTrue,
-        reason: 'the sign-in pad must ask the owner for the same six digits '
+        reason: 'the owner sign-in pad must ask for the same six digits '
             'the rest of the app asks for',
       );
       expect(
-        source.contains('PinRules.staffLength'),
+        staffSource.contains('PinRules.staffLength'),
         isTrue,
-        reason: 'and it must still ask a staff member for four',
+        reason: 'and a staff member must still be asked for four digits on '
+            'the staff sign-in screen',
       );
     });
 
