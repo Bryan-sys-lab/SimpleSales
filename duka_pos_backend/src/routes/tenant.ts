@@ -1609,68 +1609,179 @@ router.post(
   '/staff/authenticate',
   staffAuthLimiter,
   asyncHandler(async (req, res) => {
-    const parsed = parseBody(staffAuthenticateSchema, req.body);
-    const username = parsed.username.trim().toLowerCase();
-    const { pin } = parsed;
-
-    // On a fresh till there is no bearer token yet. The shop was selected in
-    // the app before this request, so the tenant header is the only accepted
-    // shop selector; credentials are never used to discover a tenant.
-    const tenantId = req.user?.tenantId ?? req.header('x-tenant-id');
-    if (!tenantId || tenantId.trim().length === 0) {
-      return res.status(400).json({ error: 'Shop selection required' });
-    }
-    const entitlement = await tenantEntitlement(tenantId);
-    if (!entitlement.allowed) {
-      return res.status(402).json({ error: 'An active subscription or voucher is required', code: 'SUBSCRIPTION_REQUIRED', entitlement });
-    }
-    const profile = await getD1DatabaseBinding().prepare(`
-      SELECT p.id, p.local_id, p.name, p.username, p.role, p.active,
-             p.pin_hash, t.shop_name
-      FROM profiles p
-      JOIN tenants t ON t.id = p.tenant_id
-      WHERE p.tenant_id = ?
-        AND p.username = ?
-        AND (
-          p.role IN ('cashier', 'manager')
-          OR (p.role = 'admin' AND p.user_id IS NULL AND p.local_id IS NOT NULL)
-        )
-        AND p.active = 1
-        AND p.deleted_at IS NULL
-      LIMIT 1
-    `).bind(tenantId, username).first<{
-      id: string;
-      local_id: number | null;
-      name: string;
-      username: string;
-      role: 'cashier' | 'manager' | 'admin';
-      active: number;
-      pin_hash: string | null;
-      shop_name: string;
-    }>();
-    if (!profile) {
-      return res.status(401).json({ error: 'Staff not found or inactive' });
-    }
-
-    // Keep a server-side verifier so a fresh device can bootstrap its offline
-    // roster without accepting an arbitrary PIN. Existing local devices still
-    // verify first, but the backend closes the online trust boundary too.
-    if (!await verifyStaffPin(pin, profile.pin_hash)) {
-      return res.status(401).json({ error: 'Invalid staff credentials' });
-    }
-    return res.json({
-      staff_id: profile.id,
-      local_id: profile.local_id ?? null,
-      name: profile.name,
-      role: profile.role,
-      tenant_id: tenantId,
-      shop_name: profile.shop_name,
-      session_token: issueStaffSessionToken({
-        profileId: profile.id,
-        tenantId,
-        userId: `staff:${profile.id}`,
-      }).token,
+    const requestId = (req as any).requestId ?? req.header('x-request-id') ?? null;
+    const headerTenantId = req.header('x-tenant-id')?.trim() || null;
+    const authTenantId = req.user?.tenantId ?? null;
+    console.info('[staff-auth] request received', {
+      requestId,
+      path: req.originalUrl,
+      method: req.method,
+      hasAuthUser: Boolean(req.user),
+      authTenantId,
+      headerTenantId,
+      ip: req.ip,
     });
+
+    try {
+      const parsed = parseBody(staffAuthenticateSchema, req.body);
+      const rawUsername = typeof parsed.username === 'string' ? parsed.username : '';
+      const username = rawUsername.trim().toLowerCase();
+      const pin = typeof parsed.pin === 'string' ? parsed.pin : '';
+      console.info('[staff-auth] parsed request', {
+        requestId,
+        headerTenantId,
+        authTenantId,
+        rawUsernameLength: rawUsername.length,
+        normalizedUsername: username,
+        pinLength: pin.length,
+      });
+
+      // On a fresh till there is no bearer token yet. The shop was selected in
+      // the app before this request, so the tenant header is the only accepted
+      // shop selector; credentials are never used to discover a tenant.
+      const tenantId = authTenantId ?? headerTenantId;
+      if (!tenantId || tenantId.trim().length === 0) {
+        console.warn('[staff-auth] rejected: missing tenant/shop selection', {
+          requestId,
+          headerTenantId,
+          authTenantId,
+          normalizedUsername: username,
+          status: 400,
+          code: 'SHOP_SELECTION_REQUIRED',
+        });
+        return res.status(400).json({ error: 'Shop selection required' });
+      }
+
+      const entitlement = await tenantEntitlement(tenantId);
+      if (!entitlement.allowed) {
+        console.warn('[staff-auth] rejected: entitlement/subscription required', {
+          requestId,
+          tenantId,
+          normalizedUsername: username,
+          status: 402,
+          code: 'SUBSCRIPTION_REQUIRED',
+          entitlementState: (entitlement as any)?.state ?? null,
+          entitlementReason: (entitlement as any)?.reason ?? null,
+        });
+        return res.status(402).json({
+          error: 'An active subscription or voucher is required',
+          code: 'SUBSCRIPTION_REQUIRED',
+          entitlement,
+        });
+      }
+
+      const profile = await getD1DatabaseBinding().prepare(`
+        SELECT p.id, p.local_id, p.name, p.username, p.role, p.active,
+               p.pin_hash, t.shop_name
+        FROM profiles p
+        JOIN tenants t ON t.id = p.tenant_id
+        WHERE p.tenant_id = ?
+          AND p.username = ?
+          AND (
+            p.role IN ('cashier', 'manager')
+            OR (p.role = 'admin' AND p.user_id IS NULL AND p.local_id IS NOT NULL)
+          )
+          AND p.active = 1
+          AND p.deleted_at IS NULL
+        LIMIT 1
+      `).bind(tenantId, username).first<{
+        id: string;
+        local_id: number | null;
+        name: string;
+        username: string;
+        role: 'cashier' | 'manager' | 'admin';
+        active: number;
+        pin_hash: string | null;
+        shop_name: string;
+      }>();
+
+      console.info('[staff-auth] profile lookup result', {
+        requestId,
+        tenantId,
+        normalizedUsername: username,
+        found: Boolean(profile),
+        profileId: profile?.id ?? null,
+        localId: profile?.local_id ?? null,
+        role: profile?.role ?? null,
+        active: profile?.active ?? null,
+        hasPinHash: profile ? Boolean(profile.pin_hash) : null,
+      });
+
+      if (!profile) {
+        console.warn('[staff-auth] rejected: staff not found or inactive', {
+          requestId,
+          tenantId,
+          normalizedUsername: username,
+          status: 401,
+          code: 'STAFF_NOT_FOUND_OR_INACTIVE',
+        });
+        return res.status(401).json({ error: 'Staff not found or inactive' });
+      }
+
+      // Keep a server-side verifier so a fresh device can bootstrap its offline
+      // roster without accepting an arbitrary PIN. Existing local devices still
+      // verify first, but the backend closes the online trust boundary too.
+      const pinValid = await verifyStaffPin(pin, profile.pin_hash);
+      console.info('[staff-auth] pin verification result', {
+        requestId,
+        tenantId,
+        normalizedUsername: username,
+        profileId: profile.id,
+        role: profile.role,
+        pinValid,
+      });
+      if (!pinValid) {
+        console.warn('[staff-auth] rejected: invalid staff credentials', {
+          requestId,
+          tenantId,
+          normalizedUsername: username,
+          profileId: profile.id,
+          role: profile.role,
+          status: 401,
+          code: 'INVALID_STAFF_CREDENTIALS',
+        });
+        return res.status(401).json({ error: 'Invalid staff credentials' });
+      }
+
+      const response = {
+        staff_id: profile.id,
+        local_id: profile.local_id ?? null,
+        name: profile.name,
+        role: profile.role,
+        tenant_id: tenantId,
+        shop_name: profile.shop_name,
+        session_token: issueStaffSessionToken({
+          profileId: profile.id,
+          tenantId,
+          userId: `staff:${profile.id}`,
+        }).token,
+      };
+      console.info('[staff-auth] authentication succeeded', {
+        requestId,
+        tenantId,
+        normalizedUsername: username,
+        profileId: profile.id,
+        localId: profile.local_id ?? null,
+        role: profile.role,
+        shopName: profile.shop_name,
+        status: 200,
+      });
+      return res.json(response);
+    } catch (error) {
+      const err = error as any;
+      console.error('[staff-auth] unhandled error', {
+        requestId,
+        headerTenantId,
+        authTenantId,
+        path: req.originalUrl,
+        name: err?.name ?? null,
+        message: err?.message ?? String(error),
+        status: err?.status ?? err?.statusCode ?? null,
+        code: err?.code ?? null,
+        stack: err?.stack ?? null,
+      });
+      throw error;
+    }
   })
 );
 
