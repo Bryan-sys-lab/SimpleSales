@@ -1260,7 +1260,7 @@ abstract class AppLocalizations {
   /// No description provided for @databaseErrorAdvice.
   ///
   /// In en, this message translates to:
-  /// **'This usually follows a crash or a low-storage event. If you have a recent backup file, reinstalling the app and restoring that backup from Settings is the safest way forward.'**
+  /// **'Do not clear app data or uninstall; that can erase the only copy of your shop records. Try again, then copy diagnostics and contact support before restoring a backup.'**
   String get databaseErrorAdvice;
 
   /// No description provided for @databaseErrorRetryAction.

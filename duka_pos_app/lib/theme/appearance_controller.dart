@@ -9,25 +9,40 @@ import 'app_colors.dart';
 /// [system] follows the OS brightness. [light] and [dark] override it.
 enum AppearanceMode { system, light, dark }
 
-/// The appearance preference, persisted locally and read before the first
-/// frame so there is no flash of the wrong brightness.
+/// The appearance preference, persisted locally and applied when preferences
+/// become available.
 ///
 /// Provided exactly once at the composition root (see `lib/main.dart`).
 /// Screens read it through `AppearanceController.of(context)`.
 class AppearanceController extends ChangeNotifier {
-  AppearanceController(this._prefs) {
-    _mode = _parseMode(_prefs.getString(_key));
+  AppearanceController([SharedPreferences? prefs]) : _prefs = prefs {
+    _mode = _parseMode(_prefs?.getString(_key));
   }
 
   static const String _key = 'appearance_mode';
 
-  final SharedPreferences _prefs;
+  SharedPreferences? _prefs;
+  int _changeGeneration = 0;
 
-  /// Loads the stored preference before `runApp`, so the first frame is
-  /// already correct and there is no bright-to-dark flash.
+  /// Loads the stored preference for callers that need a hydrated controller
+  /// before constructing the app.
   static Future<AppearanceController> load() async {
-    final prefs = await SharedPreferences.getInstance();
-    return AppearanceController(prefs);
+    final controller = AppearanceController();
+    await controller.loadPreference();
+    return controller;
+  }
+
+  /// Hydrates the saved preference without requiring it to block the first
+  /// frame. A user choice made while preferences are loading takes precedence.
+  Future<void> loadPreference() async {
+    final int generation = _changeGeneration;
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    _prefs = prefs;
+    if (generation != _changeGeneration) return;
+    final AppearanceMode mode = _parseMode(prefs.getString(_key));
+    if (_mode == mode) return;
+    _mode = mode;
+    notifyListeners();
   }
 
   AppearanceMode _mode = AppearanceMode.system;
@@ -68,9 +83,12 @@ class AppearanceController extends ChangeNotifier {
   /// Sets the appearance mode and persists it. Notifies listeners so the
   /// theme rebuilds immediately.
   Future<void> setMode(AppearanceMode mode) async {
-    if (_mode == mode) return;
+    if (_mode == mode && _prefs != null) return;
     _mode = mode;
-    await _prefs.setString(_key, _modeName(mode));
+    _changeGeneration++;
+    final SharedPreferences prefs =
+        _prefs ??= await SharedPreferences.getInstance();
+    await prefs.setString(_key, _modeName(mode));
     notifyListeners();
   }
 

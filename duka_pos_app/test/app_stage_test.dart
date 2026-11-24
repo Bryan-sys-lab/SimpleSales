@@ -9,6 +9,8 @@
 // resolveAppStage is pure, so this is asserted directly rather than inferred
 // from a pumped widget tree that would need a live database.
 
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:duka_pos/services/app_stage.dart';
 import 'package:duka_pos/routing/app_stage_controller.dart';
@@ -233,6 +235,20 @@ void main() {
   });
 
   group('AppStageController', () {
+    test('a stalled local restore enters recovery instead of staying loading',
+        () async {
+      final Completer<void> restore = Completer<void>();
+      final AppStageController controller = AppStageController(
+        _StalledAppState(restore.future),
+        bootTimeout: const Duration(milliseconds: 1),
+      );
+      addTearDown(controller.dispose);
+
+      await controller.boot();
+
+      expect(controller.snapshot.stage, AppStage.databaseFailed);
+    });
+
     test('choose updates intent and notifies listeners', () {
       final AppState state = AppState();
       final AppStageController controller = AppStageController(state);
@@ -358,4 +374,13 @@ void main() {
       );
     });
   });
+}
+
+class _StalledAppState extends AppState {
+  _StalledAppState(this.restore);
+
+  final Future<void> restore;
+
+  @override
+  Future<void> loadOwner() => restore;
 }

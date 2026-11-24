@@ -38,13 +38,7 @@ const String sentryDsn = String.fromEnvironment(
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // The appearance preference is loaded BEFORE anything else, so the first
-  // frame is already the user's chosen brightness — no flash.
-  final appearance = await AppearanceController.load();
-
-  // Capture device facts once so every crash entry carries them for
-  // reconstruction. Best-effort: a failure here must not stop the app.
-  await failureRecorder.captureEnvironment();
+  final appearance = AppearanceController();
 
   // The build's own configuration, checked before anything else runs.
   //
@@ -79,7 +73,7 @@ Future<void> main() async {
   // recorder's copy unreachable.
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
-    if (sentryDsn.isNotEmpty) {
+    if (sentryDsn.isNotEmpty && _sentryReady) {
       Sentry.captureException(details.exception, stackTrace: details.stack);
     }
     // And the phone's own log. Independent of Sentry, deliberately: an empty
@@ -108,30 +102,50 @@ Future<void> main() async {
     return false;
   };
 
-  // Initialize Sentry for crash reporting (if DSN provided). A malformed DSN
-  // must never prevent the app from starting, so init is guarded and the app
-  // always runs.
-  if (sentryDsn.isNotEmpty) {
-    try {
-      await SentryFlutter.init(
-        (SentryFlutterOptions options) {
-          options.dsn = sentryDsn;
-          options.tracesSampleRate = kReleaseMode ? 0.1 : 0.0;
-          options.environment = kReleaseMode ? 'production' : 'development';
-        },
-        appRunner: () => runApp(DukaPosApp(appearance: appearance)),
-      );
-      _sentryReady = true;
-      return;
-    } catch (error) {
-      debugPrint('Crash reporting disabled (invalid SENTRY_DSN): $error');
-    }
-  }
-
   runApp(DukaPosApp(appearance: appearance));
+  unawaited(_loadAppearancePreference(appearance));
+  unawaited(_captureFailureEnvironment());
+  if (sentryDsn.isNotEmpty) unawaited(_initializeSentry());
 }
 
 bool _sentryReady = false;
+
+Future<void> _loadAppearancePreference(
+  AppearanceController appearance,
+) async {
+  try {
+    await appearance.loadPreference();
+  } catch (error, stack) {
+    debugPrint('Appearance preference unavailable: $error\n$stack');
+    failureRecorder.remember(
+      kind: CrashKind.warning,
+      message: 'Appearance preference could not be loaded: $error',
+      stack: stack.toString(),
+      operation: 'loading appearance preference',
+    );
+  }
+}
+
+Future<void> _captureFailureEnvironment() async {
+  try {
+    await failureRecorder.captureEnvironment();
+  } catch (error, stack) {
+    debugPrint('Device diagnostics unavailable: $error\n$stack');
+  }
+}
+
+Future<void> _initializeSentry() async {
+  try {
+    await SentryFlutter.init((SentryFlutterOptions options) {
+      options.dsn = sentryDsn;
+      options.tracesSampleRate = kReleaseMode ? 0.1 : 0.0;
+      options.environment = kReleaseMode ? 'production' : 'development';
+    });
+    _sentryReady = true;
+  } catch (error) {
+    debugPrint('Crash reporting disabled (invalid SENTRY_DSN): $error');
+  }
+}
 
 /// The composition root.
 ///

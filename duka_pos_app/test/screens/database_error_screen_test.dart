@@ -34,6 +34,8 @@ void main() {
     await tester.pumpApp(home: const DatabaseErrorScreen());
 
     expect(find.text(l10n.databaseErrorTitle), findsOneWidget);
+    expect(find.text(l10n.databaseErrorAdvice), findsOneWidget);
+    expect(l10n.databaseErrorAdvice, contains('Do not clear app data'));
     expect(
       find.widgetWithText(FilledButton, l10n.databaseErrorRetryAction),
       findsOneWidget,
@@ -92,7 +94,7 @@ void main() {
     // The retry opens a database that cannot open, and the open does not
     // answer — so the retry's own timeout is what ends it. The clock is
     // advanced past that timeout to reach the answer.
-    await tester.pump(const Duration(seconds: 20));
+    await tester.pump(const Duration(seconds: 65));
     await tester.pump();
 
     expect(find.text(l10n.databaseErrorRetryFailed), findsOneWidget);

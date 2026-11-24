@@ -23,7 +23,10 @@ import '../services/backend_service.dart';
 /// It holds no navigation. It only reports what is true; where to go is
 /// `appRedirect`'s problem.
 class AppStageController extends ChangeNotifier {
-  AppStageController(this._state) {
+  AppStageController(
+    this._state, {
+    Duration bootTimeout = const Duration(seconds: 60),
+  }) : _bootTimeout = bootTimeout {
     // The router's `refreshListenable` is this controller, not [AppState].
     // Without forwarding [AppState] changes, a successful sign-in — which
     // updates [AppState] and calls its `notifyListeners` — never reaches the
@@ -34,6 +37,7 @@ class AppStageController extends ChangeNotifier {
   }
 
   final AppState _state;
+  final Duration _bootTimeout;
 
   bool _loading = true;
   bool _databaseFailed = false;
@@ -146,6 +150,7 @@ class AppStageController extends ChangeNotifier {
   AppChooserIntent get intent => _intent;
 
   bool _disposed = false;
+  final Completer<void> _disposedSignal = Completer<void>();
 
   /// Reads the local store once, at boot. Everything the redirect needs after
   /// this point is a synchronous getter, because a `redirect` that awaits is a
@@ -159,28 +164,14 @@ class AppStageController extends ChangeNotifier {
   /// real device silently boots to a blank router with no explanation.
   Future<void> boot() async {
     try {
-      await _state.loadOwner();
-      await _state.loadRememberedStaff();
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
-      _prefs = prefs;
-      _flagsReadFor = _state.workspaceKey;
-      _onboardingComplete =
-          prefs.getBool('onboarding_completed_${_state.workspaceKey}') ?? false;
-      // The permissions step is asked once. A till that has never been asked
-      // has NOT been asked — the flag is only set when the owner has been
-      // through the step and moved on.
-      _permissionsAsked =
-          prefs.getBool('permissions_asked_${_state.workspaceKey}') ?? false;
-      _readCachedSubscription(prefs, _state.workspaceKey);
-      if (_disposed) return;
-      await AutoSyncService.start();
+      await _restoreStartupStateBeforeDeadline();
     } catch (error, stack) {
       debugPrint('Boot failed: $error\n$stack');
       failureRecorder.remember(
         kind: error is Error ? CrashKind.crash : CrashKind.error,
-        message: 'Database boot failed: $error',
+        message: 'Workspace startup failed: $error',
         stack: stack.toString(),
-        operation: 'opening local workspace database',
+        operation: 'restoring local workspace',
       );
       if (_disposed) return;
       _databaseFailed = true;
@@ -188,10 +179,57 @@ class AppStageController extends ChangeNotifier {
     if (_disposed) return;
     _loading = false;
     notifyListeners();
+    if (!_databaseFailed) unawaited(_startAutoSync());
+  }
+
+  Future<void> _restoreStartupStateBeforeDeadline() async {
+    final Completer<void> timeout = Completer<void>();
+    final Timer timer = Timer(
+      _bootTimeout,
+      () => timeout.completeError(
+        TimeoutException('Workspace startup timed out', _bootTimeout),
+      ),
+    );
+    try {
+      await Future.any<void>(<Future<void>>[
+        _restoreStartupState(),
+        timeout.future,
+        _disposedSignal.future,
+      ]);
+    } finally {
+      timer.cancel();
+    }
+  }
+
+  Future<void> _restoreStartupState() async {
+    await _state.loadOwner();
+    await _state.loadRememberedStaff();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    _prefs = prefs;
+    _flagsReadFor = _state.workspaceKey;
+    _onboardingComplete =
+        prefs.getBool('onboarding_completed_${_state.workspaceKey}') ?? false;
+    _permissionsAsked =
+        prefs.getBool('permissions_asked_${_state.workspaceKey}') ?? false;
+    _readCachedSubscription(prefs, _state.workspaceKey);
+  }
+
+  Future<void> _startAutoSync() async {
+    try {
+      await AutoSyncService.start();
+    } catch (error, stack) {
+      debugPrint('Automatic backup scheduling failed: $error\n$stack');
+      failureRecorder.remember(
+        kind: CrashKind.warning,
+        message: 'Automatic backup scheduling failed: $error',
+        stack: stack.toString(),
+        operation: 'starting automatic backup scheduling',
+      );
+    }
   }
 
   /// How long a retry waits before it gives up and says so.
-  static const Duration retryTimeout = Duration(seconds: 15);
+  static const Duration retryTimeout = Duration(seconds: 60);
 
   /// Tries the database again, and reports whether it worked.
   ///
@@ -210,14 +248,14 @@ class AppStageController extends ChangeNotifier {
     if (_disposed) return false;
     try {
       // Bounded, because opening the database is file I/O on a phone that may
-      // be the very thing that is broken. A retry that waits forever is a
-      // spinner that never stops: a dead end with an animation on it. Fifteen
-      // seconds is an order of magnitude longer than a healthy open takes.
+      // be the very thing that is broken. The recovery screen must not become
+      // another spinner that never stops.
       await _state.loadOwner().timeout(retryTimeout);
       await _state.loadRememberedStaff();
       if (_disposed) return false;
       _databaseFailed = false;
       notifyListeners();
+      unawaited(_startAutoSync());
       return true;
     } catch (error, stack) {
       debugPrint('Retry failed: $error\n$stack');
@@ -238,6 +276,7 @@ class AppStageController extends ChangeNotifier {
   void dispose() {
     _state.removeListener(_onStateChanged);
     _disposed = true;
+    if (!_disposedSignal.isCompleted) _disposedSignal.complete();
     super.dispose();
   }
 

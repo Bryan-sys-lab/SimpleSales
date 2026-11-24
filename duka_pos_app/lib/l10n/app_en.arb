@@ -193,7 +193,7 @@
   "notFoundAction": "Back to the till",
   "databaseErrorTitle": "This app could not open its data",
   "databaseErrorBody": "Nothing has been changed or deleted, but the app cannot read your inventory or sales right now.",
-  "databaseErrorAdvice": "This usually follows a crash or a low-storage event. If you have a recent backup file, reinstalling the app and restoring that backup from Settings is the safest way forward.",
+  "databaseErrorAdvice": "Do not clear app data or uninstall; that can erase the only copy of your shop records. Try again, then copy diagnostics and contact support before restoring a backup.",
   "databaseErrorRetryAction": "Try again",
   "databaseErrorShareAction": "Copy diagnostics",
   "databaseErrorSharedMessage": "Diagnostics copied. Send them to support.",
