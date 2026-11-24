@@ -1699,16 +1699,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsSyncDoneTitle => 'Sync finished';
 
   @override
-  String get settingsStaffSavedTitle => 'Cashier saved';
+  String settingsStaffSavedTitle(Object role) {
+    return '$role saved';
+  }
 
   @override
-  String get settingsStaffSaveFailedTitle => 'The cashier was not saved';
+  String get settingsStaffSaveFailedTitle => 'Could not save staff member';
 
   @override
-  String get settingsStaffRemovedTitle => 'Cashier removed';
+  String settingsStaffRemovedTitle(Object role) {
+    return '$role removed';
+  }
 
   @override
-  String get settingsStaffRemoveFailedTitle => 'The cashier was not removed';
+  String get settingsStaffRemoveFailedTitle => 'Could not remove staff member';
 
   @override
   String get settingsPinResetTitle => 'PIN reset';
@@ -2271,6 +2275,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get paywallAmountDue => 'Amount due';
+
+  @override
+  String get paywallAdminPriceTitle =>
+      'Subscription price set by your administrator';
+
+  @override
+  String paywallAssignedPrice(Object currency, Object amount, Object interval) {
+    return '$currency $amount / $interval';
+  }
 
   @override
   String get paywallActivateTitle => 'Activate access for this shop';
@@ -3014,6 +3027,35 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsYourShopsTitle => 'Your shops';
+
+  @override
+  String get settingsSubscriptionSection => 'Plan and billing';
+
+  @override
+  String get settingsSubscriptionTitle => 'Shop subscription';
+
+  @override
+  String get settingsSubscriptionLoading => 'Loading your current plan...';
+
+  @override
+  String get settingsSubscriptionUnavailable =>
+      'Plan details are unavailable. Open the plan page to try again.';
+
+  @override
+  String get settingsSubscriptionNotConfigured =>
+      'No subscription price has been set by the system administrator yet.';
+
+  @override
+  String settingsSubscriptionPrice(
+      Object currency, Object amount, Object interval) {
+    return 'Plan price: $currency $amount / $interval';
+  }
+
+  @override
+  String settingsSubscriptionAmountDue(
+      Object currency, Object amount, Object interval, int percent) {
+    return 'After discount: $currency $amount / $interval ($percent% off)';
+  }
 
   @override
   String get settingsBusinessProfile => 'Business profile';
@@ -5909,6 +5951,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get dashboardStockOverview => 'Stock overview';
+
+  @override
+  String dashboardStockAvailability(int available, int total) {
+    return 'In stock: $available of $total products';
+  }
 
   @override
   String get dashboardTotalProducts => 'Total products';

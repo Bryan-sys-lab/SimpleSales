@@ -41,6 +41,13 @@
   "shellCreditMenuLabel": "Wateja wa mkopo",
   "shellSignOutTooltip": "Toka",
   "settingsRoleCashier": "Muuza bidhaa",
+  "settingsRoleManager": "Msimamizi",
+  "settingsRoleAdminFull": "{role} (haki zote)",
+  "@settingsRoleAdminFull": {
+    "placeholders": {
+      "role": {}
+    }
+  },
   "marketplaceTitle": "Zana za biashara",
   "marketplaceIntro": "Lifanya duka lako liwe na nguvu zaidi",
   "marketplaceDescription": "Unganisha zana salama za akili, ripoti, watu, fedha na wateja. Data ya POS yako inabaki yako.",
@@ -157,6 +164,17 @@
   "tankStatusLow": "Chini",
   "tankStatusCritical": "Mwelekeo",
   "dashboardStockOverview": "Muhtasari wa hisa",
+  "dashboardStockAvailability": "Bidhaa zenye hisa: {available} kati ya {total}",
+  "@dashboardStockAvailability": {
+    "placeholders": {
+      "available": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
   "dashboardTotalProducts": "Bidhaa zote",
   "dashboardLowStockCount": "Bidhaa hasi",
   "dashboardOutOfStockCount": "Bidhaa haipo",
@@ -493,6 +511,44 @@
   "settingsAddVariant": "Ongeza hiasco",
   "settingsCancel": "Ghairi",
   "settingsSave": "Hifadhi",
+  "settingsStaffSavedTitle": "{role} ameongezwa",
+  "@settingsStaffSavedTitle": {
+    "placeholders": {
+      "role": {}
+    }
+  },
+  "settingsStaffSaveFailedTitle": "Haikuweza kuhifadhi mfanyakazi",
+  "settingsStaffRemovedTitle": "{role} ameondolewa",
+  "@settingsStaffRemovedTitle": {
+    "placeholders": {
+      "role": {}
+    }
+  },
+  "settingsStaffRemoveFailedTitle": "Haikuweza kuondoa mfanyakazi",
+  "settingsSubscriptionSection": "Mpango na malipo",
+  "settingsSubscriptionTitle": "Usajili wa duka",
+  "settingsSubscriptionLoading": "Inapakia mpango wako wa sasa...",
+  "settingsSubscriptionUnavailable": "Maelezo ya mpango hayapatikani. Fungua ukurasa wa mpango ujaribu tena.",
+  "settingsSubscriptionNotConfigured": "Msimamizi wa mfumo bado hajaweka bei ya usajili.",
+  "settingsSubscriptionPrice": "Bei ya mpango: {currency} {amount} / {interval}",
+  "@settingsSubscriptionPrice": {
+    "placeholders": {
+      "currency": {},
+      "amount": {},
+      "interval": {}
+    }
+  },
+  "settingsSubscriptionAmountDue": "Baada ya punguzo: {currency} {amount} / {interval} ({percent}% punguzo)",
+  "@settingsSubscriptionAmountDue": {
+    "placeholders": {
+      "currency": {},
+      "amount": {},
+      "interval": {},
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
   "settingsPin1": "Pini 1",
   "settingsPin2": "Pini 2",
   "settingsSaveButton": "Hifadhi",
@@ -771,6 +827,15 @@
     }
   },
   "paywallAmountDue": "Kiasi cha kulipa",
+  "paywallAdminPriceTitle": "Bei ya usajili iliyowekwa na msimamizi wako",
+  "paywallAssignedPrice": "{currency} {amount} / {interval}",
+  "@paywallAssignedPrice": {
+    "placeholders": {
+      "currency": {},
+      "amount": {},
+      "interval": {}
+    }
+  },
   "paywallActivateTitle": "Washa ufikiaji wa duka hili",
   "paywallVoucherChooseText": "Chagua usajili au weka vocha iliyotolewa na msimamizi. Ufikiaji unashirikiwa na mmiliki na wafanyakazi wa duka.",
   "paywallVoucherClaimText": "Dai vocha iliyotolewa sasa, au weka msimbo wake hapa chini. Muda wake huanza unapoidai.",

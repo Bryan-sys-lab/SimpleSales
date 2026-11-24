@@ -16,7 +16,12 @@ import '../theme/app_colors.dart';
 enum _MembershipSection { plans, quote, vouchers, help }
 
 class PaywallScreen extends StatefulWidget {
-  const PaywallScreen({super.key});
+  const PaywallScreen({
+    super.key,
+    this.subscriptionRequired = false,
+  });
+
+  final bool subscriptionRequired;
 
   @override
   State<PaywallScreen> createState() => _PaywallScreenState();
@@ -745,6 +750,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
   Widget _buildPlansContent(AppLocalizations l10n, ThemeData theme) {
     if (_buildingPlan) return _buildPlanBuilder(l10n, theme);
     final colors = theme.colorScheme;
+    final Widget? configuredPricing = _buildConfiguredPricing(l10n, theme);
     return ListView(
       key: const ValueKey<String>('membership-explore'),
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
@@ -782,7 +788,10 @@ class _PaywallScreenState extends State<PaywallScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 16),
+        if (configuredPricing != null) ...[
+          const SizedBox(height: 16),
+          configuredPricing,
+        ],
         const SizedBox(height: 16),
         Card(
           child: ListTile(
@@ -812,6 +821,86 @@ class _PaywallScreenState extends State<PaywallScreen> {
           _buildSubscriptionSummary(l10n, theme),
         ],
       ],
+    );
+  }
+
+  Widget? _buildConfiguredPricing(AppLocalizations l10n, ThemeData theme) {
+    final entitlement = _entitlement;
+    final int? monthlyPriceMinor = entitlement?.priceMinor;
+    if (entitlement == null ||
+        monthlyPriceMinor == null ||
+        monthlyPriceMinor <= 0 ||
+        entitlement.discountVoucherDurationMonths != null ||
+        entitlement.claimedVoucherType == 'discount') {
+      return null;
+    }
+
+    final int durationMonths = _durationMonths > 0 ? _durationMonths : 1;
+    final int discountPercent =
+        entitlement.discountPercent.clamp(0, 100).toInt();
+    final int baseAmountMinor = monthlyPriceMinor * durationMonths;
+    final int amountDueMinor =
+        (baseAmountMinor * (100 - discountPercent) / 100).round();
+    final int discountAmountMinor = baseAmountMinor - amountDueMinor;
+    final String currency = entitlement.currency;
+    final TextTheme textTheme = theme.textTheme;
+
+    String amount(int minor) => '$currency ${(minor / 100).toStringAsFixed(2)}';
+
+    String durationLabel() => switch (durationMonths) {
+          1 => l10n.paywallOneMonth,
+          3 => l10n.paywallThreeMonths,
+          6 => l10n.paywallSixMonths,
+          12 => l10n.paywallTwelveMonths,
+          _ => '$durationMonths months',
+        };
+
+    return Card(
+      key: const ValueKey<String>('admin-subscription-pricing'),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              l10n.paywallAdminPriceTitle,
+              style: textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              l10n.paywallAssignedPrice(
+                currency,
+                (monthlyPriceMinor / 100).toStringAsFixed(2),
+                entitlement.billingInterval,
+              ),
+              style: textTheme.bodyMedium,
+            ),
+            const Divider(height: 24),
+            _PricingRow(
+              label: l10n.paywallDuration,
+              value: durationLabel(),
+            ),
+            const SizedBox(height: 8),
+            _PricingRow(
+              label: l10n.paywallQuoteBase,
+              value: amount(baseAmountMinor),
+            ),
+            if (discountPercent > 0) ...<Widget>[
+              const SizedBox(height: 8),
+              _PricingRow(
+                label: l10n.paywallDiscount(discountPercent),
+                value: '-${amount(discountAmountMinor)}',
+              ),
+            ],
+            const Divider(height: 24),
+            _PricingRow(
+              label: l10n.paywallAmountDue,
+              value: amount(amountDueMinor),
+              emphasize: true,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1170,6 +1259,8 @@ class _PaywallScreenState extends State<PaywallScreen> {
   Widget _buildQuoteContent(AppLocalizations l10n, ThemeData theme) {
     final request = _currentMembershipRequest;
     final agreement = request?.agreement;
+    final Widget? configuredPricing =
+        agreement == null ? _buildConfiguredPricing(l10n, theme) : null;
     final snapshot = agreement?.snapshot ?? const <String, dynamic>{};
     final agreedAmount = (snapshot['amountMinor'] as num?)?.toInt();
     final agreementCurrency = snapshot['currency'] as String? ?? 'KES';
@@ -1185,6 +1276,10 @@ class _PaywallScreenState extends State<PaywallScreen> {
         Text(l10n.membershipQuote, style: theme.textTheme.headlineSmall),
         const SizedBox(height: 6),
         Text(l10n.membershipQuoteDescription, style: theme.textTheme.bodyLarge),
+        if (configuredPricing != null) ...[
+          const SizedBox(height: 16),
+          configuredPricing,
+        ],
         if (_membershipRequests.length > 1) ...[
           const SizedBox(height: 16),
           DropdownButtonFormField<String>(
@@ -1491,80 +1586,114 @@ class _PaywallScreenState extends State<PaywallScreen> {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     if (_loading && _entitlement == null) {
-      return Scaffold(
-        appBar: AppBar(title: Text(l10n.membershipTitle)),
-        body: const Center(child: CircularProgressIndicator()),
+      return PopScope<Object?>(
+        canPop: !widget.subscriptionRequired,
+        child: Scaffold(
+          appBar: AppBar(title: Text(l10n.membershipTitle)),
+          body: const Center(child: CircularProgressIndicator()),
+        ),
       );
     }
 
     final sectionIndex = _section.index;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.membershipTitle),
-        actions: [
-          IconButton(
-            tooltip: l10n.paywallCheckVoucher,
-            onPressed: _loading ? null : _refreshEntitlement,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            if (_loading && _entitlement != null)
-              const LinearProgressIndicator(),
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                child: Text(
-                  _error!,
-                  style: TextStyle(color: AppColors.of(context).danger),
+    return PopScope<Object?>(
+      canPop: !widget.subscriptionRequired,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(l10n.membershipTitle),
+          actions: [
+            IconButton(
+              tooltip: l10n.paywallCheckVoucher,
+              onPressed: _loading ? null : _refreshEntitlement,
+              icon: const Icon(Icons.refresh),
+            ),
+          ],
+        ),
+        body: SafeArea(
+          child: Column(
+            children: [
+              if (_loading && _entitlement != null)
+                const LinearProgressIndicator(),
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                  child: Text(
+                    _error!,
+                    style: TextStyle(color: AppColors.of(context).danger),
+                  ),
+                ),
+              Expanded(
+                child: IndexedStack(
+                  index: sectionIndex,
+                  children: [
+                    _buildPlansContent(l10n, theme),
+                    _buildQuoteContent(l10n, theme),
+                    _buildVoucherContent(l10n, theme),
+                    _buildHelpContent(l10n, theme),
+                  ],
                 ),
               ),
-            Expanded(
-              child: IndexedStack(
-                index: sectionIndex,
-                children: [
-                  _buildPlansContent(l10n, theme),
-                  _buildQuoteContent(l10n, theme),
-                  _buildVoucherContent(l10n, theme),
-                  _buildHelpContent(l10n, theme),
-                ],
-              ),
+            ],
+          ),
+        ),
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: sectionIndex,
+          onDestinationSelected: (index) => setState(
+            () => _section = _MembershipSection.values[index],
+          ),
+          destinations: [
+            NavigationDestination(
+              icon: const Icon(Icons.explore_outlined),
+              selectedIcon: const Icon(Icons.explore),
+              label: l10n.membershipPlans,
+            ),
+            NavigationDestination(
+              icon: const Icon(Icons.request_quote_outlined),
+              selectedIcon: const Icon(Icons.request_quote),
+              label: l10n.membershipQuote,
+            ),
+            NavigationDestination(
+              icon: const Icon(Icons.redeem_outlined),
+              selectedIcon: const Icon(Icons.redeem),
+              label: l10n.membershipVouchers,
+            ),
+            NavigationDestination(
+              icon: const Icon(Icons.help_outline),
+              selectedIcon: const Icon(Icons.help),
+              label: l10n.membershipHelp,
             ),
           ],
         ),
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: sectionIndex,
-        onDestinationSelected: (index) => setState(
-          () => _section = _MembershipSection.values[index],
-        ),
-        destinations: [
-          NavigationDestination(
-            icon: const Icon(Icons.explore_outlined),
-            selectedIcon: const Icon(Icons.explore),
-            label: l10n.membershipPlans,
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.request_quote_outlined),
-            selectedIcon: const Icon(Icons.request_quote),
-            label: l10n.membershipQuote,
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.redeem_outlined),
-            selectedIcon: const Icon(Icons.redeem),
-            label: l10n.membershipVouchers,
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.help_outline),
-            selectedIcon: const Icon(Icons.help),
-            label: l10n.membershipHelp,
-          ),
-        ],
-      ),
+    );
+  }
+}
+
+class _PricingRow extends StatelessWidget {
+  const _PricingRow({
+    required this.label,
+    required this.value,
+    this.emphasize = false,
+  });
+
+  final String label;
+  final String value;
+  final bool emphasize;
+
+  @override
+  Widget build(BuildContext context) {
+    final TextStyle? style = emphasize
+        ? Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            )
+        : Theme.of(context).textTheme.bodyMedium;
+    return Row(
+      children: <Widget>[
+        Expanded(child: Text(label, style: style)),
+        const SizedBox(width: 12),
+        Text(value, style: style),
+      ],
     );
   }
 }

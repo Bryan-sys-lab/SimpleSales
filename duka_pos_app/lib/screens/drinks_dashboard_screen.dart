@@ -246,37 +246,39 @@ class DrinksDashboardScreen extends StatelessWidget {
     final bool twoColumns =
         MediaQuery.sizeOf(context).width >= _drinksTwoColumnBreakpoint;
 
-    final List<Widget> body = <Widget>[
-      header,
-      if (attention != null)
-        Semantics(
-          sortKey: const OrdinalSortKey(0),
-          child: attention,
+    final List<Widget> body = spaced(
+      <Widget?>[
+        header,
+        if (attention != null)
+          Semantics(
+            sortKey: const OrdinalSortKey(0),
+            child: attention,
+          ),
+        financialHero,
+        quickActions,
+        kpiGrid,
+        BackupReminderBanner(onBackupNow: onBackupNow),
+        DashboardPanel(
+          title: l10n.dashboardHeldCarts,
+          topAccent: DashboardProfilePalette.forProfile(ShopProfile.drinks,
+                  brightness: Theme.of(context).brightness)
+              .accent,
+          child: Padding(
+            padding: EdgeInsets.all(spacing.md),
+            child: Text(
+              '${data.drinksAnalytics.openTabs}',
+              style: AppTypography.money(
+                context,
+                size: 24,
+                weight: FontWeight.w700,
+              ),
+            ),
+          ),
         ),
-      SizedBox(height: spacing.lg),
-      financialHero,
-      SizedBox(height: spacing.lg),
-      quickActions,
-      SizedBox(height: spacing.lg),
-      kpiGrid,
-      SizedBox(height: spacing.lg),
-      BackupReminderBanner(onBackupNow: onBackupNow),
-      SizedBox(height: spacing.lg),
-      DashboardPanel(
-        title: l10n.dashboardHeldCarts,
-        topAccent: DashboardProfilePalette.forProfile(ShopProfile.drinks,
-                brightness: Theme.of(context).brightness)
-            .accent,
-        child: Padding(
-          padding: EdgeInsets.all(spacing.md),
-          child: Text('${data.drinksAnalytics.openTabs}',
-              style: AppTypography.money(context,
-                  size: 24, weight: FontWeight.w700)),
-        ),
-      ),
-      SizedBox(height: spacing.lg),
-      shiftOverview,
-    ];
+        shiftOverview,
+      ],
+      gap,
+    );
 
     if (twoColumns) {
       body.addAll(<Widget>[
@@ -326,11 +328,6 @@ class DrinksDashboardScreen extends StatelessWidget {
     } else {
       body.addAll(spaced(
         <Widget?>[
-          if (attention != null)
-            Semantics(
-              sortKey: const OrdinalSortKey(0),
-              child: attention,
-            ),
           sales,
           topProducts,
           beverageStock,
@@ -408,6 +405,7 @@ class _DrinksShiftOverview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
     final int activeTanks = tanks.where((p) => p.active).length;
     final int remainingLitres = tanks.fold<int>(
           0,
@@ -426,46 +424,49 @@ class _DrinksShiftOverview extends StatelessWidget {
       padChild: false,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          _DrinksMiniListRow(
-            icon: Icons.access_time_outlined,
-            title: 'Current shift',
-            subtitle: shift == null
-                ? l10n.dashboardNoShiftMessage
-                : l10n.dashboardStaffNameSince(
-                    shift!.staffName,
-                    shift!.startTime.toString(),
-                  ),
-            pill: shift == null
-                ? null
-                : StatusChip(
-                    tone: StatusTone.success,
-                    text: l10n.shiftOpenChip,
-                    dense: true,
-                  ),
-            onTap: onOpenShift,
-          ),
-          _DrinksMiniListRow(
-            icon: Icons.local_drink_outlined,
-            title: 'Tank operations',
-            subtitle:
-                '$activeTanks active tanks · $remainingLitres L remaining',
-            onTap: onOpenInventory,
-          ),
-          _DrinksMiniListRow(
-            icon: Icons.warning_amber_outlined,
-            title: 'Stock attention',
-            subtitle: '$lowStockCount items running low',
-            pill: lowStockCount > 0
-                ? StatusChip(
-                    tone: StatusTone.warning,
-                    text: 'Review',
-                    dense: true,
-                  )
-                : null,
-            onTap: onOpenInventory,
-          ),
-        ],
+        children: spaced(
+          <Widget?>[
+            _DrinksMiniListRow(
+              icon: Icons.access_time_outlined,
+              title: 'Current shift',
+              subtitle: shift == null
+                  ? l10n.dashboardNoShiftMessage
+                  : l10n.dashboardStaffNameSince(
+                      shift!.staffName,
+                      shift!.startTime.toString(),
+                    ),
+              pill: shift == null
+                  ? null
+                  : StatusChip(
+                      tone: StatusTone.success,
+                      text: l10n.shiftOpenChip,
+                      dense: true,
+                    ),
+              onTap: onOpenShift,
+            ),
+            _DrinksMiniListRow(
+              icon: Icons.local_drink_outlined,
+              title: 'Tank operations',
+              subtitle:
+                  '$activeTanks active tanks · $remainingLitres L remaining',
+              onTap: onOpenInventory,
+            ),
+            _DrinksMiniListRow(
+              icon: Icons.warning_amber_outlined,
+              title: 'Stock attention',
+              subtitle: '$lowStockCount items running low',
+              pill: lowStockCount > 0
+                  ? StatusChip(
+                      tone: StatusTone.warning,
+                      text: 'Review',
+                      dense: true,
+                    )
+                  : null,
+              onTap: onOpenInventory,
+            ),
+          ],
+          spacing.sm,
+        ),
       ),
     );
   }

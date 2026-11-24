@@ -388,7 +388,7 @@ class DukaDashboardScreen extends StatelessWidget {
   }
 }
 
-/// Stock overview: total products, low stock, out of stock, stock value.
+/// Stock availability, risk counts, and the value of the current inventory.
 class _DukaStockOverview extends StatelessWidget {
   const _DukaStockOverview({
     required this.totalProducts,
@@ -408,55 +408,117 @@ class _DukaStockOverview extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
     final l10n = AppLocalizations.of(context);
+    final int productCount = totalProducts < 0 ? 0 : totalProducts;
+    final int lowCount = lowStockCount.clamp(0, productCount).toInt();
+    final int outCount = outOfStockCount.clamp(0, productCount).toInt();
+    final int availableProducts = productCount - outCount;
+    final double availability =
+        productCount == 0 ? 0 : availableProducts / productCount;
 
     return DashboardPanel(
       title: l10n.dashboardStockOverview,
       padChild: false,
       child: LayoutBuilder(
         builder: (BuildContext context, BoxConstraints constraints) {
-          final bool row = constraints.maxWidth >= 640;
-          final List<Widget> tiles = <Widget>[
-            _OverviewTile(
-              label: l10n.dashboardTotalProducts,
-              value: '$totalProducts',
-              icon: Icons.inventory_2_outlined,
-              onTap: onOpenInventory,
-            ),
-            _OverviewTile(
-              label: l10n.dashboardLowStockCount,
-              value: '$lowStockCount',
-              icon: Icons.warning_amber_outlined,
-              tone: StatusTone.warning,
-            ),
-            _OverviewTile(
-              label: l10n.dashboardOutOfStockCount,
-              value: '$outOfStockCount',
-              icon: Icons.cancel_outlined,
-              tone: StatusTone.danger,
-            ),
-          ];
-          if (row) {
-            return IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  for (int i = 0; i < tiles.length; i++) ...<Widget>[
-                    if (i > 0) SizedBox(width: spacing.lg),
-                    Expanded(child: tiles[i]),
+          final int columns = constraints.maxWidth >= 560
+              ? 3
+              : constraints.maxWidth >= 280
+                  ? 2
+                  : 1;
+          final double metricWidth =
+              (constraints.maxWidth - spacing.sm * (columns - 1)) / columns;
+          return Padding(
+            padding: EdgeInsets.all(spacing.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Text(
+                  l10n.dashboardStockValue,
+                  style: AppTypography.of(context).labelMedium,
+                ),
+                SizedBox(height: spacing.xs),
+                Text(
+                  formatMoney(stockValue),
+                  style: AppTypography.money(
+                    context,
+                    size: 26,
+                    weight: FontWeight.w800,
+                  ),
+                ),
+                SizedBox(height: spacing.lg),
+                Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: Text(
+                        l10n.dashboardStockAvailability(
+                          availableProducts,
+                          productCount,
+                        ),
+                        style: AppTypography.of(context).titleSmall,
+                      ),
+                    ),
+                    SizedBox(width: spacing.sm),
+                    Text('${(availability * 100).round()}%'),
                   ],
-                ],
-              ),
-            );
-          }
-          return Wrap(
-            spacing: spacing.lg,
-            runSpacing: spacing.lg,
-            children: tiles
-                .map((t) => SizedBox(
-                    width: ((constraints.maxWidth - spacing.lg) / 2)
-                        .clamp(120.0, double.infinity),
-                    child: t))
-                .toList(),
+                ),
+                SizedBox(height: spacing.xs),
+                Semantics(
+                  label: l10n.dashboardStockAvailability(
+                    availableProducts,
+                    productCount,
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: availability,
+                      minHeight: 8,
+                    ),
+                  ),
+                ),
+                SizedBox(height: spacing.lg),
+                Wrap(
+                  spacing: spacing.sm,
+                  runSpacing: spacing.sm,
+                  children: <Widget>[
+                    SizedBox(
+                      width: metricWidth,
+                      child: _StockMetric(
+                        label: l10n.dashboardTotalProducts,
+                        value: '$productCount',
+                        icon: Icons.inventory_2_outlined,
+                      ),
+                    ),
+                    SizedBox(
+                      width: metricWidth,
+                      child: _StockMetric(
+                        label: l10n.dashboardLowStockCount,
+                        value: '$lowCount',
+                        icon: Icons.warning_amber_outlined,
+                        tone: StatusTone.warning,
+                      ),
+                    ),
+                    SizedBox(
+                      width: metricWidth,
+                      child: _StockMetric(
+                        label: l10n.dashboardOutOfStockCount,
+                        value: '$outCount',
+                        icon: Icons.cancel_outlined,
+                        tone: StatusTone.danger,
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: spacing.md),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: OutlinedButton.icon(
+                    onPressed: onOpenInventory,
+                    icon: const Icon(Icons.inventory_2_outlined),
+                    label: Text(l10n.dashboardInventory),
+                  ),
+                ),
+              ],
+            ),
           );
         },
       ),
@@ -464,80 +526,66 @@ class _DukaStockOverview extends StatelessWidget {
   }
 }
 
-class _OverviewTile extends StatelessWidget {
-  const _OverviewTile({
+class _StockMetric extends StatelessWidget {
+  const _StockMetric({
     required this.label,
     required this.value,
     required this.icon,
     this.tone,
-    this.onTap,
   });
 
   final String label;
   final String value;
   final IconData icon;
   final StatusTone? tone;
-  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
     final AppColors colors = AppColors.of(context);
-    final type = AppTypography.of(context);
 
     return Semantics(
-      button: onTap != null,
       label: '$label: $value',
-      child: ExcludeSemantics(
-        child: SurfaceCard(
-          padding: EdgeInsets.all(spacing.md),
-          onTap: onTap,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Wrap(
-                alignment: WrapAlignment.spaceBetween,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: spacing.sm,
-                runSpacing: spacing.xs,
+      child: Container(
+        padding: EdgeInsets.all(spacing.sm),
+        decoration: BoxDecoration(
+          color: tone != null ? tone!.container(colors) : colors.surfaceSunken,
+          borderRadius: AppShapes.of(context).controlRadius,
+        ),
+        child: Row(
+          children: <Widget>[
+            Icon(
+              icon,
+              size: 20,
+              color: tone != null
+                  ? tone!.onContainer(colors)
+                  : colors.onSurfaceMuted,
+            ),
+            SizedBox(width: spacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Container(
-                    padding: EdgeInsets.all(spacing.xs),
-                    decoration: BoxDecoration(
-                      color: tone != null
-                          ? tone!.container(colors)
-                          : colors.surfaceSunken,
-                      borderRadius: AppShapes.of(context).controlRadius,
-                    ),
-                    child: Icon(
-                      icon,
-                      size: 18,
-                      color: tone != null
-                          ? tone!.onContainer(colors)
-                          : colors.onSurfaceMuted,
+                  Text(
+                    value,
+                    style: AppTypography.money(
+                      context,
+                      size: 20,
+                      weight: FontWeight.w800,
                     ),
                   ),
-                  if (tone != null)
-                    StatusChip(tone: tone!, text: tone!.label, dense: true),
+                  Text(
+                    label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.of(context)
+                        .labelMedium
+                        ?.copyWith(color: colors.onSurfaceMuted),
+                  ),
                 ],
               ),
-              SizedBox(height: spacing.lg),
-              Text(
-                value,
-                style: AppTypography.money(
-                  context,
-                  size: 20,
-                  weight: FontWeight.w800,
-                ),
-              ),
-              SizedBox(height: spacing.xs),
-              Text(
-                label,
-                style: type.labelMedium?.copyWith(color: colors.onSurfaceMuted),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

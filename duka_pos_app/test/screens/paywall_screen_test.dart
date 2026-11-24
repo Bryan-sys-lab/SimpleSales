@@ -6,7 +6,16 @@ import 'package:duka_pos/l10n/generated/app_localizations.dart';
 import 'package:duka_pos/screens/paywall_screen.dart';
 import 'package:duka_pos/services/backend_service.dart';
 import 'package:duka_pos/services/workspace_service.dart';
-import 'package:material_ui/material_ui.dart' show TextField;
+import 'package:material_ui/material_ui.dart'
+    show
+        Builder,
+        MaterialPageRoute,
+        NavigationBar,
+        Navigator,
+        Scaffold,
+        Text,
+        TextButton,
+        TextField;
 import 'package:flutter/widgets.dart' show Scrollable, ValueKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,6 +28,7 @@ class _PaywallAdapter implements HttpClientAdapter {
   bool offerReady = false;
   bool agreementAccepted = false;
   bool paymentStarted = false;
+  bool noMembershipRequests = false;
 
   @override
   Future<ResponseBody> fetch(
@@ -46,21 +56,24 @@ class _PaywallAdapter implements HttpClientAdapter {
       };
     } else if (options.path.endsWith('/tenant/membership/requests')) {
       payload = <String, Object?>{
-        'requests': <Object>[
-          <String, Object?>{
-            'id': 'membership-request-1',
-            'status': agreementAccepted
-                ? 'accepted'
-                : offerReady
-                    ? 'offer_ready'
-                    : 'pending',
-            'features': <String>['Inventory'],
-            'requirements': 'Train two staff members.',
-            'offers': offerReady ? <Object>[_membershipOffer] : <Object>[],
-            'messages': <Object>[],
-            'agreement': agreementAccepted ? _membershipAgreement : null,
-          },
-        ],
+        'requests': noMembershipRequests
+            ? <Object>[]
+            : <Object>[
+                <String, Object?>{
+                  'id': 'membership-request-1',
+                  'status': agreementAccepted
+                      ? 'accepted'
+                      : offerReady
+                          ? 'offer_ready'
+                          : 'pending',
+                  'features': <String>['Inventory'],
+                  'requirements': 'Train two staff members.',
+                  'offers':
+                      offerReady ? <Object>[_membershipOffer] : <Object>[],
+                  'messages': <Object>[],
+                  'agreement': agreementAccepted ? _membershipAgreement : null,
+                },
+              ],
       };
     } else if (options.path.endsWith('/tenant/membership/payments')) {
       payload = <String, Object?>{
@@ -250,6 +263,104 @@ class _DiscountVoucherAdapter implements HttpClientAdapter {
 
 void main() {
   setUpAll(loadAppFonts);
+
+  testWidgets(
+    'shows the configured subscription amount on the quote page without a request',
+    (WidgetTester tester) async {
+      tester.useDevice(Device.compact);
+      final _PaywallAdapter adapter = _PaywallAdapter()
+        ..noMembershipRequests = true;
+      BackendService.setHttpClientAdapterForTesting(adapter);
+      addTearDown(() => BackendService.setHttpClientAdapterForTesting(null));
+
+      await tester.pumpApp(home: const PaywallScreen());
+      await tester.pumpAndSettle();
+
+      final AppLocalizations l10n =
+          AppLocalizations.of(tester.element(find.byType(PaywallScreen)));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(NavigationBar),
+          matching: find.text(l10n.membershipQuote),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey<String>('admin-subscription-pricing')),
+          findsOneWidget);
+      expect(find.text('KES 1000.00'), findsOneWidget);
+      expect(find.text('KES 900.00'), findsOneWidget);
+      expect(find.text(l10n.membershipQuoteEmptyTitle), findsOneWidget);
+      expect(adapter.requestBodies, isEmpty);
+      tester.expectNoOverflow('configured subscription price without request');
+    },
+  );
+
+  testWidgets('a required subscription cannot be backed out into Settings',
+      (WidgetTester tester) async {
+    tester.useDevice(Device.compact);
+    final _PaywallAdapter adapter = _PaywallAdapter();
+    BackendService.setHttpClientAdapterForTesting(adapter);
+    addTearDown(() => BackendService.setHttpClientAdapterForTesting(null));
+
+    await tester.pumpApp(
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(
+            key: const ValueKey<String>('open-required-subscription'),
+            onPressed: () => Navigator.of(context).push<void>(
+              MaterialPageRoute<void>(
+                builder: (_) => const PaywallScreen(subscriptionRequired: true),
+              ),
+            ),
+            child: const Text('Settings'),
+          ),
+        ),
+      ),
+    );
+    await tester
+        .tap(find.byKey(const ValueKey<String>('open-required-subscription')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PaywallScreen), findsOneWidget);
+    await tester.tap(find.byTooltip('Back'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PaywallScreen), findsOneWidget);
+    expect(find.text('Settings'), findsNothing);
+  });
+
+  testWidgets('an optional paywall still returns to Settings',
+      (WidgetTester tester) async {
+    tester.useDevice(Device.compact);
+    final _PaywallAdapter adapter = _PaywallAdapter();
+    BackendService.setHttpClientAdapterForTesting(adapter);
+    addTearDown(() => BackendService.setHttpClientAdapterForTesting(null));
+
+    await tester.pumpApp(
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(
+            key: const ValueKey<String>('open-optional-subscription'),
+            onPressed: () => Navigator.of(context).push<void>(
+              MaterialPageRoute<void>(
+                builder: (_) => const PaywallScreen(),
+              ),
+            ),
+            child: const Text('Settings'),
+          ),
+        ),
+      ),
+    );
+    await tester
+        .tap(find.byKey(const ValueKey<String>('open-optional-subscription')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Back'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PaywallScreen), findsNothing);
+    expect(find.text('Settings'), findsOneWidget);
+  });
 
   testWidgets(
     'shows the one-tap admin voucher claim when one is available',
@@ -519,7 +630,14 @@ void main() {
       adapter.offerReady = true;
       await tester.tap(find.byTooltip('Refresh request'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Review offer'));
+      final Finder reviewOffer = find.text('Review offer');
+      await tester.scrollUntilVisible(
+        reviewOffer,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(reviewOffer);
       await tester.pump(const Duration(milliseconds: 500));
       expect(find.textContaining('KES 75.00'), findsOneWidget);
       await tester.tap(find.text('Accept offer'));

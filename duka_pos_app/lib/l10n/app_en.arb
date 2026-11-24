@@ -470,10 +470,20 @@
   "settingsMpesaUpdateFailedTitle": "The setting was not saved",
   "settingsIdentityVerifiedTitle": "Identity verified",
   "settingsSyncDoneTitle": "Sync finished",
-  "settingsStaffSavedTitle": "Cashier saved",
-  "settingsStaffSaveFailedTitle": "The cashier was not saved",
-  "settingsStaffRemovedTitle": "Cashier removed",
-  "settingsStaffRemoveFailedTitle": "The cashier was not removed",
+  "settingsStaffSavedTitle": "{role} saved",
+  "@settingsStaffSavedTitle": {
+    "placeholders": {
+      "role": {}
+    }
+  },
+  "settingsStaffSaveFailedTitle": "Could not save staff member",
+  "settingsStaffRemovedTitle": "{role} removed",
+  "@settingsStaffRemovedTitle": {
+    "placeholders": {
+      "role": {}
+    }
+  },
+  "settingsStaffRemoveFailedTitle": "Could not remove staff member",
   "settingsPinResetTitle": "PIN reset",
   "settingsBackupDoneTitle": "Backup made",
   "settingsBackupDone": "The encrypted backup was made and is ready to share.",
@@ -661,6 +671,15 @@
     }
   },
   "paywallAmountDue": "Amount due",
+  "paywallAdminPriceTitle": "Subscription price set by your administrator",
+  "paywallAssignedPrice": "{currency} {amount} / {interval}",
+  "@paywallAssignedPrice": {
+    "placeholders": {
+      "currency": {},
+      "amount": {},
+      "interval": {}
+    }
+  },
   "paywallActivateTitle": "Activate access for this shop",
   "paywallVoucherChooseText": "Choose a subscription or enter an administrator-issued voucher. Access is shared by the shop's owner and staff.",
   "paywallVoucherClaimText": "Claim the issued voucher now, or enter its code manually below. Its access period begins when claimed.",
@@ -880,6 +899,30 @@
   "settingsRoleAdminFull": "{role} (full rights)",
   "settingsVersionLabel": "v{version}",
   "settingsYourShopsTitle": "Your shops",
+  "settingsSubscriptionSection": "Plan and billing",
+  "settingsSubscriptionTitle": "Shop subscription",
+  "settingsSubscriptionLoading": "Loading your current plan...",
+  "settingsSubscriptionUnavailable": "Plan details are unavailable. Open the plan page to try again.",
+  "settingsSubscriptionNotConfigured": "No subscription price has been set by the system administrator yet.",
+  "settingsSubscriptionPrice": "Plan price: {currency} {amount} / {interval}",
+  "@settingsSubscriptionPrice": {
+    "placeholders": {
+      "currency": {},
+      "amount": {},
+      "interval": {}
+    }
+  },
+  "settingsSubscriptionAmountDue": "After discount: {currency} {amount} / {interval} ({percent}% off)",
+  "@settingsSubscriptionAmountDue": {
+    "placeholders": {
+      "currency": {},
+      "amount": {},
+      "interval": {},
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
   "settingsBusinessProfile": "Business profile",
   "settingsBusinessProfileChangeTitle": "Change business profile",
   "settingsBusinessProfileChangeWarning": "This changes navigation and terminology for this shop. Existing sales, stock, tax snapshots, cash balances and financial results stay unchanged.",
@@ -1652,6 +1695,17 @@
   "dashboardInventory": "Inventory",
   "dashboardShiftAction": "Shift",
   "dashboardStockOverview": "Stock overview",
+  "dashboardStockAvailability": "In stock: {available} of {total} products",
+  "@dashboardStockAvailability": {
+    "placeholders": {
+      "available": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
   "dashboardTotalProducts": "Total products",
   "dashboardLowStockCount": "Low stock",
   "dashboardOutOfStockCount": "Out of stock",

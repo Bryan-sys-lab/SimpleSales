@@ -26,7 +26,9 @@ import '../ui/onboarding_style.dart';
 /// Redesigned to match the product palette: forest primary, electric accent,
 /// media window header, and styled actions.
 class StaffLoginScreen extends StatefulWidget {
-  const StaffLoginScreen({super.key});
+  const StaffLoginScreen({super.key, this.staffLoader});
+
+  final Future<List<Staff>> Function()? staffLoader;
 
   @override
   State<StaffLoginScreen> createState() => _StaffLoginScreenState();
@@ -239,7 +241,7 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
     });
     try {
       final String username = _usernameController.text.trim();
-      final String password = _passwordController.text;
+      final String password = _passwordController.text.trim();
       // The backend's unauthenticated staff-bootstrap exception is deliberately
       // tenant-scoped. Existing local shops already have a tenant id; passing
       // null here made an online staff login look like a missing bearer-token
@@ -248,12 +250,6 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
       final String shopIdField = _shopIdController.text.trim().toLowerCase();
       final String? requestedTenant =
           activeTenant ?? (shopIdField.isNotEmpty ? shopIdField : null);
-      if (requestedTenant == null || requestedTenant.isEmpty) {
-        if (_shops.isEmpty) {
-          setState(() => _error = 'Enter the shop ID supplied by the owner.');
-          return;
-        }
-      }
 
       final String userKey = username;
       if (await AuthService.isTillLockedOut()) {
@@ -272,46 +268,56 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
         return;
       }
 
-      final List<Staff> localStaff = await DatabaseHelper.instance.getStaff();
+      final List<Staff> localStaff = await (widget.staffLoader?.call() ??
+          DatabaseHelper.instance.getStaff());
       Map<String, dynamic>? onlineResponse;
       Staff? staff = localStaff.cast<Staff?>().firstWhere(
             (Staff? s) => s?.username?.toLowerCase() == username.toLowerCase(),
             orElse: () => null,
           );
-      if (staff != null &&
-          !await AuthService.verifyPin(password, staff.pinHash)) {
-        await AuthService.recordFailure(userKey);
-        staff = null;
-      } else if (staff != null) {
+      final bool localPinVerified =
+          staff != null && await AuthService.verifyPin(password, staff.pinHash);
+      if (requestedTenant == null && (staff == null || !localPinVerified)) {
+        setState(() => _error = 'Enter the shop ID supplied by the owner.');
+        return;
+      }
+
+      if (staff != null && localPinVerified) {
         // Offline-first: a locally verified PIN is enough to sign in. The
         // backend is consulted opportunistically for deactivation/updates,
         // but a missing or stale server-side PIN must not lock a staff member
         // out of their own till.
         await AuthService.recordSuccess(userKey);
-        try {
-          final backendResponse = await BackendService.authenticateStaff(
-            username: username,
-            pin: password,
-            tenantId: requestedTenant,
-          );
-          onlineResponse = backendResponse;
-          if (BackendService.isAuthoritativeStaffAuthenticationRejection(
-              backendResponse)) {
-            // A cached local PIN is only an offline fallback. Do not let a
-            // reachable backend rejection leave a remotely deactivated staff
-            // member signed in on this till.
-            staff = null;
-          } else {
-            final merged = await _mergeOnlineStaff(backendResponse, staff,
-                username: username,
-                pin: password,
-                requestedTenant: requestedTenant);
-            if (merged != null) staff = merged;
+        if (requestedTenant != null) {
+          try {
+            final backendResponse = await BackendService.authenticateStaff(
+              username: username,
+              pin: password,
+              tenantId: requestedTenant,
+            );
+            onlineResponse = backendResponse;
+            if (BackendService.isAuthoritativeStaffAuthenticationRejection(
+                backendResponse)) {
+              // A cached local PIN is only an offline fallback. Do not let a
+              // reachable backend rejection leave a remotely deactivated staff
+              // member signed in on this till.
+              staff = null;
+            } else {
+              final merged = await _mergeOnlineStaff(backendResponse, staff,
+                  username: username,
+                  pin: password,
+                  requestedTenant: requestedTenant);
+              if (merged != null) staff = merged;
+            }
+          } catch (_) {
+            // Keep the locally verified staff session.
           }
-        } catch (_) {
-          // Keep the locally verified staff session.
         }
       } else {
+        // A synced roster row can have no local PIN verifier, and an existing
+        // row can have an outdated verifier after a PIN change on another till.
+        // In either case, let the selected shop's remote verifier authenticate
+        // the PIN before reporting a failure.
         final backendResponse = await BackendService.authenticateStaff(
           username: username,
           pin: password,
@@ -514,7 +520,7 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
                         ),
                       ),
                       validator: (String? value) =>
-                          (value == null || value.isEmpty)
+                          (value == null || value.trim().isEmpty)
                               ? l10n.fieldRequired('') as String?
                               : null,
                       onFieldSubmitted: (_) => _submit(),

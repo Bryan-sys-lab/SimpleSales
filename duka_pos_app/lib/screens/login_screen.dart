@@ -12,8 +12,6 @@ import '../routing/routes.dart';
 import '../services/app_stage.dart';
 import '../services/app_state.dart';
 import '../services/auth_service.dart';
-import '../services/roles.dart';
-import '../services/staff_credential_cache.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_haptics.dart';
 import '../theme/app_shapes.dart';
@@ -27,34 +25,26 @@ import '../ui/onboarding_style.dart';
 import '../utils/pin_rules.dart';
 import '../services/workspace_service.dart';
 
-/// The PIN pad. The only way into the shop.
+/// The owner's local PIN sign-in.
 ///
 /// Redesigned to match the product palette: forest primary, electric accent,
-/// brand header, roster, PIN field, and styled actions.
+/// brand header, PIN field, and styled actions. Staff use the separate
+/// shop-ID sign-in so their activity cannot be attributed to the owner.
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({this.staffLoader, super.key});
-
-  final Future<List<Staff>> Function()? staffLoader;
+  const LoginScreen({super.key});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-enum _RosterState { loading, noAccounts, ready }
+enum _OwnerState { loading, unavailable, ready }
 
 class _LoginScreenState extends State<LoginScreen> {
-  static const String _ownerValue = '__owner__';
-
-  int get _pinLength =>
-      _selected == _ownerValue ? PinRules.adminLength : PinRules.staffLength;
-
-  List<Staff> _staff = [];
+  int get _pinLength => PinRules.adminLength;
 
   List<LocalShop> _shops = <LocalShop>[];
 
   bool _choosingShop = false;
-
-  String? _selected; // '__owner__' or 'staff:<id>'
 
   final TextEditingController _pin = TextEditingController();
 
@@ -78,35 +68,12 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  static String _tagFor(Staff staff) =>
-      staff.id == null ? 'name:${staff.name}' : 'staff:${staff.id}';
-
-  Staff? get _selectedStaff {
-    final String? tag = _selected;
-    if (tag == null || tag == _ownerValue) return null;
-    if (tag.startsWith('staff:')) {
-      final int? id = int.tryParse(tag.substring(6));
-      if (id == null) return null;
-      for (final Staff member in _staff) {
-        if (member.id == id) return member;
-      }
-      return null;
-    }
-    if (tag.startsWith('name:')) {
-      final String name = tag.substring(5);
-      for (final Staff member in _staff) {
-        if (member.name == name) return member;
-      }
-    }
-    return null;
-  }
-
   Owner? get _owner => context.watch<AppState>().owner;
 
-  _RosterState get _rosterState {
-    if (_loading) return _RosterState.loading;
-    if (_owner == null && _staff.isEmpty) return _RosterState.noAccounts;
-    return _RosterState.ready;
+  _OwnerState get _ownerState {
+    if (_loading) return _OwnerState.loading;
+    if (_owner == null) return _OwnerState.unavailable;
+    return _OwnerState.ready;
   }
 
   bool _shopChosen = false;
@@ -114,18 +81,11 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _askingShop = false;
 
   Future<void> _load() async {
-    final Owner? owner = context.read<AppState>().owner;
-    final List<Staff> staff = await (widget.staffLoader?.call() ??
-        DatabaseHelper.instance.getStaff());
     final List<LocalShop> shops = await WorkspaceServiceShops.localShops();
     if (!mounted) return;
     setState(() {
-      _staff = staff;
       _shops = shops;
       _choosingShop = false;
-      _selected = owner != null
-          ? _ownerValue
-          : (staff.isEmpty ? null : _tagFor(staff.first));
       _loading = false;
     });
   }
@@ -152,15 +112,6 @@ class _LoginScreenState extends State<LoginScreen> {
       HapticTheme.of(context).fire(HapticEvent.select);
       _tryLogin();
     }
-  }
-
-  void _selectIdentity(String? tag) {
-    setState(() {
-      _selected = tag;
-      _error = null;
-    });
-    _pin.clear();
-    HapticTheme.of(context).fire(HapticEvent.select);
   }
 
   Future<void> _forgotPin() async {
@@ -221,7 +172,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _tryLogin() async {
     final AppState state = context.read<AppState>();
-    final String userKey = _selected ?? '';
+    const String userKey = AuthService.ownerLockoutKey;
 
     if (_shops.length > 1 && !_shopChosen && !_askingShop) {
       _askingShop = true;
@@ -241,13 +192,10 @@ class _LoginScreenState extends State<LoginScreen> {
       _shopChosen = true;
       await _load();
       if (!mounted) return;
-      final bool personHere = userKey == _ownerValue ||
-          _staff.any((Staff s) => _tagFor(s) == userKey);
-      if (!personHere) {
+      if (state.owner == null) {
         _refuse(AppLocalizations.of(context).loginNotInThisShop);
         return;
       }
-      setState(() => _selected = userKey);
     }
 
     setState(() => _verifying = true);
@@ -271,40 +219,24 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      bool ok = false;
       final Owner? owner = state.owner;
-      final String pin = _pin.text;
-      if (_selected == _ownerValue && owner != null) {
-        ok = await AuthService.verifyPin(pin, owner.pinHash);
+      if (owner == null) {
         if (!mounted) return;
-        if (ok) {
-          await AuthService.recordSuccess(userKey);
-          final String hash = owner.pinHash;
-          if (AuthService.needsUpgrade(hash)) {
-            await DatabaseHelper.instance
-                .updateOwnerPin(await AuthService.hashPin(pin));
-          }
-          state.signInAsOwner();
-          return;
+        _refuse(AppLocalizations.of(context).loginNotInThisShop);
+        return;
+      }
+      final String pin = _pin.text;
+      final bool ok = await AuthService.verifyPin(pin, owner.pinHash);
+      if (!mounted) return;
+      if (ok) {
+        await AuthService.recordSuccess(userKey);
+        final String hash = owner.pinHash;
+        if (AuthService.needsUpgrade(hash)) {
+          await DatabaseHelper.instance
+              .updateOwnerPin(await AuthService.hashPin(pin));
         }
-      } else {
-        final Staff? staff = _selectedStaff;
-        if (staff != null) {
-          ok = await AuthService.verifyPin(pin, staff.pinHash);
-          if (!ok && staff.id != null) {
-            ok = await StaffCredentialCache.verifyCachedPin(staff.id!, pin);
-          }
-          if (!mounted) return;
-          if (ok) {
-            await AuthService.recordSuccess(userKey);
-            if (AuthService.needsUpgrade(staff.pinHash) && staff.id != null) {
-              await DatabaseHelper.instance
-                  .updateStaffPin(staff.id!, await AuthService.hashPin(pin));
-            }
-            state.signInAsStaff(staff);
-            return;
-          }
-        }
+        state.signInAsOwner();
+        return;
       }
 
       await AuthService.recordFailure(userKey);
@@ -390,7 +322,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       badgeIcon: Icons.lock_outline,
                       label: 'SIGN IN',
                       title: shopName,
-                      body: 'Enter your PIN to unlock the till',
+                      body: 'Owner sign-in only. Staff use their shop ID.',
                       type: type,
                       colors: colors,
                       spacing: spacing,
@@ -401,18 +333,22 @@ class _LoginScreenState extends State<LoginScreen> {
                             shops: _shops,
                             onChosen: _chooseShop,
                           )
-                        : switch (_rosterState) {
-                            _RosterState.loading => const _RosterLoading(),
-                            _RosterState.noAccounts => _NoAccountsPanel(
+                        : switch (_ownerState) {
+                            _OwnerState.loading => const _OwnerLoading(),
+                            _OwnerState.unavailable => _NoAccountsPanel(
                                 onSetUp: _setUpShop,
                                 onRecover: () =>
                                     context.go(Routes.accountRecovery),
+                                onStaffLogin: () =>
+                                    context.go(Routes.staffLogin),
                               ),
-                            _RosterState.ready => _WhoPicker(
-                                ownerName: owner?.name,
-                                staff: _staff,
-                                selected: _selected,
-                                onChanged: _selectIdentity,
+                            _OwnerState.ready => SurfaceCard(
+                                child: ListTile(
+                                  leading:
+                                      const Icon(Icons.verified_user_outlined),
+                                  title: Text(owner?.name ?? ''),
+                                  subtitle: const Text('Shop owner'),
+                                ),
                               ),
                           },
                     if (!_choosingShop && _shops.length > 1)
@@ -441,6 +377,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         Widget? field,
                       ) =>
                           Semantics(
+                        container: true,
+                        liveRegion: true,
                         label: l10n.loginFilledPINDigitsEntered(
                           value.text.length.clamp(0, _pinLength),
                           _pinLength,
@@ -474,9 +412,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       style: type.labelSmall
                           ?.copyWith(color: colors.onSurfaceMuted),
                     ),
-                    if (owner != null &&
-                        owner.email.trim().isNotEmpty &&
-                        (_selected == null || _selected == _ownerValue))
+                    if (owner != null && owner.email.trim().isNotEmpty)
                       TextButton(
                         onPressed: _verifying ? null : _forgotPin,
                         child: Text(AppLocalizations.of(context)
@@ -493,8 +429,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-// Keep existing supporting classes (_ShopChooser, _ShopTile, _RosterLoading,
-// _NoAccountsPanel, _WhoPicker, _RosterRow, _WhoTile) unchanged for logic.
 class _ShopChooser extends StatelessWidget {
   const _ShopChooser({required this.shops, required this.onChosen});
 
@@ -590,8 +524,8 @@ class _ShopTile extends StatelessWidget {
   }
 }
 
-class _RosterLoading extends StatelessWidget {
-  const _RosterLoading();
+class _OwnerLoading extends StatelessWidget {
+  const _OwnerLoading();
 
   @override
   Widget build(BuildContext context) {
@@ -600,7 +534,7 @@ class _RosterLoading extends StatelessWidget {
     return Center(
       child: Semantics(
         liveRegion: true,
-        label: 'Loading who can sign in on this till',
+        label: 'Loading shop owner account',
         child: ExcludeSemantics(
           child: Padding(
             padding: EdgeInsets.all(spacing.lg),
@@ -616,10 +550,12 @@ class _NoAccountsPanel extends StatelessWidget {
   const _NoAccountsPanel({
     required this.onSetUp,
     required this.onRecover,
+    required this.onStaffLogin,
   });
 
   final VoidCallback onSetUp;
   final VoidCallback onRecover;
+  final VoidCallback onStaffLogin;
 
   @override
   Widget build(BuildContext context) {
@@ -651,12 +587,18 @@ class _NoAccountsPanel extends StatelessWidget {
               ),
               SizedBox(height: spacing.sm),
               Text(
-                'A shop admin sets this device up once. After that, everyone '
-                'signs in here with the PIN their shop gave them.',
+                'Set up the owner account on this device. Staff sign in '
+                'separately with their shop ID, username, and PIN.',
                 textAlign: TextAlign.center,
                 style: type.bodyMedium,
               ),
               SizedBox(height: spacing.lg),
+              OutlinedButton.icon(
+                onPressed: onStaffLogin,
+                icon: const Icon(Icons.badge_outlined),
+                label: Text(l10n.chooserSignInAsStaffAction),
+              ),
+              const SizedBox(height: 8),
               FilledButton(
                 onPressed: onSetUp,
                 child: Text(l10n.settingsShopNotOnDevice),
@@ -675,262 +617,4 @@ class _NoAccountsPanel extends StatelessWidget {
   }
 }
 
-class _WhoPicker extends StatelessWidget {
-  const _WhoPicker({
-    required this.ownerName,
-    required this.staff,
-    required this.selected,
-    required this.onChanged,
-  });
-
-  final String? ownerName;
-  final List<Staff> staff;
-  final String? selected;
-  final ValueChanged<String?> onChanged;
-
-  Map<ShopRole, List<Staff>> get _byRole {
-    final Map<ShopRole, List<Staff>> grouped = <ShopRole, List<Staff>>{};
-    for (final Staff member in staff) {
-      grouped
-          .putIfAbsent(ShopRole.parse(member.role), () => <Staff>[])
-          .add(member);
-    }
-    return grouped;
-  }
-
-  static String _tagFor(Staff staff) =>
-      staff.id == null ? 'name:${staff.name}' : 'staff:${staff.id}';
-
-  bool _sameTag(Staff member) {
-    final String tag = _tagFor(member);
-    return selected == tag ||
-        (selected != null &&
-            selected!.startsWith('name:') &&
-            selected!.substring(5) == member.name);
-  }
-
-  List<_RosterRow> _rows(AppLocalizations l10n) {
-    final Map<ShopRole, List<Staff>> byRole = _byRole;
-    final List<Staff> chosen = staff.where(_sameTag).toList();
-    final bool chosenOwner = selected == '__owner__' && ownerName != null;
-
-    final Set<ShopRole> roles = <ShopRole>{
-      ...byRole.keys,
-      if (ownerName != null) ShopRole.admin,
-    };
-    final List<ShopRole> ordered =
-        ShopRole.values.where(roles.contains).toList(growable: false);
-
-    final List<_RosterRow> rows = <_RosterRow>[];
-    for (final ShopRole role in ordered) {
-      final String title = roleSectionTitle(l10n, role);
-      if (ordered.length > 1) rows.add(_RosterRow.header(title));
-      if (role == ShopRole.admin && ownerName != null) {
-        rows.add(
-          _RosterRow.person(
-            name: ownerName!,
-            roleLabel: ShopRole.admin.label,
-            tag: '__owner__',
-            selected: chosenOwner,
-          ),
-        );
-      }
-      for (final Staff member in byRole[role] ?? const <Staff>[]) {
-        rows.add(
-          _RosterRow.person(
-            name: member.name,
-            roleLabel: ShopRole.parse(member.role).label,
-            tag: _tagFor(member),
-            selected: chosen.contains(member),
-          ),
-        );
-      }
-    }
-    return rows;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final AppLocalizations l10n = AppLocalizations.of(context);
-    final AppSpacing spacing = AppSpacing.of(context);
-    final TextTheme type = AppTypography.of(context);
-
-    final List<Staff> chosen = staff.where(_sameTag).toList();
-    final bool chosenOwner = selected == '__owner__' && ownerName != null;
-    final bool hasChosen = chosenOwner || chosen.isNotEmpty;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        Semantics(
-          header: true,
-          child: Text(l10n.loginWhoAreYou, style: type.titleMedium),
-        ),
-        SizedBox(height: spacing.sm),
-        Builder(
-          builder: (BuildContext context) {
-            final List<_RosterRow> rows = _rows(AppLocalizations.of(context));
-            return ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              padding: EdgeInsets.zero,
-              itemCount: rows.length,
-              itemBuilder: (BuildContext context, int index) {
-                final _RosterRow row = rows[index];
-                if (row.isHeader) {
-                  return SectionHeader(
-                    label: row.title!,
-                    padding: EdgeInsetsDirectional.only(
-                      top: spacing.sm,
-                      bottom: spacing.xs,
-                    ),
-                  );
-                }
-                return _WhoTile(
-                  key: ValueKey<String>(row.tag!),
-                  name: row.name!,
-                  roleLabel: row.roleLabel!,
-                  selected: row.selected,
-                  onTap: () => onChanged(row.tag),
-                );
-              },
-            );
-          },
-        ),
-        if (hasChosen)
-          Padding(
-            padding: EdgeInsetsDirectional.only(top: spacing.sm),
-            child: Semantics(
-              liveRegion: true,
-              child: Text(
-                'Signing in as ${chosenOwner ? ownerName : chosen.first.name}',
-                textAlign: TextAlign.center,
-                style: type.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class _RosterRow {
-  const _RosterRow.header(this.title)
-      : name = null,
-        roleLabel = null,
-        tag = null,
-        selected = false;
-
-  const _RosterRow.person({
-    required this.name,
-    required this.roleLabel,
-    required this.tag,
-    required this.selected,
-  }) : title = null;
-
-  final String? title;
-  final String? name;
-  final String? roleLabel;
-  final String? tag;
-  final bool selected;
-
-  bool get isHeader => title != null;
-}
-
-class _WhoTile extends StatelessWidget {
-  const _WhoTile({
-    required this.name,
-    required this.roleLabel,
-    required this.selected,
-    required this.onTap,
-    super.key,
-  });
-
-  final String name;
-  final String roleLabel;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final AppColors colors = AppColors.of(context);
-    final AppShapes shapes = AppShapes.of(context);
-    final AppSpacing spacing = AppSpacing.of(context);
-    final TextTheme type = AppTypography.of(context);
-
-    return Padding(
-      padding: EdgeInsetsDirectional.only(bottom: spacing.sm),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(minHeight: spacing.minTapTarget),
-        child: Semantics(
-          button: true,
-          selected: selected,
-          label: AppLocalizations.of(context).loginName(name, roleLabel),
-          onTap: onTap,
-          excludeSemantics: true,
-          child: Material(
-            color: selected ? colors.accentContainer : colors.surface,
-            shape: RoundedRectangleBorder(
-              borderRadius: shapes.controlRadius,
-              side: BorderSide(
-                color: selected ? colors.accent : colors.outline,
-                width: selected ? 2 : 1,
-              ),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: onTap,
-              child: Padding(
-                padding: EdgeInsetsDirectional.symmetric(
-                  horizontal: spacing.md,
-                  vertical: spacing.sm,
-                ),
-                child: Row(
-                  children: <Widget>[
-                    Icon(
-                      selected ? Icons.check_circle : Icons.circle_outlined,
-                      size: 20,
-                      color: selected ? colors.accent : colors.onSurfaceMuted,
-                    ),
-                    SizedBox(width: spacing.md),
-                    Expanded(
-                      child: Text(
-                        name,
-                        style: selected
-                            ? type.titleMedium
-                                ?.copyWith(color: colors.onAccentContainer)
-                            : type.bodyLarge,
-                      ),
-                    ),
-                    SizedBox(width: spacing.sm),
-                    Flexible(
-                      child: Text(
-                        roleLabel,
-                        textAlign: TextAlign.end,
-                        style: type.labelMedium?.copyWith(
-                          color: selected
-                              ? colors.onAccentContainer
-                              : colors.onSurfaceMuted,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 const double _kPadWidth = 460;
-
-String roleSectionTitle(AppLocalizations l10n, ShopRole role) => switch (role) {
-      ShopRole.admin => l10n.loginRoleAdmins,
-      ShopRole.manager => l10n.loginRoleManagers,
-      ShopRole.cashier => l10n.loginRoleCashiers,
-    };

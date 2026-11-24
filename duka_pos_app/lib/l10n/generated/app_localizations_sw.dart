@@ -1699,16 +1699,20 @@ class AppLocalizationsSw extends AppLocalizations {
   String get settingsSyncDoneTitle => 'Sync finished';
 
   @override
-  String get settingsStaffSavedTitle => 'Cashier saved';
+  String settingsStaffSavedTitle(Object role) {
+    return '$role ameongezwa';
+  }
 
   @override
-  String get settingsStaffSaveFailedTitle => 'The cashier was not saved';
+  String get settingsStaffSaveFailedTitle => 'Haikuweza kuhifadhi mfanyakazi';
 
   @override
-  String get settingsStaffRemovedTitle => 'Cashier removed';
+  String settingsStaffRemovedTitle(Object role) {
+    return '$role ameondolewa';
+  }
 
   @override
-  String get settingsStaffRemoveFailedTitle => 'The cashier was not removed';
+  String get settingsStaffRemoveFailedTitle => 'Haikuweza kuondoa mfanyakazi';
 
   @override
   String get settingsPinResetTitle => 'PIN reset';
@@ -2273,6 +2277,15 @@ class AppLocalizationsSw extends AppLocalizations {
   String get paywallAmountDue => 'Kiasi cha kulipa';
 
   @override
+  String get paywallAdminPriceTitle =>
+      'Bei ya usajili iliyowekwa na msimamizi wako';
+
+  @override
+  String paywallAssignedPrice(Object currency, Object amount, Object interval) {
+    return '$currency $amount / $interval';
+  }
+
+  @override
   String get paywallActivateTitle => 'Washa ufikiaji wa duka hili';
 
   @override
@@ -2809,7 +2822,7 @@ class AppLocalizationsSw extends AppLocalizations {
   String get settingsRoleLabel => 'Role';
 
   @override
-  String get settingsRoleManager => 'Manager';
+  String get settingsRoleManager => 'Msimamizi';
 
   @override
   String get settingsSaveAction => 'Save';
@@ -3005,7 +3018,7 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String settingsRoleAdminFull(Object role) {
-    return '$role (full rights)';
+    return '$role (haki zote)';
   }
 
   @override
@@ -3015,6 +3028,35 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get settingsYourShopsTitle => 'Your shops';
+
+  @override
+  String get settingsSubscriptionSection => 'Mpango na malipo';
+
+  @override
+  String get settingsSubscriptionTitle => 'Usajili wa duka';
+
+  @override
+  String get settingsSubscriptionLoading => 'Inapakia mpango wako wa sasa...';
+
+  @override
+  String get settingsSubscriptionUnavailable =>
+      'Maelezo ya mpango hayapatikani. Fungua ukurasa wa mpango ujaribu tena.';
+
+  @override
+  String get settingsSubscriptionNotConfigured =>
+      'Msimamizi wa mfumo bado hajaweka bei ya usajili.';
+
+  @override
+  String settingsSubscriptionPrice(
+      Object currency, Object amount, Object interval) {
+    return 'Bei ya mpango: $currency $amount / $interval';
+  }
+
+  @override
+  String settingsSubscriptionAmountDue(
+      Object currency, Object amount, Object interval, int percent) {
+    return 'Baada ya punguzo: $currency $amount / $interval ($percent% punguzo)';
+  }
 
   @override
   String get settingsBusinessProfile => 'Business profile';
@@ -5912,6 +5954,11 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get dashboardStockOverview => 'Muhtasari wa hisa';
+
+  @override
+  String dashboardStockAvailability(int available, int total) {
+    return 'Bidhaa zenye hisa: $available kati ya $total';
+  }
 
   @override
   String get dashboardTotalProducts => 'Bidhaa zote';

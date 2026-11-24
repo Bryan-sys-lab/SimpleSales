@@ -45,8 +45,8 @@ Widget _wrap(Widget child, AppState state) {
   );
 }
 
-/// A session with a shop and two staff on the roster, which is what the PIN pad
-/// renders.
+/// A session with an owner and staff on the roster. The local PIN screen must
+/// identify only the owner; staff use the separate shop-ID sign-in.
 ///
 /// CALLED FROM `setUp`, never from inside `testWidgets`. sqflite's ffi backend
 /// does real file I/O on a background isolate with real timers, while
@@ -55,6 +55,15 @@ Widget _wrap(Widget child, AppState state) {
 /// harness kills the file. `setUp` runs outside that zone, so the seed lands and
 /// the widget test then only ever reads already-loaded state.
 Future<AppState> seedStaffRoster() async {
+  await DatabaseHelper.instance.createOwner(
+    Owner(
+      id: 1,
+      name: 'Shop Owner',
+      pinHash: 'owner-hash',
+      shopName: 'Mtaa Corner Shop',
+      createdAt: DateTime(2026).toIso8601String(),
+    ),
+  );
   await DatabaseHelper.instance
       .addStaff(Staff(name: 'Amina', pinHash: 'x', role: 'admin'));
   await DatabaseHelper.instance
@@ -64,19 +73,11 @@ Future<AppState> seedStaffRoster() async {
   return state;
 }
 
-/// The PIN pad with a roster supplied through the seam, so the screen renders
-/// real content without a database query inside the widget's lifecycle.
-Widget _loginWithRoster() => LoginScreen(
-      staffLoader: () async => <Staff>[
-        Staff(name: 'Amina', pinHash: 'x', role: 'admin'),
-        Staff(name: 'Brian', pinHash: 'x', role: 'cashier'),
-      ],
-    );
+/// The PIN pad backed by the seeded owner, so the screen renders real content
+/// without a database query inside the widget's lifecycle.
+Widget _ownerLogin() => const LoginScreen();
 
-Future<List<Staff>> _noStaff() async => <Staff>[];
-
-/// The session the roster was seeded into, rebuilt by `setUp` and handed to the
-/// screen under test.
+/// The seeded session, rebuilt by `setUp` and handed to the screen under test.
 ///
 /// A widget must read the SAME `AppState` the seed loaded. A fresh `AppState()`
 /// inside the test would have an empty roster, and the screen would correctly
@@ -122,9 +123,14 @@ void main() {
 
   setUp(() async {
     DatabaseHelper.resetForTests();
-    // Fresh every test: the login screen's roster is what these assert on, and a
-    // leaked row from a previous test is a flake that only shows up in CI.
+    await DatabaseHelper.openInMemoryForTests();
+    // Keep the owner/staff fixture isolated between layout and sign-in cases.
     seeded = await seedStaffRoster();
+  });
+
+  tearDown(() async {
+    DatabaseHelper.resetForTests();
+    await DatabaseHelper.closeForTests();
   });
 
   for (final Device device in <Device>[Device.compact, Device.small]) {
@@ -188,85 +194,57 @@ void main() {
         testWidgets('login fits $where', (WidgetTester tester) async {
           tester.useDevice(device);
           await tester.pumpApp(
-            home: _wrap(_loginWithRoster(), seeded),
+            home: _wrap(_ownerLogin(), seeded),
             brightness: brightness,
             textScaler: TextScaler.linear(scale),
           );
           await tester.pump(const Duration(milliseconds: 50));
           tester.expectNoOverflow('login $where');
 
-          // The person being signed in as must be ON SCREEN at every scale: that
-          // is the identity confirmable before four digits are committed, and it
-          // is the thing a mis-pick costs. The SECOND user is deliberately not
-          // asserted here — at 200% on a 320dp phone it is legitimately below the
-          // fold, and requiring it to be built would be asserting a layout this
-          // screen should not have.
+          expect(find.text('Shop Owner'), findsOneWidget);
         });
       }
     }
   }
 
-  group('the roster, which is the list of who can sign in', () {
-    testWidgets('one heading per role, and one account per person',
+  group('owner-only local PIN sign-in', () {
+    testWidgets('does not present roster staff as login identities',
         (WidgetTester tester) async {
-      // The shipped bug: the roster stood the owner up as its OWN "Admins"
-      // group and then walked the staff by role, which produced two `admin`
-      // groups the moment the shop also had an admin-role account — the heading
-      // rendered twice and every admin account rendered twice under it.
-      //
-      // The fixture has an admin (Amina) and a cashier (Brian), and the owner
-      // arrives asynchronously so the roster is staff-only here.
-      //
-      // Uppercase because `SectionHeader` sets a label as a small caps line.
-      await tester.pumpApp(home: _wrap(_loginWithRoster(), seeded));
+      await tester.pumpApp(home: _wrap(_ownerLogin(), seeded));
       await tester.pump(const Duration(milliseconds: 50));
 
-      expect(find.text('Admins'), findsOneWidget,
-          reason: 'one Admins heading, not one per account under it');
-      expect(find.text('Cashiers'), findsOneWidget);
-      expect(find.text('Amina'), findsOneWidget,
-          reason: 'an admin-role account is listed exactly once');
-      expect(find.text('Brian'), findsOneWidget);
+      expect(find.text('Shop Owner'), findsOneWidget);
+      expect(find.text('Shop owner'), findsOneWidget);
+      expect(find.text('Amina'), findsNothing);
+      expect(find.text('Brian'), findsNothing);
     });
 
-    testWidgets('an admin-role account is not dropped when there is no owner',
+    testWidgets('staff rows do not unlock the local screen without an owner',
         (WidgetTester tester) async {
-      // The near-miss this replaces: excluding admin staff while an owner
-      // exists drops them from the roster entirely, and the account holder is
-      // the one person who must always be signable-in on a new phone.
-      final AppState ownerless =
-          AppState(); // no owner loaded, staff supplied by the loader
       await tester.pumpApp(
-        home: _wrap(
-          LoginScreen(
-            staffLoader: () async => <Staff>[
-              Staff(name: 'Amina', pinHash: 'x', role: 'admin'),
-            ],
-          ),
-          ownerless,
-        ),
+        home: _wrap(const LoginScreen(), AppState()),
       );
       await tester.pump(const Duration(milliseconds: 50));
 
-      expect(find.text('Amina'), findsOneWidget,
-          reason: 'the only account on the till must be reachable');
+      expect(find.text('This till has no accounts yet'), findsOneWidget);
+      expect(find.text('Amina'), findsNothing);
+      expect(find.text('Brian'), findsNothing);
+      expect(find.text('Sign in as staff'), findsOneWidget);
     });
   });
 
-  group('the PIN field, which is the only way into a till', () {
+  group('owner PIN entry', () {
     testWidgets('is a field, and it says how many digits are in',
         (WidgetTester tester) async {
       tester.useDevice(Device.compact);
       final SemanticsHandle handle = tester.ensureSemantics();
-      await tester.pumpApp(home: _wrap(_loginWithRoster(), seeded));
+      await tester.pumpApp(home: _wrap(_ownerLogin(), seeded));
       await tester.pump(const Duration(milliseconds: 50));
 
       // The PIN is typed into a FIELD with the system's own numeric keyboard.
       //
-      // It used to be a keypad drawn by the app: four rows of keys taking half
-      // the screen of a phone that also has to show the roster, impossible to
-      // fill with a barcode scanner or a keyboard case, and a widget with its
-      // own hit targets, accessibility and layout at every text scale.
+      // It used to be a keypad drawn by the app: a large custom control with
+      // its own hit targets, accessibility, and layout at every text scale.
       final Finder field = find.byType(TextField);
       expect(field, findsOneWidget);
 
@@ -280,52 +258,50 @@ void main() {
       // framework's, not the app's.
       expect(tester.getSize(field).height, greaterThanOrEqualTo(44.0));
 
-      expect(find.bySemanticsLabel('Amina, Admin'), findsOneWidget);
+      expect(find.text('Shop Owner'), findsOneWidget);
 
       // The progress is announced, not just drawn: a non-sighted user needs to
       // know how many digits are in before they can tell they are done.
       await tester.enterText(field, '4');
       await tester.pump();
       expect(
-        find.bySemanticsLabel('1 of 4 PIN digits entered'),
+        find.bySemanticsLabel('1 of 6 PIN digits entered'),
         findsOneWidget,
       );
 
       await tester.enterText(field, '');
       await tester.pump();
       expect(
-        find.bySemanticsLabel('0 of 4 PIN digits entered'),
+        find.bySemanticsLabel('0 of 6 PIN digits entered'),
         findsOneWidget,
       );
 
       handle.dispose();
     });
 
-    testWidgets('takes four digits and no more', (WidgetTester tester) async {
+    testWidgets('takes at most six digits', (WidgetTester tester) async {
       tester.useDevice(Device.compact);
-      await tester.pumpApp(home: _wrap(_loginWithRoster(), seeded));
+      await tester.pumpApp(home: _wrap(_ownerLogin(), seeded));
       await tester.pump(const Duration(milliseconds: 50));
 
-      await tester.enterText(find.byType(TextField), '123456');
+      await tester.enterText(find.byType(TextField), '12345678');
       await tester.pump();
 
-      // A PIN is four digits. The field takes four and refuses the rest.
-      // `enterText` applies the LengthLimitingTextInputFormatter, so six
-      // typed digits become at most four. (The wrong-PIN flow may clear the
-      // field afterwards — that is the login flow, not the formatter under
-      // test here.)
+      // An owner PIN is six digits. The field takes six and refuses the rest.
+      // The wrong-PIN flow may clear the field afterwards — that is the login
+      // flow, not the six-digit limit under test here.
       final text =
           tester.widget<TextField>(find.byType(TextField)).controller!.text;
-      expect(text.length, lessThanOrEqualTo(4));
+      expect(text.length, lessThanOrEqualTo(6));
     });
 
     testWidgets('an empty till offers the way forward, not a dead end',
         (WidgetTester tester) async {
       tester.useDevice(Device.small);
-      // Deliberately a session that never loaded a roster: the screen has to say
-      // so and offer the way forward rather than showing an empty pad.
+      // Staff rows exist in the database, but without an owner this route must
+      // offer setup or the separate remote staff sign-in.
       await tester.pumpApp(
-        home: _wrap(const LoginScreen(staffLoader: _noStaff), AppState()),
+        home: _wrap(const LoginScreen(), AppState()),
       );
       await tester.pump(const Duration(milliseconds: 50));
       expect(find.text('This till has no accounts yet'), findsOneWidget);

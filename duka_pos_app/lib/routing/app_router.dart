@@ -134,7 +134,7 @@ GoRouter buildAppRouter({
         pageBuilder: (BuildContext context, GoRouterState routerState) =>
             _fadeThrough(routerState, const HelpScreen()),
       ),
-      ..._shellRoutes(appState),
+      ..._shellRoutes(stage, appState),
     ],
   );
   _backRouter = router;
@@ -252,7 +252,7 @@ List<RouteBase> _doorRoutes(AppStageController stage, AppState appState) {
 }
 
 /// The shell and its six branches.
-List<RouteBase> _shellRoutes(AppState appState) {
+List<RouteBase> _shellRoutes(AppStageController stage, AppState appState) {
   return <RouteBase>[
     StatefulShellRoute.indexedStack(
       builder: (
@@ -623,7 +623,12 @@ List<RouteBase> _shellRoutes(AppState appState) {
                   path: 'subscription',
                   parentNavigatorKey: rootNavigatorKey,
                   pageBuilder: (BuildContext context, GoRouterState state) =>
-                      _fadeThrough(state, const PaywallScreen()),
+                      _fadeThrough(
+                    state,
+                    PaywallScreen(
+                      subscriptionRequired: stage.snapshot.subscriptionRequired,
+                    ),
+                  ),
                 ),
                 // The rows an import asked about. A child of Settings for the
                 // same reason as the others — an owner looks for what needs

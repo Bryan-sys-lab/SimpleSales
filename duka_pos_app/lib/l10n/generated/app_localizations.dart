@@ -2923,25 +2923,25 @@ abstract class AppLocalizations {
   /// No description provided for @settingsStaffSavedTitle.
   ///
   /// In en, this message translates to:
-  /// **'Cashier saved'**
-  String get settingsStaffSavedTitle;
+  /// **'{role} saved'**
+  String settingsStaffSavedTitle(Object role);
 
   /// No description provided for @settingsStaffSaveFailedTitle.
   ///
   /// In en, this message translates to:
-  /// **'The cashier was not saved'**
+  /// **'Could not save staff member'**
   String get settingsStaffSaveFailedTitle;
 
   /// No description provided for @settingsStaffRemovedTitle.
   ///
   /// In en, this message translates to:
-  /// **'Cashier removed'**
-  String get settingsStaffRemovedTitle;
+  /// **'{role} removed'**
+  String settingsStaffRemovedTitle(Object role);
 
   /// No description provided for @settingsStaffRemoveFailedTitle.
   ///
   /// In en, this message translates to:
-  /// **'The cashier was not removed'**
+  /// **'Could not remove staff member'**
   String get settingsStaffRemoveFailedTitle;
 
   /// No description provided for @settingsPinResetTitle.
@@ -3861,6 +3861,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Amount due'**
   String get paywallAmountDue;
+
+  /// No description provided for @paywallAdminPriceTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Subscription price set by your administrator'**
+  String get paywallAdminPriceTitle;
+
+  /// No description provided for @paywallAssignedPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'{currency} {amount} / {interval}'**
+  String paywallAssignedPrice(Object currency, Object amount, Object interval);
 
   /// No description provided for @paywallActivateTitle.
   ///
@@ -5057,6 +5069,50 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Your shops'**
   String get settingsYourShopsTitle;
+
+  /// No description provided for @settingsSubscriptionSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Plan and billing'**
+  String get settingsSubscriptionSection;
+
+  /// No description provided for @settingsSubscriptionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Shop subscription'**
+  String get settingsSubscriptionTitle;
+
+  /// No description provided for @settingsSubscriptionLoading.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading your current plan...'**
+  String get settingsSubscriptionLoading;
+
+  /// No description provided for @settingsSubscriptionUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Plan details are unavailable. Open the plan page to try again.'**
+  String get settingsSubscriptionUnavailable;
+
+  /// No description provided for @settingsSubscriptionNotConfigured.
+  ///
+  /// In en, this message translates to:
+  /// **'No subscription price has been set by the system administrator yet.'**
+  String get settingsSubscriptionNotConfigured;
+
+  /// No description provided for @settingsSubscriptionPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'Plan price: {currency} {amount} / {interval}'**
+  String settingsSubscriptionPrice(
+      Object currency, Object amount, Object interval);
+
+  /// No description provided for @settingsSubscriptionAmountDue.
+  ///
+  /// In en, this message translates to:
+  /// **'After discount: {currency} {amount} / {interval} ({percent}% off)'**
+  String settingsSubscriptionAmountDue(
+      Object currency, Object amount, Object interval, int percent);
 
   /// No description provided for @settingsBusinessProfile.
   ///
@@ -9693,6 +9749,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Stock overview'**
   String get dashboardStockOverview;
+
+  /// No description provided for @dashboardStockAvailability.
+  ///
+  /// In en, this message translates to:
+  /// **'In stock: {available} of {total} products'**
+  String dashboardStockAvailability(int available, int total);
 
   /// No description provided for @dashboardTotalProducts.
   ///

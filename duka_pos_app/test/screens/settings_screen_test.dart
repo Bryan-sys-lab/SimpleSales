@@ -16,6 +16,7 @@
 import 'package:duka_pos/l10n/generated/app_localizations.dart';
 import 'package:duka_pos/models/models.dart';
 import 'package:duka_pos/screens/settings_screen.dart';
+import 'package:duka_pos/services/backend_service.dart';
 import 'package:duka_pos/services/inventory_importer.dart';
 import 'package:duka_pos/ui/components/controls.dart';
 import 'package:duka_pos/ui/components/surface.dart';
@@ -38,6 +39,7 @@ Widget _panel({
   int vatRatePercent = 16,
   String tin = '',
   String tillCode = 'TILL-1',
+  SubscriptionEntitlement? subscription,
 }) =>
     SettingsPanel(
       // The handlers are inert: this suite asserts LAYOUT, not behaviour, and
@@ -71,6 +73,8 @@ Widget _panel({
       verifyingIdentity: false,
       identityLinkPending: identityLinkPending,
       identityVerified: identityVerified,
+      subscription: subscription,
+      onOpenSubscription: () {},
       staff: staff,
       printer: printer,
       mpesaEnabled: mpesaEnabled,
@@ -142,6 +146,36 @@ void main() {
       tester.expectNoOverflow('settings sections');
     });
 
+    testWidgets('shows the Admin-set subscription price and discount',
+        (tester) async {
+      tester.useDevice(Device.small);
+      await tester.pumpApp(
+        home: _panel(
+          subscription: const SubscriptionEntitlement(
+            allowed: false,
+            status: 'pending',
+            priceMinor: 100000,
+            discountPercent: 10,
+            currency: 'KES',
+            billingInterval: 'monthly',
+          ),
+        ),
+      );
+
+      expect(find.text(l10n.settingsSubscriptionSection), findsOneWidget);
+      expect(
+        find.textContaining(
+            l10n.settingsSubscriptionPrice('KES', '1000.00', 'monthly')),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining(
+            l10n.settingsSubscriptionAmountDue('KES', '900.00', 'monthly', 10)),
+        findsOneWidget,
+      );
+      tester.expectNoOverflow('subscription plan settings');
+    });
+
     testWidgets('credit sales are visibly off by default and configurable',
         (tester) async {
       tester.useDevice(Device.small);
@@ -190,6 +224,28 @@ void main() {
       expect(find.text('Brian'), findsOneWidget);
       expect(find.text(l10n.settingsStaffEmpty), findsNothing);
       tester.expectNoOverflow('settings staff rows');
+    });
+
+    testWidgets('staff rows preserve cashier, manager, and admin roles',
+        (tester) async {
+      tester.useDevice(Device.small);
+      await tester.pumpApp(
+        home: _panel(
+          staff: <Staff>[
+            Staff(name: 'Amina', pinHash: 'a', role: 'cashier'),
+            Staff(name: 'Brian', pinHash: 'b', role: 'manager'),
+            Staff(name: 'Caro', pinHash: 'c', role: 'ADMIN'),
+          ],
+        ),
+      );
+
+      expect(find.text(l10n.settingsRoleCashier), findsOneWidget);
+      expect(find.text(l10n.settingsRoleManager), findsOneWidget);
+      expect(
+        find.text(l10n.settingsRoleAdminFull('Admin')),
+        findsOneWidget,
+      );
+      tester.expectNoOverflow('settings staff role labels');
     });
 
     testWidgets('an empty roster says so rather than looking broken',
@@ -362,8 +418,7 @@ void main() {
       );
 
       tester.expectNoOverflow('settings in dark mode');
-      expect(
-          find.text(l10n.settingsYourShopsTitle), findsOneWidget);
+      expect(find.text(l10n.settingsYourShopsTitle), findsOneWidget);
     });
 
     testWidgets('every control clears the 44px floor', (tester) async {

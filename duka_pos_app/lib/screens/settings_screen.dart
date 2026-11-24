@@ -133,6 +133,9 @@ class _SettingsScreenState extends State<SettingsScreen>
   String _mpesaMerchantNumber = '';
   String _payheroAccountNumber = '';
   bool _backendLinked = false;
+  SubscriptionEntitlement? _subscriptionEntitlement;
+  bool _subscriptionLoading = true;
+  bool _subscriptionUnavailable = false;
   // Auto-sync is on for new workspaces; the persisted workspace preference is
   // loaded immediately after the settings screen opens.
   bool _automaticBackupSync = true;
@@ -164,16 +167,54 @@ class _SettingsScreenState extends State<SettingsScreen>
   void initState() {
     super.initState();
     _load();
+    _loadSubscriptionDetails();
   }
 
   @override
   void clearForSession() {
     _staff = const <Staff>[];
     _pinResetRequests = const [];
+    _subscriptionEntitlement = null;
+    _subscriptionLoading = true;
+    _subscriptionUnavailable = false;
   }
 
   @override
-  Future<void> reloadFromSession() => _load();
+  Future<void> reloadFromSession() async {
+    await _load();
+    await _loadSubscriptionDetails();
+  }
+
+  Future<void> _loadSubscriptionDetails() async {
+    try {
+      if (!await BackendService.isBackendLinked) {
+        if (mounted) {
+          setState(() {
+            _subscriptionLoading = false;
+            _subscriptionUnavailable = true;
+          });
+        }
+        return;
+      }
+
+      final SubscriptionEntitlement? result =
+          await BackendService.fetchSubscriptionEntitlement();
+      if (!mounted) return;
+      setState(() {
+        _subscriptionEntitlement = result;
+        _subscriptionLoading = false;
+        _subscriptionUnavailable = false;
+      });
+    } catch (error, stack) {
+      debugPrint('Could not load subscription details in Settings: '
+          '$error\n$stack');
+      if (!mounted) return;
+      setState(() {
+        _subscriptionLoading = false;
+        _subscriptionUnavailable = true;
+      });
+    }
+  }
 
   Future<void> _load() async {
     final staff = await DatabaseHelper.instance.getStaff();
@@ -926,11 +967,12 @@ class _SettingsScreenState extends State<SettingsScreen>
       _err('That username is already used');
       return;
     }
+    final String role = ShopRole.parse(result['role']).wire;
     try {
       final int staffId = await DatabaseHelper.instance.addStaff(Staff(
           name: name,
           username: username,
-          role: result['role'] ?? 'cashier',
+          role: role,
           pinHash: await AuthService.hashPin(result['pin']!)));
       // Logged after the row exists, and carrying the role: "a cashier was
       // added" and "a manager was added" are different facts.
@@ -939,7 +981,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         action: AuditAction.staffAdded,
         entity: AuditEntity.staff,
         entityId: name,
-        detail: result['role'] ?? 'cashier',
+        detail: role,
       );
       if (await BackendService.isBackendLinked) {
         try {
@@ -967,7 +1009,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       if (!mounted) return;
       showOperationSuccess(
         context,
-        title: l10n.settingsStaffSavedTitle,
+        title: l10n.settingsStaffSavedTitle(_staffRoleLabel(l10n, role)),
         message: name,
         detailIcon: Icons.person_add_outlined,
       );
@@ -1018,7 +1060,9 @@ class _SettingsScreenState extends State<SettingsScreen>
           if (!mounted) return;
           showOperationSuccess(
             context,
-            title: l10n.settingsStaffRemovedTitle,
+            title: l10n.settingsStaffRemovedTitle(
+              _staffRoleLabel(l10n, s.role),
+            ),
             message: l10n.settingsStaffRemovedOffline,
             detailIcon: Icons.cloud_off_outlined,
           );
@@ -1028,7 +1072,9 @@ class _SettingsScreenState extends State<SettingsScreen>
       if (!mounted) return;
       showOperationSuccess(
         context,
-        title: l10n.settingsStaffRemovedTitle,
+        title: l10n.settingsStaffRemovedTitle(
+          _staffRoleLabel(l10n, s.role),
+        ),
         message: s.name,
         detailIcon: Icons.person_remove_outlined,
       );
@@ -2114,7 +2160,8 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Future<void> _editCommercialConsent() async {
-    final active = await DatabaseHelper.instance.getActiveCommercialConsentGrant();
+    final active =
+        await DatabaseHelper.instance.getActiveCommercialConsentGrant();
     if (!mounted) return;
     final selected = <String>{...active?.scopes ?? const <String>[]};
     final consent = await showDialog<String>(
@@ -2227,7 +2274,8 @@ class _SettingsScreenState extends State<SettingsScreen>
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not update commercial consent: $error')),
+          SnackBar(
+              content: Text('Could not update commercial consent: $error')),
         );
       }
     }
@@ -2437,6 +2485,10 @@ class _SettingsScreenState extends State<SettingsScreen>
     return SettingsPanel(
       identityLinkPending: state.identityLinkPending,
       identityVerified: state.identityVerified,
+      subscription: _subscriptionEntitlement,
+      subscriptionLoading: _subscriptionLoading,
+      subscriptionUnavailable: _subscriptionUnavailable,
+      onOpenSubscription: () => context.push(Routes.paywall),
       verifyingIdentity: _verifyingIdentity,
       onVerifyIdentity: ownerSession ? _verifyIdentityOnline : null,
       staff: _staff,
@@ -2515,8 +2567,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       onManageShops: _manageShops,
       onChangeBusinessProfile: ownerSession ? _changeBusinessProfile : null,
       onEditBusinessContext: ownerSession ? _editBusinessContext : null,
-      onEditCommercialConsent:
-          ownerSession ? _editCommercialConsent : null,
+      onEditCommercialConsent: ownerSession ? _editCommercialConsent : null,
       onOpenPortfolio: () => context.push(Routes.portfolio),
       onOpenActivity: () => context.push(Routes.activity),
       onOpenIncomingPayments: () => context.push(Routes.incomingPayments),
@@ -2638,6 +2689,10 @@ class SettingsPanel extends StatelessWidget {
     required this.verifyingIdentity,
     required this.onVerifyIdentity,
     required this.identityVerified,
+    this.subscription,
+    this.subscriptionLoading = false,
+    this.subscriptionUnavailable = false,
+    required this.onOpenSubscription,
     required this.staff,
     required this.onAddStaff,
     required this.onRemoveStaff,
@@ -2722,6 +2777,10 @@ class SettingsPanel extends StatelessWidget {
   /// automatic backups, the cross-shop analytics the portfolio screen reads,
   /// and auto-update.
   final bool identityVerified;
+  final SubscriptionEntitlement? subscription;
+  final bool subscriptionLoading;
+  final bool subscriptionUnavailable;
+  final VoidCallback onOpenSubscription;
 
   final List<Staff> staff;
   final Future<void> Function() onAddStaff;
@@ -2835,6 +2894,17 @@ class SettingsPanel extends StatelessWidget {
         ScreenTitle(title: l10n.navSettings),
         if (identityLinkPending && onVerifyIdentity != null)
           _IdentityBanner(busy: verifyingIdentity, onVerify: onVerifyIdentity!),
+        _SettingsSection(
+          title: l10n.settingsSubscriptionSection,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.card_membership_outlined),
+            title: Text(l10n.settingsSubscriptionTitle),
+            subtitle: Text(_subscriptionSummary(l10n)),
+            trailing: const Icon(Icons.arrow_forward),
+            onTap: onOpenSubscription,
+          ),
+        ),
         _ShopsPanel(
           onAddShop: onAddShop,
           onManage: onManageShops,
@@ -2938,6 +3008,37 @@ class SettingsPanel extends StatelessWidget {
         const _AboutFooter(),
       ],
     );
+  }
+
+  String _subscriptionSummary(AppLocalizations l10n) {
+    if (subscriptionLoading) return l10n.settingsSubscriptionLoading;
+    if (subscriptionUnavailable) {
+      return l10n.settingsSubscriptionUnavailable;
+    }
+
+    final SubscriptionEntitlement? current = subscription;
+    final int? priceMinor = current?.priceMinor;
+    if (current == null || priceMinor == null || priceMinor <= 0) {
+      return l10n.settingsSubscriptionNotConfigured;
+    }
+
+    String amount(int minor) => (minor / 100).toStringAsFixed(2);
+    final String price = l10n.settingsSubscriptionPrice(
+      current.currency,
+      amount(priceMinor),
+      current.billingInterval,
+    );
+    if (current.discountPercent <= 0) return price;
+
+    final int discountPercent = current.discountPercent.clamp(0, 100).toInt();
+    final int discountedMinor =
+        (priceMinor * (100 - discountPercent) / 100).round();
+    return '$price\n${l10n.settingsSubscriptionAmountDue(
+      current.currency,
+      amount(discountedMinor),
+      current.billingInterval,
+      discountPercent,
+    )}';
   }
 }
 
@@ -3922,7 +4023,7 @@ class _StaffRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final AppColors colors = AppColors.of(context);
-    final bool isManager = staff.role == 'manager';
+    final String roleLabel = _staffRoleLabel(l10n, staff.role);
 
     return Row(
       children: <Widget>[
@@ -3933,7 +4034,7 @@ class _StaffRow extends StatelessWidget {
               Text(staff.name, style: AppTypography.of(context).bodyLarge),
               SizedBox(height: 2),
               Text(
-                isManager ? l10n.settingsRoleManager : l10n.settingsRoleCashier,
+                roleLabel,
                 style: AppTypography.of(context)
                     .bodySmall
                     ?.copyWith(color: colors.onSurfaceMuted),
@@ -3962,6 +4063,13 @@ class _StaffRow extends StatelessWidget {
     );
   }
 }
+
+String _staffRoleLabel(AppLocalizations l10n, String role) =>
+    switch (ShopRole.parse(role)) {
+      ShopRole.admin => l10n.settingsRoleAdminFull(ShopRole.admin.label),
+      ShopRole.manager => l10n.settingsRoleManager,
+      ShopRole.cashier => l10n.settingsRoleCashier,
+    };
 
 class _PaymentsPanel extends StatelessWidget {
   const _PaymentsPanel({
