@@ -1937,7 +1937,7 @@ router.post(
   staffAuthLimiter,
   asyncHandler(async (req, res) => {
     const { username: rawUsername } = parseBody(staffPinResetRequestSchema, req.body);
-    const tenantId = req.header('x-tenant-id')?.trim();
+    const tenantId = req.user?.tenantId ?? req.header('x-tenant-id')?.trim();
     if (!tenantId) return res.status(400).json({ error: 'Shop selection required' });
     const username = rawUsername.toLowerCase();
     const profile = await prisma.profile.findFirst({
@@ -1962,6 +1962,16 @@ router.post(
         },
       });
       broadcastTenantChange(tenantId, ['staff_pin_reset_requested']);
+      await recordAuthAuditEvent({
+        tenantId,
+        actorType: req.user?.role === 'admin' ? 'owner' : 'staff',
+        actorId: req.user?.id ?? null,
+        action: 'staff.pin_reset_request',
+        outcome: 'success',
+        ip: req.ip,
+        userAgent: req.get('user-agent'),
+        metadata: { username, staffProfileId: profile.id },
+      });
     }
     return res.status(202).json({ status: 'request_received' });
   }),

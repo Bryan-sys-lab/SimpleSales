@@ -75,12 +75,10 @@ export const authMiddleware = async (req: express.Request, res: express.Response
   // Staff PIN authentication is the bootstrap path for a fresh till. It
   // cannot require the app bearer token that staff are trying to obtain; the
   // selected tenant ID scopes the request and the staff route verifies the
-  // username/PIN against that tenant. Keep the exception narrow: only this
-  // POST and only with an explicit tenant selector may pass without a bearer.
+  // username/PIN against that tenant. Keep the exception narrow.
   if (
     req.method === 'POST' &&
-    (normalizedOriginalPath === '/tenant/staff/authenticate' ||
-      normalizedOriginalPath === '/tenant/staff/pin-reset-request') &&
+    normalizedOriginalPath === '/tenant/staff/authenticate' &&
     Boolean(req.header('x-tenant-id')?.trim())
   ) {
     return next();
