@@ -29,6 +29,7 @@ import { encryptTaxSecret, lastFour } from '../services/tax_entity';
 import { activityTenantScope } from '../lib/activity_scope';
 import { readableTenantId } from '../lib/tenant_id';
 import { issueStaffSessionToken, verifyStaffSessionToken } from '../lib/jwt';
+import { resolveActiveStaffSession } from '../lib/staff_session';
 import { broadcastTenantChange } from '../services/live_broker';
 import { tenantEntitlement } from '../lib/entitlements';
 import { calculateSubscriptionQuote, effectiveSubscriptionDiscountPercent } from '../lib/subscription_pricing';
@@ -2016,11 +2017,12 @@ router.post(
   asyncHandler(async (req, res) => {
     const authorization = req.header('authorization') ?? '';
     const token = authorization.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() ?? '';
-    const claims = verifyStaffSessionToken(token);
     const tenantId = req.header('x-tenant-id');
-    if (!claims || !tenantId || claims.tenantId !== tenantId) {
+    const activeStaff = tenantId ? await resolveActiveStaffSession(token, tenantId, prisma) : null;
+    if (!activeStaff) {
       return res.status(401).json({ error: 'Staff session required' });
     }
+    const { claims } = activeStaff;
     const { currentPin, newPin } = parseBody(staffSelfPinSchema, req.body);
     if (currentPin === newPin) return res.status(400).json({ error: 'New PIN must be different' });
     const profile = await prisma.profile.findFirst({
@@ -2036,11 +2038,6 @@ router.post(
       return res.status(401).json({ error: 'Staff session required' });
     }
     if (typeof claims.pin_cv === 'number' && claims.pin_cv !== (profile.pinCredentialVersion ?? 0)) {
-      return res.status(401).json({ error: 'Staff session revoked' });
-    }
-    const staffSessionHash = createHash('sha256').update(token).digest('hex');
-    const authSession = await (prisma.authSession?.findUnique as any)?.({ where: { refreshTokenHash: staffSessionHash } }).catch(() => null);
-    if (authSession?.revokedAt || (authSession?.expiresAt && new Date(authSession.expiresAt).getTime() <= Date.now())) {
       return res.status(401).json({ error: 'Staff session revoked' });
     }
     if (!await verifyStaffPin(currentPin, profile.pinHash)) {

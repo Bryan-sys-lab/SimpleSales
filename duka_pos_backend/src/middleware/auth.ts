@@ -10,6 +10,7 @@ import express from 'express';
 import { prisma } from '../lib/prisma';
 import { createHash } from 'crypto';
 import { verifyAccessToken, verifyStaffSessionToken } from '../lib/jwt';
+import { resolveActiveStaffSession } from '../lib/staff_session';
 import { tenantEntitlement } from '../lib/entitlements';
 import { effectiveAdminPermissions, normalizeAdminPackages } from '../lib/admin_access_catalog';
 
@@ -93,12 +94,14 @@ export const authMiddleware = async (req: express.Request, res: express.Response
     return next(err);
   }
   if (req.method === 'POST' && normalizedOriginalPath === '/tenant/staff/self-pin') {
-    const staffClaims = verifyStaffSessionToken(token);
-    if (!staffClaims || req.header('x-tenant-id') !== staffClaims.tenantId) {
+    const tenantId = req.header('x-tenant-id');
+    const activeStaff = tenantId ? await resolveActiveStaffSession(token, tenantId, prisma) : null;
+    if (!activeStaff) {
       const err: any = new Error('Invalid or expired staff session');
       err.status = 401;
       return next(err);
     }
+    const { claims: staffClaims } = activeStaff;
     const profile = await prisma.profile.findFirst({
       where: { id: staffClaims.profileId, tenantId: staffClaims.tenantId, active: true, deletedAt: null },
       select: { id: true, tenantId: true, role: true, name: true, pinCredentialVersion: true },
@@ -112,20 +115,6 @@ export const authMiddleware = async (req: express.Request, res: express.Response
       const err: any = new Error('Staff session revoked');
       err.status = 401;
       return next(err);
-    }
-    try {
-      const sessionHash = createHash('sha256').update(token).digest('hex');
-      const session = await prisma.authSession.findFirst({
-        where: { refreshTokenHash: sessionHash, profileId: profile.id },
-        select: { revokedAt: true, expiresAt: true },
-      });
-      if (session && (session.revokedAt || session.expiresAt <= new Date())) {
-        const err: any = new Error('Staff session revoked');
-        err.status = 401;
-        return next(err);
-      }
-    } catch {
-      // Backward-compatible: if session lookup is unavailable, pin_cv/signature checks still apply.
     }
     req.auth = { sub: staffClaims.sub, token_use: 'staff' };
     req.user = { id: profile.id, tenantId: profile.tenantId, role: profile.role, name: profile.name };
