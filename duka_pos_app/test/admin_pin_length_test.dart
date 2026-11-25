@@ -46,12 +46,15 @@ void main() {
       expect(PinRules.isAdminPin(''), isFalse);
     });
 
-    test('a staff PIN is still four digits', () {
-      expect(PinRules.staffLength, 4);
-      expect(PinRules.isStaffPin('1234'), isTrue);
-      expect(PinRules.isStaffPin('123'), isFalse);
+    test('a staff PIN is six digits for V2 create/change/reset, login accepts legacy 4 during migration', () {
+      expect(PinRules.staffLength, 6);
+      expect(PinRules.isStaffPin('123456'), isTrue);
+      expect(PinRules.isStaffPin('1234'), isFalse);
       expect(PinRules.isStaffPin('12345'), isFalse);
-      expect(PinRules.isStaffPin('12a4'), isFalse);
+      expect(PinRules.isStaffPin('12a456'), isFalse);
+      expect(PinRules.isStaffLoginPin('1234'), isTrue);
+      expect(PinRules.isStaffLoginPin('123456'), isTrue);
+      expect(PinRules.isStaffLoginPin('12345'), isFalse);
     });
   });
 
@@ -89,7 +92,7 @@ void main() {
       );
     });
 
-    test('the sign-in pad asks for six digits for the owner', () {
+    test('the sign-in pad asks for six digits for the owner and accepts 4/6 for staff login migration', () {
       final String ownerSource = _read('lib/screens/login_screen.dart');
       final String staffSource = _read('lib/screens/staff_login_screen.dart');
       expect(
@@ -99,10 +102,10 @@ void main() {
             'the rest of the app asks for',
       );
       expect(
-        staffSource.contains('PinRules.staffLength'),
+        staffSource.contains('PinRules.staffLoginMaxLength') ||
+            staffSource.contains('PinRules.isStaffLoginPin'),
         isTrue,
-        reason: 'and a staff member must still be asked for four digits on '
-            'the staff sign-in screen',
+        reason: 'staff login must accept legacy 4-digit and V2 6-digit PINs during migration',
       );
     });
 
@@ -120,12 +123,12 @@ void main() {
       );
     });
 
-    test('the staff PIN is still asked for as four digits', () {
+    test('staff PIN creation/reset uses six digits in settings', () {
       final String source = _read('lib/screens/settings_screen.dart');
       expect(
-        source.contains(r'^\d{4}$'),
+        source.contains('PinRules.isStaffPin') || source.contains('PinRules.staffLength'),
         isTrue,
-        reason: 'a cashier still signs in with a four-digit PIN',
+        reason: 'staff PIN creation/reset must follow V2 6-digit policy',
       );
     });
   });
@@ -135,8 +138,8 @@ void main() {
       final AppLocalizations l10n = await loadL10n();
       expect(l10n.validationPinNotSixDigits, contains('6'));
       expect(l10n.ownerSetupPinLabel, contains('6'));
-      // The staff copy is unchanged.
-      expect(l10n.validationPinNotFourDigits, contains('4'));
+      // Staff login accepts 4 or 6 digits under V2; creation/reset remains 6.
+      expect(l10n.validationPinMustBeFourOrSixDigits, contains('4'));
     });
   });
 }

@@ -142,10 +142,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get validationPinRequired => 'PIN is required';
 
   @override
-  String get validationPinNotFourDigits => 'PIN must be exactly 4 digits';
 
   @override
   String get validationPinNotSixDigits => 'PIN must be exactly 6 digits';
+
+  @override
+  String get validationPinMustBeFourOrSixDigits => 'PIN must be 4 or 6 digits';
 
   @override
   String get validationPinConfirmRequired => 'Enter the PIN again';
@@ -2024,6 +2026,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsForgotPinAction => 'Forgot PIN?';
 
   @override
+  String get staffForgotPinNotifyOwner => 'Forgot PIN? Notify owner';
+
+  @override
   String get pinResetRowSubtitle => 'Email a code and set a new owner PIN';
 
   @override
@@ -2755,7 +2760,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsPaymentMethodsSection => 'Payment methods';
 
   @override
-  String get settingsPinLabel => '4-digit PIN';
+  String get settingsPinLabel => '6-digit PIN';
 
   @override
   String get settingsPrintAfterSale => 'Print after every sale';

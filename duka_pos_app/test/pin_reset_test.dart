@@ -42,6 +42,7 @@ void main() {
     databaseFactory = databaseFactoryFfi;
     DatabaseHelper.resetForTests();
     SharedPreferences.setMockInitialValues(<String, Object>{});
+    AuthService.iterationsForTest = 4000;
     db = await DatabaseHelper.openInMemoryForTests();
     await db.createOwner(Owner(
       id: 1,
@@ -51,6 +52,10 @@ void main() {
       shopName: 'Amina Duka',
       createdAt: DateTime.now().toIso8601String(),
     ));
+  });
+
+  tearDown(() {
+    AuthService.iterationsForTest = null;
   });
 
   group('the new PIN is refused before the network is touched', () {

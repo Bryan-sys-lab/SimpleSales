@@ -314,17 +314,18 @@ abstract class AppLocalizations {
   /// **'PIN is required'**
   String get validationPinRequired;
 
-  /// No description provided for @validationPinNotFourDigits.
-  ///
-  /// In en, this message translates to:
-  /// **'PIN must be exactly 4 digits'**
-  String get validationPinNotFourDigits;
 
   /// No description provided for @validationPinNotSixDigits.
   ///
   /// In en, this message translates to:
   /// **'PIN must be exactly 6 digits'**
   String get validationPinNotSixDigits;
+
+  /// No description provided for @validationPinMustBeFourOrSixDigits.
+  ///
+  /// In en, this message translates to:
+  /// **'PIN must be 4 or 6 digits'**
+  String get validationPinMustBeFourOrSixDigits;
 
   /// No description provided for @validationPinConfirmRequired.
   ///
@@ -3460,6 +3461,12 @@ abstract class AppLocalizations {
   /// **'Forgot PIN?'**
   String get settingsForgotPinAction;
 
+  /// No description provided for @staffForgotPinNotifyOwner.
+  ///
+  /// In en, this message translates to:
+  /// **'Forgot PIN? Notify owner'**
+  String get staffForgotPinNotifyOwner;
+
   /// No description provided for @pinResetRowSubtitle.
   ///
   /// In en, this message translates to:
@@ -4676,7 +4683,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsPinLabel.
   ///
   /// In en, this message translates to:
-  /// **'4-digit PIN'**
+  /// **'6-digit PIN'**
   String get settingsPinLabel;
 
   /// No description provided for @settingsPrintAfterSale.

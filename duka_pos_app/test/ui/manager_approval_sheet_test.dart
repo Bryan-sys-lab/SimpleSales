@@ -53,7 +53,12 @@ void main() {
   setUp(() async {
     DatabaseHelper.resetForTests();
     SharedPreferences.setMockInitialValues(<String, Object>{});
+    AuthService.iterationsForTest = 4000;
     await DatabaseHelper.openInMemoryForTests();
+  });
+
+  tearDown(() {
+    AuthService.iterationsForTest = null;
   });
 
   /// Bridges real time in bounded windows until [finder] matches, or fails
@@ -101,10 +106,11 @@ void main() {
   Future<void> seedManager(WidgetTester tester, String name) async {
     await tester.runAsync(() async {
       final salt = List<int>.generate(16, (int i) => (i * 13) & 0xFF);
+      final iterations = AuthService.iterationsForTest ?? AuthService.defaultIterations;
       final derived = await derivePbkdf2Key(
-          Pbkdf2Request('654321', salt, AuthService.defaultIterations, 256));
+          Pbkdf2Request('654321', salt, iterations, 256));
       final hash =
-          'pbkdf2\$${AuthService.defaultIterations}\$${base64Url.encode(salt)}\$${base64Url.encode(derived)}';
+          'pbkdf2\$$iterations\$${base64Url.encode(salt)}\$${base64Url.encode(derived)}';
       await DatabaseHelper.instance
           .addStaff(Staff(name: name, pinHash: hash, role: 'manager'));
       await Future<void>.delayed(const Duration(milliseconds: 800));

@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../services/app_state.dart';
 import '../services/backend_service.dart';
 import '../theme/app_spacing.dart';
+import '../utils/pin_rules.dart';
 
 Future<void> showStaffPinChangeDialog(BuildContext context, AppState state) async {
   final current = TextEditingController();
@@ -19,10 +20,10 @@ Future<void> showStaffPinChangeDialog(BuildContext context, AppState state) asyn
           final String newPin = next.text.trim();
           final String confirmPin = confirm.text.trim();
           if (state.currentStaffId == null ||
-              currentPin.length != 4 ||
-              newPin.length != 4 ||
+              !PinRules.isStaffLoginPin(currentPin) ||
+              !PinRules.isStaffPin(newPin) ||
               confirmPin != newPin) {
-            setState(() => error = 'Enter four digits and make the new PINs match.');
+            setState(() => error = 'Enter your current PIN and a new 6-digit PIN (confirmation must match).');
             return;
           }
           setState(() {
@@ -45,16 +46,18 @@ Future<void> showStaffPinChangeDialog(BuildContext context, AppState state) asyn
             }
           }
         }
-        Widget field(String label, TextEditingController controller) => Padding(
+        Widget field(String label, TextEditingController controller, {int maxLength = 6}) => Padding(
           padding: EdgeInsets.only(bottom: AppSpacing.of(context).md),
-          child: TextField(controller: controller, obscureText: true, keyboardType: TextInputType.number, maxLength: 4, decoration: InputDecoration(labelText: label, counterText: '')),
+          child: TextField(controller: controller, obscureText: true, keyboardType: TextInputType.number, maxLength: maxLength, decoration: InputDecoration(labelText: label, counterText: '')),
         );
         return AlertDialog(
           title: const Text('Change my PIN'),
           content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
             const Text('Only you can change this PIN. Keep it private.'),
             SizedBox(height: AppSpacing.of(context).lg),
-            field('Current PIN', current), field('New PIN', next), field('Confirm new PIN', confirm),
+            field('Current PIN', current, maxLength: 6),
+            field('New 6-digit PIN', next),
+            field('Confirm new 6-digit PIN', confirm),
             if (error != null) Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
           ])),
           actions: <Widget>[

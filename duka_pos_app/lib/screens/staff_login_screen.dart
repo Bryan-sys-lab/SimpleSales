@@ -803,7 +803,7 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
                       autofillHints: const <String>[AutofillHints.password],
                       inputFormatters: <TextInputFormatter>[
                         FilteringTextInputFormatter.digitsOnly,
-                        LengthLimitingTextInputFormatter(PinRules.staffLength),
+                        LengthLimitingTextInputFormatter(PinRules.staffLoginMaxLength),
                       ],
                       decoration: InputDecoration(
                         labelText: l10n.staffPasswordLabel,
@@ -829,8 +829,8 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
                         if (pin.isEmpty) {
                           return l10n.fieldRequired('') as String?;
                         }
-                        if (!PinRules.isStaffPin(pin)) {
-                          return l10n.validationPinNotFourDigits;
+                        if (!PinRules.isStaffLoginPin(pin)) {
+                          return l10n.validationPinMustBeFourOrSixDigits;
                         }
                         return null;
                       },
@@ -841,7 +841,7 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
                       alignment: AlignmentDirectional.centerStart,
                       child: TextButton(
                         onPressed: _loading ? null : _requestForgottenPin,
-                        child: const Text('Forgot PIN? Notify owner'),
+                        child: Text(l10n.staffForgotPinNotifyOwner),
                       ),
                     ),
                     if (_error != null)

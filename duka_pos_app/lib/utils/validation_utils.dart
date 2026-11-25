@@ -66,25 +66,30 @@ abstract final class ValidationUtils {
     return null;
   }
 
-  /// Validates a PIN against the length the ROLE requires.
+  /// Validates a PIN against the length the role/flow requires.
   ///
-  /// The length is a parameter because the two roles have different PINs —
-  /// four digits for staff, six for the owner — and a validator that hardcodes
-  /// one of them is how an admin ends up unable to delete their own account.
-  /// The default is the STAFF length, which is what a form collecting a new
-  /// staff PIN needs; an owner form passes `PinRules.adminLength`.
+  /// V2: staff PIN create/reset/change require 6 digits. Staff login accepts
+  /// 4 or 6 digits during migration. The length parameter can be used for
+  /// strict validation; when omitted, 4-6 digit numeric PINs are accepted.
   static String? validatePIN(
     AppLocalizations l10n,
     String? value, {
-    int length = 4,
+    int? length,
   }) {
     if (value == null || value.isEmpty) {
       return l10n.validationPinRequired;
     }
-    if (!RegExp(r'^\d+$').hasMatch(value) || value.length != length) {
-      return length == 6
-          ? l10n.validationPinNotSixDigits
-          : l10n.validationPinNotFourDigits;
+    final isDigits = RegExp(r'^\d+$').hasMatch(value);
+    if (length != null) {
+      if (!isDigits || value.length != length) {
+        return length == 6
+            ? l10n.validationPinNotSixDigits
+            : l10n.validationPinMustBeFourOrSixDigits;
+      }
+      return null;
+    }
+    if (!isDigits || (value.length != 4 && value.length != 6)) {
+      return l10n.validationPinMustBeFourOrSixDigits;
     }
     return null;
   }

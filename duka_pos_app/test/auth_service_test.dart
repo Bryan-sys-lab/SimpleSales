@@ -50,8 +50,8 @@ void main() {
   group('PIN hashing', () {
     test('produces a self-describing PBKDF2 hash', () async {
       final hash = await AuthService.hashPin('1234').timeout(kdfWait);
-      expect(hash, startsWith('pbkdf2\$'));
-      expect(hash.split(r'$').length, equals(4));
+      expect(hash, startsWith('pbkdf2\$v2\$sha256\$'));
+      expect(hash.split(r'$').length, equals(6));
       expect(AuthService.needsUpgrade(hash), isFalse);
     }, timeout: kdfTimeout);
 
@@ -77,7 +77,13 @@ void main() {
 
     test('flags a legacy hash as needing upgrade', () {
       expect(AuthService.needsUpgrade('0123456789abcdef'), isTrue);
-      expect(AuthService.needsUpgrade('pbkdf2\$120000\$a\$b'), isFalse);
+      expect(AuthService.needsUpgrade('pbkdf2\$120000\$a\$b'), isTrue);
+      expect(AuthService.needsUpgrade('pbkdf2\$v2\$sha256\$1\$a\$b'), isTrue);
+      expect(
+        AuthService.needsUpgrade(
+            'pbkdf2\$v2\$sha256\$${AuthService.iterationsForTest ?? AuthService.defaultIterations}\$a\$b'),
+        isFalse,
+      );
     });
   });
 

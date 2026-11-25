@@ -322,13 +322,13 @@ class _SettingsScreenState extends State<SettingsScreen>
           controller: controller,
           autofocus: true,
           obscureText: true,
-          maxLength: 4,
+          maxLength: 6,
           keyboardType: TextInputType.number,
           decoration: InputDecoration(
             labelText:
                 'Temporary PIN for ${request['staff_name'] ?? 'staff member'}',
             helperText:
-                'Give it directly to the staff member. It is not recorded in activity.',
+                'Give the staff member a 6-digit temporary PIN directly. It is not recorded in activity.',
           ),
         ),
         actions: <Widget>[
@@ -957,8 +957,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       _err('Username is required');
       return;
     }
-    if (!RegExp(r'^\d{4}$').hasMatch(result['pin'] ?? '')) {
-      _err('PIN must be exactly 4 digits');
+    if (!PinRules.isStaffPin(result['pin'] ?? '')) {
+      _err('PIN must be exactly 6 digits');
       return;
     }
     if (_staff.any((s) => s.name.toLowerCase() == name.toLowerCase())) {
@@ -2503,7 +2503,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     // The two OWNER-ACCOUNT flows below — linking the online identity and
     // deleting the online account — verify against the OWNER's 6-digit PIN.
     // They are gated on the owner SESSION, not on `isAdmin`: a staff member
-    // given the Admin role signs in with a 4-digit PIN, and asking them for a
+    // given the Admin role signs in with a staff PIN, and asking them for a
     // PIN only the shop owner holds is a dead end that charges the owner's
     // lockout budget for the attempt.
     final AppState state = context.watch<AppState>();
@@ -2794,8 +2794,8 @@ class SettingsPanel extends StatelessWidget {
 
   /// Opens the online-identity verification flow, or NULL when this session is
   /// not the shop owner's. The flow proves itself with the OWNER's 6-digit
-  /// PIN, so a manager or an admin-role staff account — who holds a 4-digit
-  /// PIN — is not offered a door they cannot open.
+  /// PIN, so a manager or an admin-role staff account — who holds a staff
+  /// PIN, not the owner's — is not offered a door they cannot open.
   final Future<void> Function()? onVerifyIdentity;
 
   /// Whether the emailed code has been presented and accepted. The until-then
@@ -3734,7 +3734,7 @@ class _StaffDialogState extends State<_StaffDialog> {
                   labelText: AppLocalizations.of(context).settingsPinLabel),
               keyboardType: TextInputType.number,
               obscureText: true,
-              maxLength: 4,
+              maxLength: 6,
               autofillHints: const [AutofillHints.oneTimeCode]),
         ]),
       ),

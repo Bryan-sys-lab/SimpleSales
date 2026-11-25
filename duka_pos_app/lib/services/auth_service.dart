@@ -41,12 +41,13 @@ Future<List<int>> derivePbkdf2Key(Pbkdf2Request request) async {
 
 /// PIN credentials and brute-force throttling for the till.
 ///
-/// PINs are short by design (4 digits), so the whole keyspace is only 10,000
-/// values. A plain fast hash therefore hands a stolen database straight to an
-/// attacker, which is why PINs are derived with PBKDF2-HMAC-SHA256 over a
-/// per-user random salt. The stored value is self-describing
-/// (`pbkdf2$<iterations>$<salt>$<key>`), so verification needs no side
-/// channel and legacy single-round SHA-256 hashes keep working unchanged.
+/// PINs are short numeric secrets (V2 creates 6-digit staff PINs; legacy 4-digit
+/// PINs remain login-compatible during migration), so the keyspace is small. A
+/// plain fast hash therefore hands a stolen database straight to an attacker,
+/// which is why PINs are derived with PBKDF2-HMAC-SHA256 over a per-user random
+/// salt. The stored value is self-describing
+/// (`pbkdf2$v2$sha256$<iterations>$<salt>$<key>` for V2, with legacy formats
+/// still verifiable during migration), so verification needs no side channel.
 ///
 /// Lockout state is persisted rather than held in memory: an in-memory counter
 /// dies with the process, and force-stopping a till app is trivial, which
@@ -64,9 +65,13 @@ class AuthService {
   /// shop's throttle double as one cashier's lockout record.
   static const _tillThrottleKey = 'duka_till_pin_throttle_v2';
 
-  /// High enough to make an offline attack on a 4-digit keyspace expensive,
-  /// low enough that verifying a PIN stays imperceptible on a budget phone.
-  static const int defaultIterations = 120000;
+  /// V2: PBKDF2-HMAC-SHA256. Workers WebCrypto/node:crypto caps PBKDF2 at 100k iterations;
+  /// use the platform maximum and keep the versioned format for future increases.
+  static const int defaultIterations = 100000;
+  static const int legacyIterations = 120000;
+  static const int v2Iterations = 100000;
+  static const String v2Format = 'v2-pbkdf2-sha256';
+  static const String legacyFormat = 'legacy-pbkdf2';
 
   /// Test-only override for repeated destructive-flow setup. Production never
   /// sets this, so shipped PIN hashes keep the configured work factor.
@@ -75,60 +80,80 @@ class AuthService {
 
   static final _kdfHmac = Hmac.sha256();
 
+  static Pbkdf2 _kdfFor(int iterations, {int bits = 256}) => Pbkdf2(
+        macAlgorithm: _kdfHmac,
+        iterations: iterations,
+        bits: bits,
+      );
+
   /// The configured default KDF. Held as an instance so there is exactly one
   /// definition of the current work factor, and used for the inline path
   /// [derivePbkdf2Key] cannot take.
-  static final Pbkdf2 _kdf = Pbkdf2(
-    macAlgorithm: _kdfHmac,
-    iterations: defaultIterations,
-    bits: 256,
-  );
+  static final Pbkdf2 _kdf = _kdfFor(defaultIterations);
 
   static const String _prefix = 'pbkdf2';
+  static const String _v2Version = 'v2';
+  static const String _v2Prf = 'sha256';
 
   /// Hashes [pin] for storage in the `owner`/`staff` `pin_hash` column.
   ///
+  /// Emits V2 format: `pbkdf2$v2$sha256$<iterations>$<salt>$<key>`.
   /// [userKey] identifies *whose* credential is being (re)derived and is
   /// deliberately not used to build the salt: the salt is random per
   /// derivation, so re-hashing the same PIN never collides and the stored value
-  /// carries no correlation between shops. It is still threaded through so a
-  /// per-user salt can be introduced later without touching call sites.
+  /// carries no correlation between shops.
   static Future<String> hashPin(String pin, {int? userKey}) async {
     final salt = _randomBytes(16);
     final iterations = iterationsForTest ?? defaultIterations;
     final derived = await _deriveInBackground(
         Pbkdf2Request(pin, salt, iterations, 256));
-    assert(() {
-      // Guards the invariant that what we write is what [_kdf] derives, so the
-      // inline and isolated paths can never silently disagree.
-      return derived.length * 8 == 256;
-    }());
-    return '$_prefix\$$iterations\$${base64UrlEncode(salt)}\$${base64UrlEncode(derived)}';
+    return '$_prefix\$$_v2Version\$$_v2Prf\$$iterations\$${base64UrlEncode(salt)}\$${base64UrlEncode(derived)}';
   }
 
-  /// Verifies [pin] against a stored hash, accepting both the current PBKDF2
-  /// format and the legacy salted single-round SHA-256 used before v2.
+  /// Verifies [pin] against a stored hash, accepting V2 PBKDF2
+  /// (`pbkdf2$v2$sha256$...`), legacy PBKDF2 (`pbkdf2$<iter>$...`), and the
+  /// legacy salted single-round SHA-256 used before v2.
   static Future<bool> verifyPin(String pin, String storedHash) async {
     if (storedHash.startsWith('$_prefix\$')) {
       final parts = storedHash.split('\$');
-      if (parts.length != 4) return false;
-      final iterations = int.tryParse(parts[1]);
-      // Bounded: the count is read from the stored hash, and a tampered row
-      // with a huge one would otherwise freeze the sign-in screen.
-      if (iterations == null || iterations < 1 || iterations > maxStoredIterations) {
-        return false;
+      if (parts.length == 6 && parts[1] == _v2Version && parts[2] == _v2Prf) {
+        final iterations = int.tryParse(parts[3]);
+        if (iterations == null || iterations < 1 || iterations > maxStoredIterations) {
+          return false;
+        }
+        final List<int> salt;
+        final List<int> expected;
+        try {
+          salt = base64Url.decode(parts[4]);
+          expected = base64Url.decode(parts[5]);
+        } catch (_) {
+          return false;
+        }
+        if (salt.isEmpty || expected.length < 16 || expected.length > 64) return false;
+        final derived = await _deriveInBackground(
+            Pbkdf2Request(pin, salt, iterations, expected.length * 8));
+        return _constantTimeEquals(derived, expected);
       }
-      final List<int> salt;
-      final List<int> expected;
-      try {
-        salt = base64Url.decode(parts[2]);
-        expected = base64Url.decode(parts[3]);
-      } catch (_) {
-        return false;
+      if (parts.length == 4) {
+        final iterations = int.tryParse(parts[1]);
+        // Bounded: the count is read from the stored hash, and a tampered row
+        // with a huge one would otherwise freeze the sign-in screen.
+        if (iterations == null || iterations < 1 || iterations > maxStoredIterations) {
+          return false;
+        }
+        final List<int> salt;
+        final List<int> expected;
+        try {
+          salt = base64Url.decode(parts[2]);
+          expected = base64Url.decode(parts[3]);
+        } catch (_) {
+          return false;
+        }
+        final derived = await _deriveInBackground(
+            Pbkdf2Request(pin, salt, iterations, expected.length * 8));
+        return _constantTimeEquals(derived, expected);
       }
-      final derived = await _deriveInBackground(
-          Pbkdf2Request(pin, salt, iterations, expected.length * 8));
-      return _constantTimeEquals(derived, expected);
+      return false;
     }
     // Constant-time for the legacy path too. A plain `==` on the hex digest
     // short-circuits on the first differing character, which leaks how much of
@@ -162,10 +187,18 @@ class AuthService {
     }
   }
 
-  /// True when a stored hash still uses the weak legacy format and should be
-  /// re-derived with the current parameters on the next successful sign-in.
-  static bool needsUpgrade(String storedHash) =>
-      !storedHash.startsWith('$_prefix\$');
+  /// True when a stored hash still uses a legacy or outdated format and should
+  /// be re-derived with the current V2 parameters on the next successful sign-in.
+  static bool needsUpgrade(String storedHash) {
+    if (!storedHash.startsWith('$_prefix\$')) return true;
+    final parts = storedHash.split('\$');
+    if (parts.length != 6 || parts[1] != _v2Version || parts[2] != _v2Prf) {
+      return true;
+    }
+    final iterations = int.tryParse(parts[3]);
+    final target = iterationsForTest ?? defaultIterations;
+    return iterations == null || iterations < target;
+  }
 
   static List<int> _randomBytes(int length) {
     final rnd = Random.secure();
@@ -266,7 +299,7 @@ class AuthService {
   /// PIN pad asks who is signing in *before* the PIN is entered, so an attacker
   /// with physical access simply spreads attempts across the roster — five
   /// tries each against Alice, then Bob, then Carol — and never trips any one
-  /// user's limit. With a 4-digit keyspace that turns a 10,000-value space
+  /// user's limit. With a small numeric PIN keyspace that turns the space
   /// into a handful of tries per person per cycle, repeating indefinitely.
   ///
   /// This counts every failure no matter which user was chosen, so the whole

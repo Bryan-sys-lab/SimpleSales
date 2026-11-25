@@ -1,4 +1,4 @@
-{
+﻿{
   "sw": [
     "validationProductNameRequired",
     "validationProductNameTooShort",
@@ -18,8 +18,8 @@
     "validationStockNotWhole",
     "validationStockNotNegative",
     "validationPinRequired",
-    "validationPinNotFourDigits",
     "validationPinNotSixDigits",
+    "validationPinMustBeFourOrSixDigits",
     "validationPinConfirmRequired",
     "validationPinMismatch",
     "ownerSetupNameLabel",
@@ -502,6 +502,7 @@
     "accountDeleteCompactionPending",
     "accountDeleteErasureFailed",
     "settingsForgotPinAction",
+    "staffForgotPinNotifyOwner",
     "pinResetRowSubtitle",
     "pinResetTitle",
     "pinResetIntro",
