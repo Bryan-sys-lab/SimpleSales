@@ -550,7 +550,12 @@ model Profile {
   photoUrl String? @map("photo_url")
   // PBKDF2 verifier supplied by an authenticated till. Plain PINs never
   // cross the API or enter the database.
-  pinHash  String? @map("pin_hash")
+  pinHash             String?   @map("pin_hash")
+  pinFormat           String?   @map("pin_format") // legacy-pbkdf2 | v2-pbkdf2-sha256
+  pinCredentialVersion Int      @default(0) @map("pin_credential_version")
+  pinUpdatedAt        DateTime? @map("pin_updated_at")
+  pinFailedAttempts   Int       @default(0) @map("pin_failed_attempts")
+  pinLockedUntil      DateTime? @map("pin_locked_until")
 
   role      String    @default("cashier")
   active    Boolean   @default(true)
@@ -1559,4 +1564,46 @@ model AdminTask {
   @@index([assigneeKeyId, status])
   @@index([department, createdAt])
   @@map("admin_tasks")
+}
+
+model AuthAuditEvent {
+  id        String   @id @default(cuid())
+  tenantId  String?  @map("tenant_id")
+  profileId String?  @map("profile_id")
+  userId    String?  @map("user_id")
+  deviceId  String?  @map("device_id")
+  eventType String   @map("event_type")
+  outcome   String
+  reason    String?
+  ip        String?
+  userAgent String?  @map("user_agent")
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, createdAt])
+  @@index([profileId, createdAt])
+  @@index([eventType, createdAt])
+  @@map("auth_audit_events")
+}
+
+model DeviceAuthorization {
+  id                    String    @id @default(cuid())
+  tenantId              String    @map("tenant_id")
+  profileId             String?   @map("profile_id")
+  deviceId              String    @map("device_id")
+  label                 String?
+  platform              String?
+  status                String    @default("active")
+  enrolledAt            DateTime  @default(now()) @map("enrolled_at")
+  lastSeenAt            DateTime? @map("last_seen_at")
+  revokedAt             DateTime? @map("revoked_at")
+  offlineLeaseExpiresAt DateTime? @map("offline_lease_expires_at")
+  credentialVersion     Int       @default(0) @map("credential_version")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  @@unique([tenantId, deviceId])
+  @@index([tenantId, profileId, status])
+  @@index([tenantId, deviceId, status])
+  @@map("device_authorizations")
 }

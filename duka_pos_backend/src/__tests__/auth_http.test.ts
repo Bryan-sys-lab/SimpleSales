@@ -3,6 +3,7 @@ import supertest from 'supertest';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { errorHandler } from '../lib/http';
 import { hashCodeSecret, newSalt } from '../lib/verification';
+import { hashPassword } from '../lib/password';
 // import { authMiddleware } from '../middleware/auth';
 
 const mocks = vi.hoisted(() => ({
@@ -70,8 +71,10 @@ process.env.NODE_ENV = 'test';
 
 describe('auth http', () => {
   let app: express.Express;
+  let passwordHash123456: string;
 
   beforeAll(async () => {
+    passwordHash123456 = await hashPassword('123456');
     const { default: authRoutes } = await import('../routes/auth');
     app = express();
     app.set('trust proxy', 1);
@@ -293,6 +296,7 @@ describe('auth http', () => {
     mocks.prisma.user.findUnique.mockResolvedValue({
       id: 'user-1',
       email: 'owner@example.com',
+      passwordHash: passwordHash123456,
       profiles: [],
     });
     mocks.prisma.user.update.mockResolvedValue({});
@@ -333,6 +337,7 @@ describe('auth http', () => {
     mocks.prisma.user.findUnique.mockResolvedValue({
       id: 'user-1',
       email: 'owner@example.com',
+      passwordHash: passwordHash123456,
       profiles: [],
     });
     mocks.prisma.user.update.mockResolvedValue({});
@@ -392,6 +397,12 @@ describe('auth http', () => {
         hashCodeSecret('123456', salt, secret),
         hashCodeSecret('123456', salt, secret),
       ].join(':'),
+    });
+    mocks.prisma.user.findUnique.mockResolvedValue({
+      id: 'user-1',
+      email: 'owner@example.com',
+      passwordHash: passwordHash123456,
+      profiles: [],
     });
 
     const res = await supertest(app).post('/auth/verify-code').send({

@@ -13,7 +13,15 @@ import { parseBody } from '../lib/validation';
 import { provisionSchema, settingsSchema, staffSyncSchema, deletionSchema, staffAuthenticateSchema, staffSelfPinSchema, staffPinResetRequestSchema, staffPinResetApproveSchema, mpesaChannelSchema, taxEntitySchema, vatReturnStatusSchema, subscriptionPaymentSchema } from '../lib/validation';
 import { getD1DatabaseBinding, prisma } from '../lib/prisma';
 import { authMiddleware } from '../middleware/auth';
-import rateLimit from 'express-rate-limit';
+import { simpleRateLimit } from '../lib/simple_rate_limit';
+import {
+  describeStaffPinHash,
+  hashStaffPinV2,
+  parseStaffPinHash,
+  staffPinNeedsRehash,
+  verifyStaffPinHash as verifyStaffPinHashV2,
+} from '../lib/auth_v2_crypto';
+import { recordAuthAuditEvent } from '../lib/auth_audit';
 import { registerPaymentChannel, initiateStkPush, queryTransactionStatus } from '../services/payhero';
 import { taxReportingActivated, taxReportingStatus } from '../services/tax_reporting';
 import { encryptTaxSecret, lastFour } from '../services/tax_entity';
@@ -37,79 +45,25 @@ function managedStaffProfileFilter() {
   };
 }
 
-const _isNode = typeof module !== 'undefined';
-const staffAuthLimiter = _isNode ? rateLimit({
+const staffAuthLimiter = simpleRateLimit('tenant:staff-auth', {
   windowMs: 60_000,
   limit: 10,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-}) : ((_req: any, _res: any, next: any) => next());
-const STAFF_PIN_HASH_ITERATIONS = 120_000;
+});
 
-async function deriveStaffPin(pin: string, salt: Uint8Array, iterations: number, length: number): Promise<Uint8Array> {
-  const key = await globalThis.crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(pin),
-    'PBKDF2',
-    false,
-    ['deriveBits'],
-  );
-  const bits = await globalThis.crypto.subtle.deriveBits(
-    { name: 'PBKDF2', hash: 'SHA-256', salt: new Uint8Array(salt), iterations },
-    key,
-    length * 8,
-  );
-  return new Uint8Array(bits);
-}
-
-function decodeBase64Url(value: string): Uint8Array {
-  // Accept padded or unpadded base64url (Dart base64UrlEncode is padded; Node
-  // base64url helpers may be unpadded). Strip any existing padding before
-  // normalizing so we never append extra '=' (which breaks atob in Workers).
-  const base64 = value.replace(/-/g, '+').replace(/_/g, '/').replace(/=+$/g, '');
-  const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
-  const decoded = atob(padded);
-  return Uint8Array.from(decoded, (character) => character.charCodeAt(0));
-}
-
-function encodeBase64Url(value: Uint8Array): string {
-  let binary = '';
-  for (const byte of value) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-}
-
-/** Verifies the app's self-describing PBKDF2-HMAC-SHA256 PIN format. */
 async function verifyStaffPin(pin: string, stored: string | null): Promise<boolean> {
-  if (!stored?.startsWith('pbkdf2$')) return false;
-  const parts = stored.split('$');
-  if (parts.length !== 4) return false;
-  const iterations = Number.parseInt(parts[1], 10);
-  if (!Number.isSafeInteger(iterations) || iterations < 1 || iterations > 2_000_000) {
-    return false;
-  }
-  try {
-    const salt = decodeBase64Url(parts[2]);
-    const expected = decodeBase64Url(parts[3]);
-    if (salt.length < 8 || expected.length === 0 || expected.length > 64) return false;
-    const actual = await deriveStaffPin(pin, salt, iterations, expected.length);
-    if (actual.length !== expected.length) return false;
-    let difference = 0;
-    for (let index = 0; index < actual.length; index += 1) {
-      difference |= actual[index] ^ expected[index];
-    }
-    return difference === 0;
-  } catch {
-    // A malformed verifier is simply an invalid credential.
-    return false;
-  }
+  return verifyStaffPinHashV2(pin, stored);
 }
 
 async function hashStaffPin(pin: string): Promise<string> {
-  const salt = globalThis.crypto.getRandomValues(new Uint8Array(16));
-  const iterations = STAFF_PIN_HASH_ITERATIONS;
-  const hash = await deriveStaffPin(pin, salt, iterations, 32);
-  return `pbkdf2$${iterations}$${encodeBase64Url(salt)}$${encodeBase64Url(hash)}`;
+  // V2 target format. Callers are responsible for validating V2 PIN policy;
+  // legacy 4-digit PINs remain verifiable through parse/verify compatibility.
+  return hashStaffPinV2(pin);
 }
+
+const STAFF_PIN_MAX_FAILED_ATTEMPTS = 5;
+const STAFF_PIN_LOCKOUT_MS = 15 * 60 * 1000;
 
 // Prisma stores server ledger amounts as major currency units. The mobile KPI
 // contract is integer minor units, matching the local SQLite ledger. Keep the
@@ -1466,12 +1420,13 @@ router.post(
               },
             ],
           },
-          select: { id: true, localId: true, role: true },
+          select: { id: true, localId: true, role: true, pinHash: true },
         });
     const plannedProfiles = profiles.map((profile) => ({
       id: profile.id,
       localId: profile.localId,
       role: profile.role,
+      pinHash: profile.pinHash,
     }));
     const db = getD1DatabaseBinding();
     const statements = [];
@@ -1481,33 +1436,91 @@ router.post(
         ? plannedProfiles.find((profile) => profile.id === item.remoteId)
         : plannedProfiles.find((profile) => profile.localId === item.localId);
       const username = item.username?.trim().toLowerCase() ?? null;
+
+      let pinHashToWrite: string | null = null;
+      if (item.pinHash != null) {
+        const parsedIncoming = parseStaffPinHash(item.pinHash);
+        if (!parsedIncoming) {
+          return res.status(400).json({
+            error: 'Invalid staff PIN hash format',
+            code: 'INVALID_PIN_HASH',
+            localId: item.localId,
+          });
+        }
+        const existingParsed = parseStaffPinHash(existing?.pinHash ?? null);
+        // Never downgrade a V2 verifier to a legacy verifier via sync.
+        if (existingParsed?.format === 'v2' && parsedIncoming.format !== 'v2') {
+          pinHashToWrite = null;
+        } else {
+          pinHashToWrite = item.pinHash;
+        }
+      }
+
+      const pinMetaToWrite = pinHashToWrite ? describeStaffPinHash(pinHashToWrite) : null;
+      const pinFormatToWrite = pinMetaToWrite?.format ?? null;
+      const pinUpdatedAtToWrite = pinHashToWrite ? new Date().toISOString() : null;
+
       if (existing) {
         statements.push(db.prepare(`
           UPDATE profiles
-          SET name = ?, username = ?, role = ?, active = ?, pin_hash = COALESCE(?, pin_hash)
+          SET name = ?,
+              username = ?,
+              role = ?,
+              active = ?,
+              pin_hash = COALESCE(?, pin_hash),
+              pin_format = CASE WHEN ? IS NOT NULL THEN ? ELSE pin_format END,
+              pin_credential_version = CASE WHEN ? IS NOT NULL THEN COALESCE(pin_credential_version, 0) + 1 ELSE pin_credential_version END,
+              pin_updated_at = CASE WHEN ? IS NOT NULL THEN ? ELSE pin_updated_at END,
+              pin_failed_attempts = CASE WHEN ? IS NOT NULL THEN 0 ELSE pin_failed_attempts END,
+              pin_locked_until = CASE WHEN ? IS NOT NULL THEN NULL ELSE pin_locked_until END
           WHERE id = ? AND tenant_id = ?
             AND (
               role IN ('cashier', 'manager')
               OR (role = 'admin' AND user_id IS NULL AND local_id IS NOT NULL)
             )
-        `).bind(item.name, username, item.role, item.active, item.pinHash ?? null, existing.id, tenantId));
+        `).bind(
+          item.name,
+          username,
+          item.role,
+          item.active,
+          pinHashToWrite,
+          pinHashToWrite, pinFormatToWrite,
+          pinHashToWrite,
+          pinHashToWrite, pinUpdatedAtToWrite,
+          pinHashToWrite,
+          pinHashToWrite,
+          existing.id,
+          tenantId,
+        ));
+        if (pinHashToWrite) {
+          existing.pinHash = pinHashToWrite;
+        }
         synced.push({ localId: item.localId, remoteId: existing.id });
       } else {
         const remoteId = randomUUID();
         statements.push(db.prepare(`
-          INSERT INTO profiles (id, tenant_id, local_id, name, username, pin_hash, role, active)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO profiles (
+            id, tenant_id, local_id, name, username, pin_hash, pin_format,
+            pin_credential_version, pin_updated_at, pin_failed_attempts, pin_locked_until,
+            role, active
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).bind(
           remoteId,
           tenantId,
           item.localId,
           item.name,
           username,
-          item.pinHash ?? null,
+          pinHashToWrite,
+          pinFormatToWrite,
+          pinHashToWrite ? 1 : 0,
+          pinUpdatedAtToWrite,
+          0,
+          null,
           item.role,
           item.active,
         ));
-        plannedProfiles.push({ id: remoteId, localId: item.localId, role: item.role });
+        plannedProfiles.push({ id: remoteId, localId: item.localId, role: item.role, pinHash: pinHashToWrite });
         synced.push({ localId: item.localId, remoteId });
       }
     }
@@ -1676,7 +1689,8 @@ router.post(
 
       const profile = await getD1DatabaseBinding().prepare(`
         SELECT p.id, p.local_id, p.name, p.username, p.role, p.active,
-               p.pin_hash, t.shop_name
+               p.pin_hash, p.pin_format, p.pin_credential_version,
+               p.pin_failed_attempts, p.pin_locked_until, t.shop_name
         FROM profiles p
         JOIN tenants t ON t.id = p.tenant_id
         WHERE p.tenant_id = ?
@@ -1696,6 +1710,10 @@ router.post(
         role: 'cashier' | 'manager' | 'admin';
         active: number;
         pin_hash: string | null;
+        pin_format: string | null;
+        pin_credential_version: number | null;
+        pin_failed_attempts: number | null;
+        pin_locked_until: string | null;
         shop_name: string;
       }>();
 
@@ -1722,6 +1740,27 @@ router.post(
         return res.status(401).json({ error: 'Staff not found or inactive' });
       }
 
+      const nowMs = Date.now();
+      const lockedUntilMs = profile.pin_locked_until ? new Date(profile.pin_locked_until).getTime() : 0;
+      if (lockedUntilMs > nowMs) {
+        await recordAuthAuditEvent({
+          tenantId,
+          actorType: 'staff',
+          actorId: profile.id,
+          action: 'staff.login',
+          outcome: 'denied',
+          reason: 'STAFF_PIN_LOCKED',
+          ip: req.ip,
+          userAgent: req.get('user-agent'),
+          metadata: { username, lockedUntil: profile.pin_locked_until },
+        });
+        return res.status(423).json({
+          error: 'PIN is temporarily locked. Try again later.',
+          code: 'STAFF_PIN_LOCKED',
+          locked_until: profile.pin_locked_until,
+        });
+      }
+
       // Keep a server-side verifier so a fresh device can bootstrap its offline
       // roster without accepting an arbitrary PIN. Existing local devices still
       // verify first, but the backend closes the online trust boundary too.
@@ -1735,16 +1774,61 @@ router.post(
         pinValid,
       });
       if (!pinValid) {
+        const failedAttempts = (profile.pin_failed_attempts ?? 0) + 1;
+        const lockout = failedAttempts >= STAFF_PIN_MAX_FAILED_ATTEMPTS;
+        await prisma.profile.update({
+          where: { id: profile.id },
+          data: {
+            pinFailedAttempts: lockout ? 0 : failedAttempts,
+            pinLockedUntil: lockout ? new Date(nowMs + STAFF_PIN_LOCKOUT_MS) : null,
+          },
+        });
+        await recordAuthAuditEvent({
+          tenantId,
+          actorType: 'staff',
+          actorId: profile.id,
+          action: 'staff.login',
+          outcome: lockout ? 'denied' : 'failure',
+          reason: lockout ? 'STAFF_PIN_LOCKED' : 'INVALID_STAFF_CREDENTIALS',
+          ip: req.ip,
+          userAgent: req.get('user-agent'),
+          metadata: { username, failedAttempts },
+        });
         console.warn('[staff-auth] rejected: invalid staff credentials', {
           requestId,
           tenantId,
           normalizedUsername: username,
           profileId: profile.id,
           role: profile.role,
-          status: 401,
-          code: 'INVALID_STAFF_CREDENTIALS',
+          status: lockout ? 423 : 401,
+          code: lockout ? 'STAFF_PIN_LOCKED' : 'INVALID_STAFF_CREDENTIALS',
+          failedAttempts,
         });
+        if (lockout) {
+          return res.status(423).json({
+            error: 'PIN is temporarily locked. Try again later.',
+            code: 'STAFF_PIN_LOCKED',
+          });
+        }
         return res.status(401).json({ error: 'Invalid staff credentials' });
+      }
+
+      const successUpdate: Record<string, unknown> = {};
+      if ((profile.pin_failed_attempts ?? 0) > 0 || profile.pin_locked_until) {
+        successUpdate.pinFailedAttempts = 0;
+        successUpdate.pinLockedUntil = null;
+      }
+      // Opportunistic V2 rehash on successful legacy verification.
+      if (pin.length === 6 && staffPinNeedsRehash(profile.pin_hash)) {
+        const upgradedHash = await hashStaffPin(pin);
+        const pinMeta = describeStaffPinHash(upgradedHash);
+        successUpdate.pinHash = upgradedHash;
+        successUpdate.pinFormat = pinMeta.format;
+        successUpdate.pinCredentialVersion = (profile.pin_credential_version ?? 0) + 1;
+        successUpdate.pinUpdatedAt = new Date();
+      }
+      if (Object.keys(successUpdate).length > 0) {
+        await prisma.profile.update({ where: { id: profile.id }, data: successUpdate });
       }
 
       const response = {
@@ -1760,6 +1844,20 @@ router.post(
           userId: `staff:${profile.id}`,
         }).token,
       };
+      await recordAuthAuditEvent({
+        tenantId,
+        actorType: 'staff',
+        actorId: profile.id,
+        action: 'staff.login',
+        outcome: 'success',
+        ip: req.ip,
+        userAgent: req.get('user-agent'),
+        metadata: {
+          username,
+          role: profile.role,
+          rehashed: Boolean(successUpdate.pinHash),
+        },
+      });
       console.info('[staff-auth] authentication succeeded', {
         requestId,
         tenantId,
@@ -1814,7 +1912,19 @@ router.post(
     if (!profile || !await verifyStaffPin(currentPin, profile.pinHash)) {
       return res.status(401).json({ error: 'Current PIN is incorrect' });
     }
-    await prisma.profile.update({ where: { id: profile.id }, data: { pinHash: await hashStaffPin(newPin) } });
+    const newPinHash = await hashStaffPin(newPin);
+    const pinMeta = describeStaffPinHash(newPinHash);
+    await prisma.profile.update({
+      where: { id: profile.id },
+      data: {
+        pinHash: newPinHash,
+        pinFormat: pinMeta.format,
+        pinCredentialVersion: { increment: 1 },
+        pinUpdatedAt: new Date(),
+        pinFailedAttempts: 0,
+        pinLockedUntil: null,
+      },
+    });
     return res.json({ status: 'pin_changed', staff_id: profile.id });
   }),
 );
@@ -1910,10 +2020,16 @@ router.post(
     const now = new Date().toISOString();
     const db = getD1DatabaseBinding();
     const newPinHash = await hashStaffPin(temporaryPin);
+    const pinMeta = describeStaffPinHash(newPinHash);
     const results = await db.batch([
       db.prepare(`
         UPDATE profiles
-        SET pin_hash = ?
+        SET pin_hash = ?,
+            pin_format = ?,
+            pin_credential_version = COALESCE(pin_credential_version, 0) + 1,
+            pin_updated_at = ?,
+            pin_failed_attempts = 0,
+            pin_locked_until = NULL
         WHERE id = ? AND tenant_id = ?
           AND (
             role IN ('cashier', 'manager')
@@ -1928,6 +2044,8 @@ router.post(
           )
       `).bind(
         newPinHash,
+        pinMeta.format,
+        now,
         profile.id,
         user.tenantId,
         record.id,

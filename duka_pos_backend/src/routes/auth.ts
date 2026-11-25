@@ -2,8 +2,8 @@
  * Custom identity/auth routes.
  */
 import { Router, Request, Response } from 'express';
-import rateLimit from 'express-rate-limit';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { simpleRateLimit } from '../lib/simple_rate_limit';
 import { prisma } from '../lib/prisma';
 import { asyncHandler } from '../lib/http';
 import {
@@ -64,13 +64,11 @@ function addressKey(req: Request): string {
   return `${req.ip ?? 'unknown'}:${email}`;
 }
 
-const _isNode = typeof module !== 'undefined';
-const _noop = (_req: any, _res: any, next: any) => next();
-const linkLimiter = _isNode ? rateLimit({ windowMs: CODE_REQUEST_WINDOW_MINUTES * 60_000, limit: MAX_CODES_PER_WINDOW, standardHeaders: 'draft-7', legacyHeaders: false, keyGenerator: addressKey, validate: { keyGeneratorIpFallback: false } }) : _noop;
-const verifyLimiter = _isNode ? rateLimit({ windowMs: 10 * 60_000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false, keyGenerator: addressKey, validate: { keyGeneratorIpFallback: false } }) : _noop;
-const loginLimiter = _isNode ? rateLimit({ windowMs: 10 * 60_000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false, keyGenerator: addressKey, validate: { keyGeneratorIpFallback: false } }) : _noop;
-const refreshLimiter = _isNode ? rateLimit({ windowMs: 10 * 60_000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false, keyGenerator: addressKey, validate: { keyGeneratorIpFallback: false } }) : _noop;
-const pinResetLimiter = _isNode ? rateLimit({ windowMs: CODE_REQUEST_WINDOW_MINUTES * 60_000, limit: MAX_CODES_PER_WINDOW, standardHeaders: 'draft-7', legacyHeaders: false, keyGenerator: addressKey, validate: { keyGeneratorIpFallback: false } }) : _noop;
+const linkLimiter = simpleRateLimit('auth:link', { windowMs: CODE_REQUEST_WINDOW_MINUTES * 60_000, limit: MAX_CODES_PER_WINDOW, standardHeaders: 'draft-7', legacyHeaders: false, keyGenerator: addressKey });
+const verifyLimiter = simpleRateLimit('auth:verify', { windowMs: 10 * 60_000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false, keyGenerator: addressKey });
+const loginLimiter = simpleRateLimit('auth:login', { windowMs: 10 * 60_000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false, keyGenerator: addressKey });
+const refreshLimiter = simpleRateLimit('auth:refresh', { windowMs: 10 * 60_000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false, keyGenerator: addressKey });
+const pinResetLimiter = simpleRateLimit('auth:pin-reset', { windowMs: CODE_REQUEST_WINDOW_MINUTES * 60_000, limit: MAX_CODES_PER_WINDOW, standardHeaders: 'draft-7', legacyHeaders: false, keyGenerator: addressKey });
 
 function buildMailer() {
   return createCloudflareEmailTransport({
@@ -134,19 +132,26 @@ async function checkVerificationCode(input: {
   }
 
   const parts = (challenge.code || '').split(':');
-  if (parts.length !== 3) {
+  // V2: salt:codeHash (password verified against User.passwordHash, not stored in challenge)
+  // Legacy: salt:codeHash:passwordHmac
+  if (parts.length < 2 || parts.length > 3) {
     return { valid: false, error: 'Invalid challenge', code: 'VERIFICATION_INVALID' };
   }
-  const [salt, codeHash, pinHash] = parts;
+  const [salt, codeHash] = parts;
   const codeCorrect = hashesMatch(
     hashCodeSecret(input.code, salt, verificationSecret()),
     codeHash,
   );
-  const pinCorrect = hashesMatch(
-    hashCodeSecret(input.password, salt, verificationSecret()),
-    pinHash,
-  );
-  if (!codeCorrect || !pinCorrect) {
+  if (!codeCorrect) {
+    return { valid: false, error: 'Code is not right', code: 'VERIFICATION_INVALID' };
+  }
+
+  const user = await prisma.user.findUnique({ where: { email: input.email } });
+  const passwordHash = user?.passwordHash;
+  const pinCorrect = typeof passwordHash === 'string' && passwordHash.length > 0
+    ? await verifyPassword(input.password, passwordHash)
+    : false;
+  if (!pinCorrect) {
     return { valid: false, error: 'Code is not right', code: 'VERIFICATION_INVALID' };
   }
   return { valid: true };
@@ -272,16 +277,11 @@ router.post('/link', linkLimiter, asyncHandler(async (req: Request, res: Respons
   const challenge = await prisma.verificationChallenge.create({
     data: {
       email,
-      code: hashCodeSecret(code, salt, secret), // storing hash in code field (reuse)
+      // V2: store only salt:codeHash. Password is verified against User.passwordHash.
+      code: `${salt}:${hashCodeSecret(code, salt, secret)}`,
       expiresAt: new Date(Date.now() + VERIFICATION_TTL_MINUTES * 60_000),
       tenantId: null,
     },
-  });
-  // store salt+pinHash in? VerificationChallenge lacks salt/pinHash. Store combined in code? We'll store salt in code? 
-  // For simplicity store salt.pinHash via code field? Need salt for hashing. We'll store `${salt}:${codeHash}:${pinHash}`.
-  await prisma.verificationChallenge.update({
-    where: { id: challenge.id },
-    data: { code: `${salt}:${hashCodeSecret(code, salt, secret)}:${hashCodeSecret(password, salt, secret)}` },
   });
 
   // email
@@ -589,13 +589,19 @@ router.post('/refresh', refreshLimiter, asyncHandler(async (req: Request, res: R
 
   const now = new Date();
   const hash = hashRefreshToken(refreshToken);
-  // find manually
-  const allProfiles = await prisma.profile.findMany({ where: { active: true, deletedAt: null } });
-  const matched = allProfiles.find((p) => p.refreshTokenHash === hash || p.refreshTokenPreviousHash === hash);
-  if (!matched) {
+  const p = await prisma.profile.findFirst({
+    where: {
+      active: true,
+      deletedAt: null,
+      OR: [
+        { refreshTokenHash: hash },
+        { refreshTokenPreviousHash: hash },
+      ],
+    },
+  });
+  if (!p) {
     return res.status(401).json({ error: 'Invalid refresh token', code: 'INVALID_REFRESH_TOKEN', requestId });
   }
-  const p = matched;
   if (!p.refreshTokenExpiresAt || p.refreshTokenExpiresAt <= now) {
     return res.status(401).json({ error: 'Session expired', code: 'SESSION_EXPIRED', requestId });
   }
@@ -654,7 +660,7 @@ router.post('/forgot-password', loginLimiter, asyncHandler(async (req: Request, 
     await prisma.verificationChallenge.create({
       data: {
         email,
-        code: `${salt}:${hashCodeSecret(code, salt, secret)}:${hashCodeSecret('reset', salt, secret)}`,
+        code: `${salt}:${hashCodeSecret(code, salt, secret)}`,
         expiresAt: new Date(Date.now() + VERIFICATION_TTL_MINUTES * 60_000),
       },
     });
@@ -683,7 +689,7 @@ router.post('/reset-password', loginLimiter, asyncHandler(async (req: Request, r
   const challenge = await prisma.verificationChallenge.findFirst({ where: { email, used: false }, orderBy: { createdAt: 'desc' } });
   if (!challenge) return res.status(400).json({ error: 'Invalid code', code: 'VERIFICATION_INVALID', requestId });
   const parts = (challenge.code || '').split(':');
-  if (parts.length !== 3) return res.status(400).json({ error: 'Invalid code', code: 'VERIFICATION_INVALID', requestId });
+  if (parts.length < 2 || parts.length > 3) return res.status(400).json({ error: 'Invalid code', code: 'VERIFICATION_INVALID', requestId });
   const [salt, codeHash] = parts;
   const now = new Date();
   if (isVerificationExpired(challenge.expiresAt, now)) {

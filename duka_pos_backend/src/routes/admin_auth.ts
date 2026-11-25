@@ -1,6 +1,6 @@
 import { Request, Response, Router } from 'express';
-import rateLimit from 'express-rate-limit';
 import crypto from 'node:crypto';
+import { simpleRateLimit } from '../lib/simple_rate_limit';
 import { z } from 'zod';
 import { asyncHandler } from '../lib/http';
 import { getD1DatabaseBinding, prisma } from '../lib/prisma';
@@ -19,8 +19,8 @@ import {
 } from '../lib/admin_access_catalog';
 
 const router = Router();
-const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 8, standardHeaders: 'draft-7', legacyHeaders: false, skipSuccessfulRequests: true });
-const refreshLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false });
+const loginLimiter = simpleRateLimit('admin:login', { windowMs: 15 * 60 * 1000, limit: 8, standardHeaders: 'draft-7', legacyHeaders: false, skipSuccessfulRequests: true });
+const refreshLimiter = simpleRateLimit('admin:refresh', { windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false });
 const permissionOptions = adminPermissionOptions;
 const packageId = z.string().refine((value) => adminPackages.some((item) => item.id === value));
 const loginSchema = z.object({

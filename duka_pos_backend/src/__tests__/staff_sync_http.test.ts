@@ -285,13 +285,13 @@ describe('staff registration, pull and bootstrap contracts', () => {
         username: 'amina',
         role: 'cashier',
         active: true,
-        pinHash: 'pbkdf2$120000$c2FsdA$ZGlnaWVzdA',
+        pinHash: 'pbkdf2$120000$c2FsdA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       }],
     });
 
     expect(response.status).toBe(200);
     expect(mocks.d1.statements[0].sql).toContain('pin_hash = COALESCE(?, pin_hash)');
-    expect(mocks.d1.statements[0].values).toContain('pbkdf2$120000$c2FsdA$ZGlnaWVzdA');
+    expect(mocks.d1.statements[0].values).toContain('pbkdf2$120000$c2FsdA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
   });
 
   it('pulls the tenant staff roster without returning PIN material', async () => {
@@ -478,12 +478,18 @@ describe('staff registration, pull and bootstrap contracts', () => {
       .post('/tenant/staff/self-pin')
       .set('authorization', `Bearer ${token}`)
       .set('x-tenant-id', 'tenant-1')
-      .send({ currentPin: '1234', newPin: '5678' });
+      .send({ currentPin: '1234', newPin: '567890' });
 
     expect(response.status).toBe(200);
     expect(mocks.prisma.profile.update).toHaveBeenCalledWith({
       where: { id: 'remote-staff-1' },
-      data: { pinHash: expect.stringMatching(/^pbkdf2\$/) },
+      data: expect.objectContaining({
+        pinHash: expect.stringMatching(/^pbkdf2\$v2\$sha256\$600000\$/),
+        pinFormat: 'v2',
+        pinFailedAttempts: 0,
+        pinLockedUntil: null,
+        pinCredentialVersion: { increment: 1 },
+      }),
     });
   });
 
@@ -533,12 +539,12 @@ describe('staff registration, pull and bootstrap contracts', () => {
     mocks.prisma.syncRecord.findFirst.mockResolvedValue(record);
     const completed = await supertest(app)
       .post('/tenant/staff/pin-reset-requests/request-1/reset')
-      .send({ temporaryPin: '5678' });
+      .send({ temporaryPin: '567890' });
     expect(completed.status).toBe(200);
     expect(mocks.d1.batch).toHaveBeenCalledTimes(1);
     expect(mocks.d1.statements[0].sql).toContain('UPDATE profiles');
-    expect(mocks.d1.statements[0].values[0]).toMatch(/^pbkdf2\$/);
-    expect(mocks.d1.statements[0].values[0]).not.toContain('5678');
+    expect(mocks.d1.statements[0].values[0]).toMatch(/^pbkdf2\$v2\$sha256\$600000\$/);
+    expect(mocks.d1.statements[0].values[0]).not.toContain('567890');
     expect(JSON.parse(String(mocks.d1.statements[1].values[0]))).toMatchObject({
       status: 'completed',
     });

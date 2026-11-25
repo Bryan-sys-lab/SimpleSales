@@ -100,9 +100,19 @@ export const authMiddleware = async (req: express.Request, res: express.Response
       err.status = 401;
       return next(err);
     }
-    req.auth = { sub: staffClaims.sub, token_use: 'staff' };
-    req.user = { id: staffClaims.profileId, tenantId: staffClaims.tenantId, role: 'cashier', name: 'Staff' };
-    return next();
+    return prisma.profile.findFirst({
+      where: { id: staffClaims.profileId, tenantId: staffClaims.tenantId, active: true, deletedAt: null },
+      select: { id: true, tenantId: true, role: true, name: true },
+    }).then((profile) => {
+      if (!profile) {
+        const err: any = new Error('Invalid or expired staff session');
+        err.status = 401;
+        return next(err);
+      }
+      req.auth = { sub: staffClaims.sub, token_use: 'staff' };
+      req.user = { id: profile.id, tenantId: profile.tenantId, role: profile.role, name: profile.name };
+      return next();
+    }).catch(next);
   }
   const claims = verifyAccessToken(token);
   if (!claims) {

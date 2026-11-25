@@ -33,7 +33,7 @@ import paymentRoutes from './routes/payment';
 import productRoutes from './routes/product';
 import { handlePayheroCallback } from './routes/payhero-callback';
 import { requestContext, log } from './lib/observability';
-import rateLimit from 'express-rate-limit';
+import { simpleRateLimit } from './lib/simple_rate_limit';
 import { prisma } from './lib/prisma';
 import reportRoutes from './routes/report';
 import systemRoutes from './routes/system';
@@ -73,6 +73,7 @@ if (process.env.NODE_ENV === 'production' && !process.env.PUBLIC_API_URL?.starts
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const isNode = typeof process !== 'undefined' && process.release?.name === 'node';
 
 // Middleware
 app.use(helmet({ frameguard: { action: 'deny' } }));
@@ -87,16 +88,13 @@ app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : false }));
 // Full workspace backups are already encrypted client-side and can contain a
 // busy shop's history; the route still validates and caps the payload at 8 MB.
 app.use(express.json({ limit: '8mb' }));
-const isNode = typeof module !== 'undefined';
-if (isNode) {
-  app.use(rateLimit({
-    windowMs: 60000,
-    limit: Number(process.env.RATE_LIMIT_LIMIT ?? 300),
-    standardHeaders: 'draft-7',
-    legacyHeaders: false,
-    skip: (req) => req.path === '/health' || req.path === '/ready',
-  }));
-}
+app.use(simpleRateLimit('global', {
+  windowMs: 60000,
+  limit: Number(process.env.RATE_LIMIT_LIMIT ?? 300),
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  skip: (req) => req.path === '/health' || req.path === '/ready',
+}));
 
 // ---------------------------------------------------------------------------
 // Health / readiness
@@ -134,7 +132,7 @@ app.get('/ready', async (_req, res, next) => {
 // PayHero webhook (no auth required — called by PayHero)
 // ---------------------------------------------------------------------------
 
-const webhookLimiter = isNode ? rateLimit({ windowMs: 60000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false }) : (_req: any, _res: any, next: any) => next();
+const webhookLimiter = simpleRateLimit('payhero-webhook', { windowMs: 60000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false });
 app.post(
   '/webhooks/payhero-callback',
   webhookLimiter,

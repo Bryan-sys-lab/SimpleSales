@@ -663,12 +663,14 @@ export const stockAdjustSchema = z.object({
 
 export const staffAuthenticateSchema = z.object({
   username: z.string().trim().min(1).max(120),
-  pin: z.string().trim().min(4).max(8),
+  // Accept legacy 4-digit PINs during V1->V2 migration; V2 creation/change requires 6 digits.
+  pin: z.string().trim().regex(/^(?:\d{4}|\d{6})$/),
 });
 
 export const staffSelfPinSchema = z.object({
-  currentPin: z.string().trim().regex(/^\d{4}$/),
-  newPin: z.string().trim().regex(/^\d{4}$/),
+  // Current PIN may be legacy 4-digit during migration.
+  currentPin: z.string().trim().regex(/^(?:\d{4}|\d{6})$/),
+  newPin: z.string().trim().regex(/^\d{6}$/),
 }).strict();
 
 export const staffPinResetRequestSchema = z.object({
@@ -676,7 +678,8 @@ export const staffPinResetRequestSchema = z.object({
 }).strict();
 
 export const staffPinResetApproveSchema = z.object({
-  temporaryPin: z.string().trim().regex(/^\d{4}$/),
+  // V2 reset assigns a 6-digit temporary PIN; admins/owners communicate it out-of-band.
+  temporaryPin: z.string().trim().regex(/^\d{6}$/),
 }).strict();
 
 // ---------------------------------------------------------------------------
