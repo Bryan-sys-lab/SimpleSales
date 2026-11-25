@@ -314,7 +314,6 @@ abstract class AppLocalizations {
   /// **'PIN is required'**
   String get validationPinRequired;
 
-
   /// No description provided for @validationPinNotSixDigits.
   ///
   /// In en, this message translates to:
@@ -1399,7 +1398,7 @@ abstract class AppLocalizations {
   /// No description provided for @sellCompletePaidOther.
   ///
   /// In en, this message translates to:
-  /// **'{method} · {amount}'**
+  /// **'{method} Â· {amount}'**
   String sellCompletePaidOther(Object amount, Object method);
 
   /// No description provided for @sellCompleteNext.
@@ -1520,7 +1519,7 @@ abstract class AppLocalizations {
   /// No description provided for @sellChargingAmount.
   ///
   /// In en, this message translates to:
-  /// **'Charging {amount}…'**
+  /// **'Charging {amount}â€¦'**
   String sellChargingAmount(Object amount);
 
   /// No description provided for @sellCheckAgainAction.
@@ -1538,7 +1537,7 @@ abstract class AppLocalizations {
   /// No description provided for @sellCheckingPayment.
   ///
   /// In en, this message translates to:
-  /// **'Checking payment {reference}…'**
+  /// **'Checking payment {reference}â€¦'**
   String sellCheckingPayment(Object reference);
 
   /// No description provided for @sellCheckPhoneForStk.
@@ -1562,7 +1561,7 @@ abstract class AppLocalizations {
   /// No description provided for @sellChooseServingTitle.
   ///
   /// In en, this message translates to:
-  /// **'Choose serving · {product}'**
+  /// **'Choose serving Â· {product}'**
   String sellChooseServingTitle(Object product);
 
   /// No description provided for @sellClearFilterAction.
@@ -1766,7 +1765,7 @@ abstract class AppLocalizations {
   /// No description provided for @sellSaleNotRecordedNothingCharged.
   ///
   /// In en, this message translates to:
-  /// **'Couldn\'t record the sale. Nothing was charged — try again.'**
+  /// **'Couldn\'t record the sale. Nothing was charged â€” try again.'**
   String get sellSaleNotRecordedNothingCharged;
 
   /// No description provided for @sellSaleTotalLabel.
@@ -1808,7 +1807,7 @@ abstract class AppLocalizations {
   /// No description provided for @sellScanNoProductBarcode.
   ///
   /// In en, this message translates to:
-  /// **'No product carries that barcode. Add it in Inventory — on the product or on one of its variants — or pick the product by name.'**
+  /// **'No product carries that barcode. Add it in Inventory â€” on the product or on one of its variants â€” or pick the product by name.'**
   String get sellScanNoProductBarcode;
 
   /// No description provided for @sellSearchNameOrCategory.
@@ -1910,13 +1909,13 @@ abstract class AppLocalizations {
   /// No description provided for @settingsCreditOffSummary.
   ///
   /// In en, this message translates to:
-  /// **'Off — on-account sales are not offered.'**
+  /// **'Off â€” on-account sales are not offered.'**
   String get settingsCreditOffSummary;
 
   /// No description provided for @settingsCreditOnSummary.
   ///
   /// In en, this message translates to:
-  /// **'On — default limit {limit}.'**
+  /// **'On â€” default limit {limit}.'**
   String settingsCreditOnSummary(Object limit);
 
   /// No description provided for @settingsCreditEnabledLabel.
@@ -2000,7 +1999,7 @@ abstract class AppLocalizations {
   /// No description provided for @inventoryAddVariantsFirst.
   ///
   /// In en, this message translates to:
-  /// **'Add {name}\'s variants first — its stock is their total.'**
+  /// **'Add {name}\'s variants first â€” its stock is their total.'**
   String inventoryAddVariantsFirst(Object name);
 
   /// No description provided for @inventoryAdjustAction.
@@ -2012,13 +2011,13 @@ abstract class AppLocalizations {
   /// No description provided for @inventoryAdjustStockFailed.
   ///
   /// In en, this message translates to:
-  /// **'Couldn’t adjust stock. Try again.'**
+  /// **'Couldnâ€™t adjust stock. Try again.'**
   String get inventoryAdjustStockFailed;
 
   /// No description provided for @inventoryAdjustStockTitle.
   ///
   /// In en, this message translates to:
-  /// **'Adjust stock — {name}'**
+  /// **'Adjust stock â€” {name}'**
   String inventoryAdjustStockTitle(Object name);
 
   /// No description provided for @inventoryBarcodeHint.
@@ -2036,7 +2035,7 @@ abstract class AppLocalizations {
   /// No description provided for @inventoryBarcodesHelp.
   ///
   /// In en, this message translates to:
-  /// **'A code on the product adds the whole product. A code on a variant — entered in that variant\'s own form — adds that variant, at its price and from its stock. Each code can only ever resolve to one of them.'**
+  /// **'A code on the product adds the whole product. A code on a variant â€” entered in that variant\'s own form â€” adds that variant, at its price and from its stock. Each code can only ever resolve to one of them.'**
   String get inventoryBarcodesHelp;
 
   /// No description provided for @inventoryBarcodesSection.
@@ -2048,7 +2047,7 @@ abstract class AppLocalizations {
   /// No description provided for @inventoryChooseVariantTitle.
   ///
   /// In en, this message translates to:
-  /// **'Which variant? · {name}'**
+  /// **'Which variant? Â· {name}'**
   String inventoryChooseVariantTitle(Object name);
 
   /// No description provided for @inventoryDefaultCategory.
@@ -2246,7 +2245,7 @@ abstract class AppLocalizations {
   /// No description provided for @inventoryFieldSizeMlHelper.
   ///
   /// In en, this message translates to:
-  /// **'Bottle, keg or tank — 330, 500, 50000'**
+  /// **'Bottle, keg or tank â€” 330, 500, 50000'**
   String get inventoryFieldSizeMlHelper;
 
   /// No description provided for @productUnitPickerLabel.
@@ -2492,7 +2491,7 @@ abstract class AppLocalizations {
   /// No description provided for @inventoryNoBarcodesYet.
   ///
   /// In en, this message translates to:
-  /// **'No barcodes yet — this product is sold by name only.'**
+  /// **'No barcodes yet â€” this product is sold by name only.'**
   String get inventoryNoBarcodesYet;
 
   /// No description provided for @inventoryNoVariantsYet.
@@ -2552,7 +2551,7 @@ abstract class AppLocalizations {
   /// No description provided for @inventorySaveFailed.
   ///
   /// In en, this message translates to:
-  /// **'Couldn’t save — check the phone has storage space free, then try again.'**
+  /// **'Couldnâ€™t save â€” check the phone has storage space free, then try again.'**
   String get inventorySaveFailed;
 
   /// No description provided for @inventorySaveProductAndVariants.
@@ -2594,7 +2593,7 @@ abstract class AppLocalizations {
   /// No description provided for @inventorySoldAsVariantsOnSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'The till offers Dark, Regular, Big cup… instead of the whole product'**
+  /// **'The till offers Dark, Regular, Big cupâ€¦ instead of the whole product'**
   String get inventorySoldAsVariantsOnSubtitle;
 
   /// No description provided for @inventoryStockCannotGoBelowZero.
@@ -2624,7 +2623,7 @@ abstract class AppLocalizations {
   /// No description provided for @inventoryUnnamedVariant.
   ///
   /// In en, this message translates to:
-  /// **'Give every variant a name — one of them has none (position {position}).'**
+  /// **'Give every variant a name â€” one of them has none (position {position}).'**
   String inventoryUnnamedVariant(Object position);
 
   /// No description provided for @inventoryVariantStockNow.
@@ -2846,7 +2845,7 @@ abstract class AppLocalizations {
   /// No description provided for @statusOnline.
   ///
   /// In en, this message translates to:
-  /// **'Online — syncing with the server.'**
+  /// **'Online â€” syncing with the server.'**
   String get statusOnline;
 
   /// No description provided for @importRepairedTitle.
@@ -3110,7 +3109,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsUpdatesDownloadingUnknown.
   ///
   /// In en, this message translates to:
-  /// **'Downloading…'**
+  /// **'Downloadingâ€¦'**
   String get settingsUpdatesDownloadingUnknown;
 
   /// No description provided for @settingsUpdatesReady.
@@ -3128,7 +3127,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsUpdatesRefused.
   ///
   /// In en, this message translates to:
-  /// **'The phone refused this update. It can only be installed over the same signing key and a higher build number — ask the shop\'s developer.'**
+  /// **'The phone refused this update. It can only be installed over the same signing key and a higher build number â€” ask the shop\'s developer.'**
   String get settingsUpdatesRefused;
 
   /// No description provided for @settingsUpdatesPermissionNeeded.
@@ -3152,7 +3151,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsUpdatesPromptBody.
   ///
   /// In en, this message translates to:
-  /// **'Version {version} is ready. Your shop\'s data is kept — this updates the app in place instead of replacing it.'**
+  /// **'Version {version} is ready. Your shop\'s data is kept â€” this updates the app in place instead of replacing it.'**
   String settingsUpdatesPromptBody(Object version);
 
   /// No description provided for @settingsUpdatesAutoLabel.
@@ -3200,7 +3199,7 @@ abstract class AppLocalizations {
   /// No description provided for @supportTicketHint.
   ///
   /// In en, this message translates to:
-  /// **'Describe the problem — what you were doing, what happened, and what you expected instead.'**
+  /// **'Describe the problem â€” what you were doing, what happened, and what you expected instead.'**
   String get supportTicketHint;
 
   /// No description provided for @supportFileTicketAction.
@@ -3236,7 +3235,7 @@ abstract class AppLocalizations {
   /// No description provided for @supportRequestHint.
   ///
   /// In en, this message translates to:
-  /// **'Describe the feature — what it should do, and when you would use it.'**
+  /// **'Describe the feature â€” what it should do, and when you would use it.'**
   String get supportRequestHint;
 
   /// No description provided for @supportFileRequestAction.
@@ -3296,7 +3295,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsConnectFailed.
   ///
   /// In en, this message translates to:
-  /// **'Couldn’t connect. Check the identity login and internet connection.'**
+  /// **'Couldnâ€™t connect. Check the identity login and internet connection.'**
   String get settingsConnectFailed;
 
   /// No description provided for @settingsConnectMpesaTitle.
@@ -3308,13 +3307,13 @@ abstract class AppLocalizations {
   /// No description provided for @settingsCreateShopFailed.
   ///
   /// In en, this message translates to:
-  /// **'Couldn’t create the shop. Check the phone has storage free, then try again.'**
+  /// **'Couldnâ€™t create the shop. Check the phone has storage free, then try again.'**
   String get settingsCreateShopFailed;
 
   /// No description provided for @settingsDecryptBackupFailed.
   ///
   /// In en, this message translates to:
-  /// **'Couldn’t decrypt the backup.'**
+  /// **'Couldnâ€™t decrypt the backup.'**
   String get settingsDecryptBackupFailed;
 
   /// No description provided for @settingsEnterStaffName.
@@ -3332,7 +3331,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsEraseBackupsMessage.
   ///
   /// In en, this message translates to:
-  /// **'This permanently removes this phone’s backup key and encrypted backup files. Copies already shared to another device or cloud storage are not erased.'**
+  /// **'This permanently removes this phoneâ€™s backup key and encrypted backup files. Copies already shared to another device or cloud storage are not erased.'**
   String get settingsEraseBackupsMessage;
 
   /// No description provided for @settingsEraseBackupsTitle.
@@ -3362,7 +3361,7 @@ abstract class AppLocalizations {
   /// No description provided for @accountDeleteLocalAccountsMessage.
   ///
   /// In en, this message translates to:
-  /// **'The cashiers’ sign-in details are removed from this phone, so nobody can sign in to this till afterwards. Their names on past sales stay, because those are the shop’s records.'**
+  /// **'The cashiersâ€™ sign-in details are removed from this phone, so nobody can sign in to this till afterwards. Their names on past sales stay, because those are the shopâ€™s records.'**
   String get accountDeleteLocalAccountsMessage;
 
   /// No description provided for @accountDeleteLocalAccountsDelete.
@@ -3410,7 +3409,7 @@ abstract class AppLocalizations {
   /// No description provided for @accountDeleteConfirmMessage.
   ///
   /// In en, this message translates to:
-  /// **'Your online account and this shop’s record of it are deleted. Everything on this phone that names or contacts a person — your name, your email, your PIN, the cashiers, the till numbers — is overwritten with unreadable data, and the key that would read it back is destroyed. The takings and stock figures themselves are left alone, because those are your books.\n\nAny encrypted backup taken before today is also made unreadable. This cannot be undone.'**
+  /// **'Your online account and this shopâ€™s record of it are deleted. Everything on this phone that names or contacts a person â€” your name, your email, your PIN, the cashiers, the till numbers â€” is overwritten with unreadable data, and the key that would read it back is destroyed. The takings and stock figures themselves are left alone, because those are your books.\n\nAny encrypted backup taken before today is also made unreadable. This cannot be undone.'**
   String get accountDeleteConfirmMessage;
 
   /// No description provided for @accountDeleteConfirmAction.
@@ -3434,7 +3433,7 @@ abstract class AppLocalizations {
   /// No description provided for @accountDeleteDoneLocalOnly.
   ///
   /// In en, this message translates to:
-  /// **'This phone no longer holds any of your details. The server could not be reached, so ask it to finish the deletion when you are back online — the receipt below is what to quote.'**
+  /// **'This phone no longer holds any of your details. The server could not be reached, so ask it to finish the deletion when you are back online â€” the receipt below is what to quote.'**
   String get accountDeleteDoneLocalOnly;
 
   /// No description provided for @accountDeleteReceipt.
@@ -3494,7 +3493,7 @@ abstract class AppLocalizations {
   /// No description provided for @pinResetSending.
   ///
   /// In en, this message translates to:
-  /// **'Sending…'**
+  /// **'Sendingâ€¦'**
   String get pinResetSending;
 
   /// No description provided for @pinResetResend.
@@ -3506,13 +3505,13 @@ abstract class AppLocalizations {
   /// No description provided for @pinResetSaving.
   ///
   /// In en, this message translates to:
-  /// **'Saving…'**
+  /// **'Savingâ€¦'**
   String get pinResetSaving;
 
   /// No description provided for @pinResetSentTo.
   ///
   /// In en, this message translates to:
-  /// **'Code sent to {email}. Enter it here, then your new PIN. Check spam if you don’t see it.'**
+  /// **'Code sent to {email}. Enter it here, then your new PIN. Check spam if you donâ€™t see it.'**
   String pinResetSentTo(Object email);
 
   /// No description provided for @pinResetCodeLabel.
@@ -3698,7 +3697,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsVerifyCodeSent.
   ///
   /// In en, this message translates to:
-  /// **'Code sent to {email}. Check spam if you don’t see it.'**
+  /// **'Code sent to {email}. Check spam if you donâ€™t see it.'**
   String settingsVerifyCodeSent(Object email);
 
   /// No description provided for @settingsVerifyCodeWrong.
@@ -3986,7 +3985,7 @@ abstract class AppLocalizations {
   /// No description provided for @membershipHeroDescription.
   ///
   /// In en, this message translates to:
-  /// **'Tell us what you need. We’ll put together a membership that works for you.'**
+  /// **'Tell us what you need. Weâ€™ll put together a membership that works for you.'**
   String get membershipHeroDescription;
 
   /// No description provided for @membershipGetStarted.
@@ -4022,7 +4021,7 @@ abstract class AppLocalizations {
   /// No description provided for @membershipStepLabel.
   ///
   /// In en, this message translates to:
-  /// **'BUILD YOUR PLAN · STEP 1'**
+  /// **'BUILD YOUR PLAN Â· STEP 1'**
   String get membershipStepLabel;
 
   /// No description provided for @membershipWhatDoYouNeed.
@@ -4034,7 +4033,7 @@ abstract class AppLocalizations {
   /// No description provided for @membershipChooseFeatures.
   ///
   /// In en, this message translates to:
-  /// **'Choose what you’d like included. You can change your selections before sending your request.'**
+  /// **'Choose what youâ€™d like included. You can change your selections before sending your request.'**
   String get membershipChooseFeatures;
 
   /// No description provided for @membershipCoreFeatures.
@@ -4082,7 +4081,7 @@ abstract class AppLocalizations {
   /// No description provided for @membershipCustomRequirementsHint.
   ///
   /// In en, this message translates to:
-  /// **'Tell us anything else you’d like included.'**
+  /// **'Tell us anything else youâ€™d like included.'**
   String get membershipCustomRequirementsHint;
 
   /// No description provided for @membershipRequestOffer.
@@ -4292,7 +4291,7 @@ abstract class AppLocalizations {
   /// No description provided for @membershipRequestSentDescription.
   ///
   /// In en, this message translates to:
-  /// **'Our team has your request. Contact Sales on WhatsApp if you’d like to discuss it.'**
+  /// **'Our team has your request. Contact Sales on WhatsApp if youâ€™d like to discuss it.'**
   String get membershipRequestSentDescription;
 
   /// No description provided for @membershipQuoteEmptyTitle.
@@ -4328,7 +4327,7 @@ abstract class AppLocalizations {
   /// No description provided for @diagnosticsRecentCount.
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =1{1 failure kept} other{{count} failures kept}} — the last {days} weeks, newer than {cap} rows are not kept'**
+  /// **'{count, plural, =1{1 failure kept} other{{count} failures kept}} â€” the last {days} weeks, newer than {cap} rows are not kept'**
   String diagnosticsRecentCount(Object cap, num count, Object days);
 
   /// No description provided for @diagnosticsEmptyTitle.
@@ -4352,7 +4351,7 @@ abstract class AppLocalizations {
   /// No description provided for @diagnosticsUnreadableMessage.
   ///
   /// In en, this message translates to:
-  /// **'The log is on this phone, but it did not open. That is itself worth reporting — refresh to try again, and send this screen to the shop\'s developer.'**
+  /// **'The log is on this phone, but it did not open. That is itself worth reporting â€” refresh to try again, and send this screen to the shop\'s developer.'**
   String get diagnosticsUnreadableMessage;
 
   /// No description provided for @diagnosticsTrailTitle.
@@ -4394,7 +4393,7 @@ abstract class AppLocalizations {
   /// No description provided for @diagnosticsLedgerChecking.
   ///
   /// In en, this message translates to:
-  /// **'Checking the stock ledger…'**
+  /// **'Checking the stock ledgerâ€¦'**
   String get diagnosticsLedgerChecking;
 
   /// No description provided for @diagnosticsLedgerDifferences.
@@ -4467,7 +4466,7 @@ abstract class AppLocalizations {
   /// No description provided for @diagnosticsUploading.
   ///
   /// In en, this message translates to:
-  /// **'Sending…'**
+  /// **'Sendingâ€¦'**
   String get diagnosticsUploading;
 
   /// No description provided for @diagnosticsUploaded.
@@ -4503,7 +4502,7 @@ abstract class AppLocalizations {
   /// No description provided for @diagnosticsEntryContext.
   ///
   /// In en, this message translates to:
-  /// **'on {route} · {actor} · {action}'**
+  /// **'on {route} Â· {actor} Â· {action}'**
   String diagnosticsEntryContext(Object action, Object actor, Object route);
 
   /// No description provided for @settingsImportInventory.
@@ -4515,31 +4514,31 @@ abstract class AppLocalizations {
   /// No description provided for @settingsImportStageReading.
   ///
   /// In en, this message translates to:
-  /// **'Reading the workbook…'**
+  /// **'Reading the workbookâ€¦'**
   String get settingsImportStageReading;
 
   /// No description provided for @settingsImportStageParsing.
   ///
   /// In en, this message translates to:
-  /// **'Reading the rows…'**
+  /// **'Reading the rowsâ€¦'**
   String get settingsImportStageParsing;
 
   /// No description provided for @settingsImportStageWriting.
   ///
   /// In en, this message translates to:
-  /// **'Writing the products…'**
+  /// **'Writing the productsâ€¦'**
   String get settingsImportStageWriting;
 
   /// No description provided for @settingsImportStageBarcodes.
   ///
   /// In en, this message translates to:
-  /// **'Attaching the barcodes…'**
+  /// **'Attaching the barcodesâ€¦'**
   String get settingsImportStageBarcodes;
 
   /// No description provided for @settingsImportStageVariants.
   ///
   /// In en, this message translates to:
-  /// **'Attaching the variants…'**
+  /// **'Attaching the variantsâ€¦'**
   String get settingsImportStageVariants;
 
   /// No description provided for @settingsImportStageDone.
@@ -4557,13 +4556,13 @@ abstract class AppLocalizations {
   /// No description provided for @settingsImportWorkbookFailed.
   ///
   /// In en, this message translates to:
-  /// **'Couldn’t import the workbook. Check the file and try again.'**
+  /// **'Couldnâ€™t import the workbook. Check the file and try again.'**
   String get settingsImportWorkbookFailed;
 
   /// No description provided for @importNotOurFormat.
   ///
   /// In en, this message translates to:
-  /// **'That file isn’t in this app’s inventory format, so nothing was imported. Add a header row to the sheet — Name, Cost price, Selling price, Stock qty — or export a template from Settings and paste your rows into it.'**
+  /// **'That file isnâ€™t in this appâ€™s inventory format, so nothing was imported. Add a header row to the sheet â€” Name, Cost price, Selling price, Stock qty â€” or export a template from Settings and paste your rows into it.'**
   String get importNotOurFormat;
 
   /// No description provided for @settingsIncluded.
@@ -4629,19 +4628,19 @@ abstract class AppLocalizations {
   /// No description provided for @settingsMpesaOffSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'Excluded — turn on to accept M-Pesa. Requires a one-time backend connection.'**
+  /// **'Excluded â€” turn on to accept M-Pesa. Requires a one-time backend connection.'**
   String get settingsMpesaOffSubtitle;
 
   /// No description provided for @settingsMpesaOnSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'Included — customers can pay by M-Pesa STK push. Requires internet at checkout.'**
+  /// **'Included â€” customers can pay by M-Pesa STK push. Requires internet at checkout.'**
   String get settingsMpesaOnSubtitle;
 
   /// No description provided for @settingsMpesaUpdateFailed.
   ///
   /// In en, this message translates to:
-  /// **'Couldn’t update M-Pesa setting — check your connection and try again.'**
+  /// **'Couldnâ€™t update M-Pesa setting â€” check your connection and try again.'**
   String get settingsMpesaUpdateFailed;
 
   /// No description provided for @settingsNoOnlineShops.
@@ -4713,7 +4712,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsPrinterPermissionDenied.
   ///
   /// In en, this message translates to:
-  /// **'Bluetooth permission was turned off for {app}. Open the phone’s app settings and allow Bluetooth.'**
+  /// **'Bluetooth permission was turned off for {app}. Open the phoneâ€™s app settings and allow Bluetooth.'**
   String settingsPrinterPermissionDenied(Object app);
 
   /// No description provided for @settingsPrinterPermissionNeeded.
@@ -4869,19 +4868,19 @@ abstract class AppLocalizations {
   /// No description provided for @settingsAddStaffFailed.
   ///
   /// In en, this message translates to:
-  /// **'Couldn’t add staff — try again.'**
+  /// **'Couldnâ€™t add staff â€” try again.'**
   String get settingsAddStaffFailed;
 
   /// No description provided for @settingsResetPinFailed.
   ///
   /// In en, this message translates to:
-  /// **'Couldn’t reset PIN — try again.'**
+  /// **'Couldnâ€™t reset PIN â€” try again.'**
   String get settingsResetPinFailed;
 
   /// No description provided for @settingsRemoveStaffFailed.
   ///
   /// In en, this message translates to:
-  /// **'Couldn’t remove staff — try again.'**
+  /// **'Couldnâ€™t remove staff â€” try again.'**
   String get settingsRemoveStaffFailed;
 
   /// No description provided for @settingsRemoveStaffMessage.
@@ -4929,7 +4928,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsSyncFailed.
   ///
   /// In en, this message translates to:
-  /// **'Sync failed — try again when you have signal.'**
+  /// **'Sync failed â€” try again when you have signal.'**
   String get settingsSyncFailed;
 
   /// No description provided for @settingsSyncNowAction.
@@ -4941,13 +4940,13 @@ abstract class AppLocalizations {
   /// No description provided for @settingsSyncOfflineExcel.
   ///
   /// In en, this message translates to:
-  /// **'No internet — saved an Excel file instead. Share it from the prompt that opened.'**
+  /// **'No internet â€” saved an Excel file instead. Share it from the prompt that opened.'**
   String get settingsSyncOfflineExcel;
 
   /// No description provided for @settingsSyncSection.
   ///
   /// In en, this message translates to:
-  /// **'Sync — Google Sheets & Excel'**
+  /// **'Sync â€” Google Sheets & Excel'**
   String get settingsSyncSection;
 
   /// No description provided for @settingsSyncSheets.
@@ -4959,7 +4958,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsSyncing.
   ///
   /// In en, this message translates to:
-  /// **'Syncing…'**
+  /// **'Syncingâ€¦'**
   String get settingsSyncing;
 
   /// No description provided for @settingsTestPrintAction.
@@ -4995,13 +4994,13 @@ abstract class AppLocalizations {
   /// No description provided for @settingsTaxSummary.
   ///
   /// In en, this message translates to:
-  /// **'VAT {rate}% · receipts numbered {till}-000001'**
+  /// **'VAT {rate}% Â· receipts numbered {till}-000001'**
   String settingsTaxSummary(Object rate, Object till);
 
   /// No description provided for @settingsTaxSummaryWithTin.
   ///
   /// In en, this message translates to:
-  /// **'VAT {rate}% · TIN {tin} · receipts numbered {till}-000001'**
+  /// **'VAT {rate}% Â· TIN {tin} Â· receipts numbered {till}-000001'**
   String settingsTaxSummaryWithTin(Object rate, Object till, Object tin);
 
   /// No description provided for @settingsRestoredProducts.
@@ -5160,13 +5159,13 @@ abstract class AppLocalizations {
   /// No description provided for @settingsBusinessProfilePreviewNavigation.
   ///
   /// In en, this message translates to:
-  /// **'Navigation: {before} → {after}'**
+  /// **'Navigation: {before} â†’ {after}'**
   String settingsBusinessProfilePreviewNavigation(Object after, Object before);
 
   /// No description provided for @settingsBusinessProfilePreviewTerminology.
   ///
   /// In en, this message translates to:
-  /// **'Product wording: {before} → {after}'**
+  /// **'Product wording: {before} â†’ {after}'**
   String settingsBusinessProfilePreviewTerminology(Object after, Object before);
 
   /// No description provided for @settingsBusinessProfileStock.
@@ -5190,7 +5189,7 @@ abstract class AppLocalizations {
   /// No description provided for @transactionsExpenseTitle.
   ///
   /// In en, this message translates to:
-  /// **'Expense · {category}'**
+  /// **'Expense Â· {category}'**
   String transactionsExpenseTitle(Object category);
 
   /// No description provided for @transactionsExpenseSourceTill.
@@ -5262,7 +5261,7 @@ abstract class AppLocalizations {
   /// No description provided for @servingsCardName.
   ///
   /// In en, this message translates to:
-  /// **'{label} · {capacity} ml'**
+  /// **'{label} Â· {capacity} ml'**
   String servingsCardName(Object capacity, Object label);
 
   /// No description provided for @servingsCardSpoken.
@@ -5322,7 +5321,7 @@ abstract class AppLocalizations {
   /// No description provided for @servingsLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Couldn’t load the servings. Try again.'**
+  /// **'Couldnâ€™t load the servings. Try again.'**
   String get servingsLoadFailed;
 
   /// No description provided for @servingsNameAtTillLabel.
@@ -5394,7 +5393,7 @@ abstract class AppLocalizations {
   /// No description provided for @servingsSaveFailed.
   ///
   /// In en, this message translates to:
-  /// **'Couldn’t save the serving. Try again.'**
+  /// **'Couldnâ€™t save the serving. Try again.'**
   String get servingsSaveFailed;
 
   /// No description provided for @servingsStopSellingAction.
@@ -5460,13 +5459,13 @@ abstract class AppLocalizations {
   /// No description provided for @taxSettingsEtimsOnSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'On — every sale is filed with KRA. Sales keep working with no signal; receipts upload as soon as there is a connection.'**
+  /// **'On â€” every sale is filed with KRA. Sales keep working with no signal; receipts upload as soon as there is a connection.'**
   String get taxSettingsEtimsOnSubtitle;
 
   /// No description provided for @taxSettingsEtimsOffSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'Off — sales are recorded and VAT reports remain available. KRA eTIMS is not activated.'**
+  /// **'Off â€” sales are recorded and VAT reports remain available. KRA eTIMS is not activated.'**
   String get taxSettingsEtimsOffSubtitle;
 
   /// No description provided for @taxSettingsTinNotRegisteredHelp.
@@ -5532,7 +5531,7 @@ abstract class AppLocalizations {
   /// No description provided for @taxSettingsEtimsUpdateFailed.
   ///
   /// In en, this message translates to:
-  /// **'Couldn’t update eTIMS. Check your connection and try again.'**
+  /// **'Couldnâ€™t update eTIMS. Check your connection and try again.'**
   String get taxSettingsEtimsUpdateFailed;
 
   /// No description provided for @taxSettingsEtimsNotLinked.
@@ -5556,13 +5555,13 @@ abstract class AppLocalizations {
   /// No description provided for @taxSettingsKraUnreachable.
   ///
   /// In en, this message translates to:
-  /// **'Couldn’t reach KRA. Check the shop is linked and you have a connection, then try again.'**
+  /// **'Couldnâ€™t reach KRA. Check the shop is linked and you have a connection, then try again.'**
   String get taxSettingsKraUnreachable;
 
   /// No description provided for @taxSettingsKraUnreachableRetry.
   ///
   /// In en, this message translates to:
-  /// **'Couldn’t reach KRA. Try again when you have a connection.'**
+  /// **'Couldnâ€™t reach KRA. Try again when you have a connection.'**
   String get taxSettingsKraUnreachableRetry;
 
   /// No description provided for @taxSettingsNotActivatedStatus.
@@ -5664,7 +5663,7 @@ abstract class AppLocalizations {
   /// No description provided for @taxSettingsVatExempt.
   ///
   /// In en, this message translates to:
-  /// **'Exempt — receipts omit the VAT line entirely.'**
+  /// **'Exempt â€” receipts omit the VAT line entirely.'**
   String get taxSettingsVatExempt;
 
   /// No description provided for @taxSettingsVatSection.
@@ -5730,7 +5729,7 @@ abstract class AppLocalizations {
   /// No description provided for @variantCountableNote.
   ///
   /// In en, this message translates to:
-  /// **'Countable — no serving size. One bottle is one Dark.'**
+  /// **'Countable â€” no serving size. One bottle is one Dark.'**
   String get variantCountableNote;
 
   /// No description provided for @variantEditTitle.
@@ -5808,7 +5807,7 @@ abstract class AppLocalizations {
   /// No description provided for @variantSizeHelper.
   ///
   /// In en, this message translates to:
-  /// **'Millilitres or litres — 500ml, 0.5L, 1.5 L.'**
+  /// **'Millilitres or litres â€” 500ml, 0.5L, 1.5 L.'**
   String get variantSizeHelper;
 
   /// No description provided for @variantSizeLeaveBlankHelper.
@@ -5832,7 +5831,7 @@ abstract class AppLocalizations {
   /// No description provided for @variantSizeInvalid.
   ///
   /// In en, this message translates to:
-  /// **'Size must be a number, optionally with ml or L — for example 500ml'**
+  /// **'Size must be a number, optionally with ml or L â€” for example 500ml'**
   String get variantSizeInvalid;
 
   /// No description provided for @variantSizeLabel.
@@ -6258,7 +6257,7 @@ abstract class AppLocalizations {
   /// No description provided for @sellPourOptionTitle.
   ///
   /// In en, this message translates to:
-  /// **'{label} · {ml} ml'**
+  /// **'{label} Â· {ml} ml'**
   String sellPourOptionTitle(Object label, Object ml);
 
   /// No description provided for @settingsBackupsErased.
@@ -6324,7 +6323,7 @@ abstract class AppLocalizations {
   /// No description provided for @dashboardSalesToday.
   ///
   /// In en, this message translates to:
-  /// **'Sales today · {scopeLabel}'**
+  /// **'Sales today Â· {scopeLabel}'**
   String dashboardSalesToday(Object scopeLabel);
 
   /// No description provided for @dashboardSee.
@@ -6558,19 +6557,19 @@ abstract class AppLocalizations {
   /// No description provided for @creditAging7.
   ///
   /// In en, this message translates to:
-  /// **'0–7 days'**
+  /// **'0â€“7 days'**
   String get creditAging7;
 
   /// No description provided for @creditAging30.
   ///
   /// In en, this message translates to:
-  /// **'8–30 days'**
+  /// **'8â€“30 days'**
   String get creditAging30;
 
   /// No description provided for @creditAging60.
   ///
   /// In en, this message translates to:
-  /// **'31–60 days'**
+  /// **'31â€“60 days'**
   String get creditAging60;
 
   /// No description provided for @creditAgingOver.
@@ -6792,7 +6791,7 @@ abstract class AppLocalizations {
   /// No description provided for @customerStatementTitle.
   ///
   /// In en, this message translates to:
-  /// **'Statement — {name}'**
+  /// **'Statement â€” {name}'**
   String customerStatementTitle(Object name);
 
   /// No description provided for @customerStatementBalance.
@@ -7134,13 +7133,13 @@ abstract class AppLocalizations {
   /// No description provided for @supplierPhoneHelper.
   ///
   /// In en, this message translates to:
-  /// **'For ordering later. 07…, 01… or 254…'**
+  /// **'For ordering later. 07â€¦, 01â€¦ or 254â€¦'**
   String get supplierPhoneHelper;
 
   /// No description provided for @supplierPhoneInvalid.
   ///
   /// In en, this message translates to:
-  /// **'That is not a Kenyan number. Use 07…, 01…, +254… or 254…'**
+  /// **'That is not a Kenyan number. Use 07â€¦, 01â€¦, +254â€¦ or 254â€¦'**
   String get supplierPhoneInvalid;
 
   /// No description provided for @supplierSaveAction.
@@ -7914,13 +7913,13 @@ abstract class AppLocalizations {
   /// No description provided for @liveStatusConnecting.
   ///
   /// In en, this message translates to:
-  /// **'Connecting…'**
+  /// **'Connectingâ€¦'**
   String get liveStatusConnecting;
 
   /// No description provided for @liveStatusReconnecting.
   ///
   /// In en, this message translates to:
-  /// **'Reconnecting…'**
+  /// **'Reconnectingâ€¦'**
   String get liveStatusReconnecting;
 
   /// No description provided for @dashboardAllClear.
@@ -8010,13 +8009,13 @@ abstract class AppLocalizations {
   /// No description provided for @saleDetailsTendered.
   ///
   /// In en, this message translates to:
-  /// **'Tendered {tendered} · change {change}'**
+  /// **'Tendered {tendered} Â· change {change}'**
   String saleDetailsTendered(Object change, Object tendered);
 
   /// No description provided for @saleDetailsQuantity.
   ///
   /// In en, this message translates to:
-  /// **'{quantity} ×'**
+  /// **'{quantity} Ã—'**
   String saleDetailsQuantity(Object quantity);
 
   /// No description provided for @transactionsTitle.
@@ -8173,7 +8172,7 @@ abstract class AppLocalizations {
   /// No description provided for @analyticsRowSpokenCompact.
   ///
   /// In en, this message translates to:
-  /// **'{units} units · {profit} profit · {margin} margin'**
+  /// **'{units} units Â· {profit} profit Â· {margin} margin'**
   String analyticsRowSpokenCompact(Object margin, Object profit, Object units);
 
   /// No description provided for @analyticsTransactionsLabel.
@@ -8794,7 +8793,7 @@ abstract class AppLocalizations {
   /// No description provided for @tankFieldCapacityLHint.
   ///
   /// In en, this message translates to:
-  /// **'Write a number. A big drum holds 50 litres — write 50.'**
+  /// **'Write a number. A big drum holds 50 litres â€” write 50.'**
   String get tankFieldCapacityLHint;
 
   /// No description provided for @tankFieldTankCount.
@@ -8854,7 +8853,7 @@ abstract class AppLocalizations {
   /// No description provided for @tankSaveFailed.
   ///
   /// In en, this message translates to:
-  /// **'That tank could not be saved. Your numbers are still here — try again.'**
+  /// **'That tank could not be saved. Your numbers are still here â€” try again.'**
   String get tankSaveFailed;
 
   /// No description provided for @tankAddEntry.
@@ -9034,7 +9033,7 @@ abstract class AppLocalizations {
   /// No description provided for @tankDetailSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'Capacity, investment, what remains — and the three actions: receive, measure, history.'**
+  /// **'Capacity, investment, what remains â€” and the three actions: receive, measure, history.'**
   String get tankDetailSubtitle;
 
   /// No description provided for @tankActionReceive.
@@ -9316,7 +9315,7 @@ abstract class AppLocalizations {
   /// No description provided for @reportsSendingToPrinter.
   ///
   /// In en, this message translates to:
-  /// **'Sending the receipt to the printer…'**
+  /// **'Sending the receipt to the printerâ€¦'**
   String get reportsSendingToPrinter;
 
   /// No description provided for @reportsReceiptReprinted.
@@ -9352,7 +9351,7 @@ abstract class AppLocalizations {
   /// No description provided for @sellTileStockCountLow.
   ///
   /// In en, this message translates to:
-  /// **'{quantity} in stock · running low'**
+  /// **'{quantity} in stock Â· running low'**
   String sellTileStockCountLow(Object quantity);
 
   /// No description provided for @sellNoStockLeft.
@@ -9718,7 +9717,7 @@ abstract class AppLocalizations {
   /// No description provided for @dashboardCurrentBusiness.
   ///
   /// In en, this message translates to:
-  /// **'Current business — {shopName}'**
+  /// **'Current business â€” {shopName}'**
   String dashboardCurrentBusiness(Object shopName);
 
   /// No description provided for @dashboardCurrentBusinessLabel.
@@ -11908,7 +11907,7 @@ abstract class AppLocalizations {
   /// No description provided for @exchangeRecorded.
   ///
   /// In en, this message translates to:
-  /// **'Exchange #\$exchangeId recorded — return and replacement committed.'**
+  /// **'Exchange #\$exchangeId recorded â€” return and replacement committed.'**
   String get exchangeRecorded;
 
   /// No description provided for @exchangeAddReplacement.
@@ -11980,7 +11979,7 @@ abstract class AppLocalizations {
   /// No description provided for @livePreviewNoReportNumberIsUsed.
   ///
   /// In en, this message translates to:
-  /// **'Live preview · no report number is used'**
+  /// **'Live preview Â· no report number is used'**
   String get livePreviewNoReportNumberIsUsed;
 
   /// No description provided for @open.
@@ -12040,13 +12039,13 @@ abstract class AppLocalizations {
   /// No description provided for @couldnTCompleteTheSaleCheckStockAndTryAgain.
   ///
   /// In en, this message translates to:
-  /// **'Couldn’t complete the sale. Check stock and try again.'**
+  /// **'Couldnâ€™t complete the sale. Check stock and try again.'**
   String get couldnTCompleteTheSaleCheckStockAndTryAgain;
 
   /// No description provided for @firstTenderRemainingIsPaidByTheSecondTender.
   ///
   /// In en, this message translates to:
-  /// **'First tender · remaining is paid by the second tender'**
+  /// **'First tender Â· remaining is paid by the second tender'**
   String get firstTenderRemainingIsPaidByTheSecondTender;
 
   /// No description provided for @holdSale.
@@ -12118,7 +12117,7 @@ abstract class AppLocalizations {
   /// No description provided for @paymentSucceededLocalRecordingFailedContactSupportBeforeReconcilingReports.
   ///
   /// In en, this message translates to:
-  /// **'Payment succeeded. Local recording failed — contact support before reconciling reports.'**
+  /// **'Payment succeeded. Local recording failed â€” contact support before reconciling reports.'**
   String
       get paymentSucceededLocalRecordingFailedContactSupportBeforeReconcilingReports;
 
@@ -12972,7 +12971,7 @@ abstract class AppLocalizations {
   /// No description provided for @productOnboardingPage1Body.
   ///
   /// In en, this message translates to:
-  /// **'SimpleSales is a point of sale built for Kenyan shops — record sales, track stock, and take payments on the counter or off it. Works on your phone, no extra hardware.'**
+  /// **'SimpleSales is a point of sale built for Kenyan shops â€” record sales, track stock, and take payments on the counter or off it. Works on your phone, no extra hardware.'**
   String get productOnboardingPage1Body;
 
   /// No description provided for @productOnboardingPage2Label.
@@ -12990,7 +12989,7 @@ abstract class AppLocalizations {
   /// No description provided for @productOnboardingPage2Body.
   ///
   /// In en, this message translates to:
-  /// **'Pick the profile that matches your shop. Each one changes the words you see and the actions that matter most — but every profile uses the same simple POS.'**
+  /// **'Pick the profile that matches your shop. Each one changes the words you see and the actions that matter most â€” but every profile uses the same simple POS.'**
   String get productOnboardingPage2Body;
 
   /// No description provided for @productOnboardingPage3Label.
@@ -13008,7 +13007,7 @@ abstract class AppLocalizations {
   /// No description provided for @productOnboardingPage3Body.
   ///
   /// In en, this message translates to:
-  /// **'Sales, stock and customer records live on this device. They sync when you are back online — nothing stops working when the network drops. M-Pesa and online reports need a connection; everything else does not.'**
+  /// **'Sales, stock and customer records live on this device. They sync when you are back online â€” nothing stops working when the network drops. M-Pesa and online reports need a connection; everything else does not.'**
   String get productOnboardingPage3Body;
 
   /// No description provided for @productOnboardingHeader.
@@ -13038,7 +13037,7 @@ abstract class AppLocalizations {
   /// No description provided for @productOnboardingDukaSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'General shop · products, stock, POS'**
+  /// **'General shop Â· products, stock, POS'**
   String get productOnboardingDukaSubtitle;
 
   /// No description provided for @productOnboardingDrinksTitle.
@@ -13050,7 +13049,7 @@ abstract class AppLocalizations {
   /// No description provided for @productOnboardingDrinksSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'Bar and drinks · tanks, pours, stock'**
+  /// **'Bar and drinks Â· tanks, pours, stock'**
   String get productOnboardingDrinksSubtitle;
 
   /// No description provided for @productOnboardingFashionTitle.
@@ -13062,7 +13061,7 @@ abstract class AppLocalizations {
   /// No description provided for @productOnboardingFashionSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'Fashion boutique · styles, sizes, colours'**
+  /// **'Fashion boutique Â· styles, sizes, colours'**
   String get productOnboardingFashionSubtitle;
 
   /// No description provided for @productOnboardingOpenTitle.
@@ -13074,7 +13073,7 @@ abstract class AppLocalizations {
   /// No description provided for @productOnboardingOpenSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'Open commerce · inventory, sales, payments'**
+  /// **'Open commerce Â· inventory, sales, payments'**
   String get productOnboardingOpenSubtitle;
 
   /// No description provided for @actionSignIn.
@@ -13416,7 +13415,7 @@ abstract class AppLocalizations {
   /// No description provided for @accountRecoveryWorking.
   ///
   /// In en, this message translates to:
-  /// **'Signing in and restoring…'**
+  /// **'Signing in and restoringâ€¦'**
   String get accountRecoveryWorking;
 
   /// No description provided for @accountRecoveryInvalidPin.

@@ -41,6 +41,8 @@ class StaffCredentialCache {
   /// everywhere, and never has to guess at other apps' storage.
   static const _indexKey = '${_prefix}index';
   static const _sessionIndexKey = '${_sessionPrefix}index';
+  static const _leasePrefix = 'duka_staff_lease_';
+  static const _leaseIndexKey = '${_leasePrefix}index';
   static const _promptPrefix = 'duka_staff_pin_prompt_';
 
   /// The key for one staff member in one shop.
@@ -77,6 +79,35 @@ class StaffCredentialCache {
 
   static Future<String?> readSessionToken(int staffId) async =>
       _storage.read(key: await _sessionKeyFor(staffId));
+
+  static Future<String> _leaseKeyFor(int staffId) async {
+    final key = await _keyFor(staffId);
+    return key.replaceFirst(_prefix, _leasePrefix);
+  }
+
+  static Future<void> storeOfflineLease(
+    int staffId, {
+    required String token,
+    required String expiresAt,
+  }) async {
+    final key = await _leaseKeyFor(staffId);
+    await _storage.write(
+      key: key,
+      value: jsonEncode(<String, dynamic>{'token': token, 'expiresAt': expiresAt}),
+    );
+    await _indexLease(key);
+  }
+
+  static Future<Map<String, dynamic>?> readOfflineLease(int staffId) async {
+    final raw = await _storage.read(key: await _leaseKeyFor(staffId));
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final data = jsonDecode(raw);
+      return data is Map ? Map<String, dynamic>.from(data) : null;
+    } catch (_) {
+      return null;
+    }
+  }
 
   static Future<bool> pinPromptSeen(int staffId) async =>
       (await _storage.read(key: '$_promptPrefix${await _keyFor(staffId)}')) == '1';
@@ -138,9 +169,18 @@ class StaffCredentialCache {
     } catch (_) {}
   }
 
+  static Future<void> _indexLease(String key) async {
+    try {
+      final raw = await _storage.read(key: _leaseIndexKey);
+      final keys = raw == null || raw.isEmpty ? <String>{} : raw.split('\n').where((s) => s.isNotEmpty).toSet();
+      if (keys.add(key)) await _storage.write(key: _leaseIndexKey, value: keys.join('\n'));
+    } catch (_) {}
+  }
+
   static Future<void> clearStaffCredentials(int staffId) async {
     await _storage.delete(key: await _keyFor(staffId));
     await _storage.delete(key: await _sessionKeyFor(staffId));
+    await _storage.delete(key: await _leaseKeyFor(staffId));
   }
 
   static Future<void> clearAll() async {
@@ -159,6 +199,12 @@ class StaffCredentialCache {
         await _storage.delete(key: key);
       }
       await _storage.delete(key: _sessionIndexKey);
+      final leaseRaw = await _storage.read(key: _leaseIndexKey);
+      final leaseKeys = leaseRaw == null || leaseRaw.isEmpty ? const <String>[] : leaseRaw.split('\n').where((s) => s.isNotEmpty);
+      for (final key in leaseKeys) {
+        await _storage.delete(key: key);
+      }
+      await _storage.delete(key: _leaseIndexKey);
     } catch (_) {
       // Swallowed, because this is called from `signOut`, and a sign-out that
       // threw would leave a caller holding a half-ended session — or, under

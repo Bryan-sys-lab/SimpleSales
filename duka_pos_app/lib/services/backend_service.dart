@@ -1830,8 +1830,13 @@ class BackendService {
           'user=$username pinLen=${pin.length}',
         );
       }
+      final deviceId = await _syncDeviceId();
       final response = await _dio.post('$backendUrl/tenant/staff/authenticate',
-          data: {'username': username, 'pin': pin},
+          data: {
+            'username': username,
+            'pin': pin,
+            'device_id': deviceId,
+          },
           options: tenantId == null || tenantId.trim().isEmpty
               ? null
               : Options(
@@ -1859,6 +1864,15 @@ class BackendService {
       final sessionToken = data['session_token'];
       if (localId is int && sessionToken is String && sessionToken.isNotEmpty) {
         await StaffCredentialCache.storeSessionToken(localId, sessionToken);
+      }
+      final leaseToken = data['offline_lease'];
+      final leaseExpiresAt = data['offline_lease_expires_at'];
+      if (localId is int && leaseToken is String && leaseToken.isNotEmpty && leaseExpiresAt is String && leaseExpiresAt.isNotEmpty) {
+        await StaffCredentialCache.storeOfflineLease(
+          localId,
+          token: leaseToken,
+          expiresAt: leaseExpiresAt,
+        );
       }
       if (data.isEmpty) {
         diagnostics['classification'] = 'empty_response';
