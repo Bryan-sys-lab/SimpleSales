@@ -28,15 +28,134 @@ import { taxReportingActivated, taxReportingStatus } from '../services/tax_repor
 import { encryptTaxSecret, lastFour } from '../services/tax_entity';
 import { activityTenantScope } from '../lib/activity_scope';
 import { readableTenantId } from '../lib/tenant_id';
-import { issueStaffSessionToken, verifyStaffSessionToken } from '../lib/jwt';
+import { issueStaffSessionToken } from '../lib/jwt';
 import { resolveActiveStaffSession } from '../lib/staff_session';
 import { broadcastTenantChange } from '../services/live_broker';
 import { tenantEntitlement } from '../lib/entitlements';
-import { calculateSubscriptionQuote, effectiveSubscriptionDiscountPercent } from '../lib/subscription_pricing';
+import {
+  billingIntervalForMonths,
+  billingIntervalMonths,
+  calculateSubscriptionQuote,
+  effectiveSubscriptionDiscountPercent,
+} from '../lib/subscription_pricing';
 import { isVerifiedEmailMatch } from '../lib/identity';
 import { activateSubscriptionPaymentAtomically } from '../lib/subscription_settlement';
 
 const router = Router();
+
+type BillingSetting = { key: string; value: string };
+
+type PublicPaymentMethod = {
+  method: 'mpesa_stk';
+  channelType: 'till' | 'paybill' | 'bank';
+  shortCode: string;
+  accountNumber: string | null;
+};
+
+type SubscriptionBillingData = {
+  priceMinor: number | null;
+  discountPercent: number | null;
+  currency: string;
+  billingInterval: string;
+  agreementId: string | null;
+  voucher: {
+    voucherType: string;
+    durationMonths: number;
+    discountPercent: number;
+  } | null;
+  agreement: { snapshot: Prisma.JsonValue } | null;
+};
+
+function paymentConfiguration(settings: BillingSetting[]): {
+  channelId: number | null;
+  paymentMethod: PublicPaymentMethod | null;
+} {
+  const get = (key: string) => settings.find((setting) => setting.key === key)?.value;
+  const channelId = Number(get('billing_channel_id'));
+  const channelType = get('billing_channel_type');
+  const shortCode = get('billing_short_code')?.trim();
+  const accountNumber = get('billing_account_number')?.trim() || null;
+  const hasChannelId = Number.isSafeInteger(channelId) && channelId > 0;
+  const hasValidDestination = (
+    (channelType === 'till' || channelType === 'paybill' || channelType === 'bank')
+    && Boolean(shortCode)
+    && (channelType !== 'bank' || Boolean(accountNumber))
+  );
+  return {
+    channelId: hasChannelId ? channelId : null,
+    paymentMethod: hasChannelId && hasValidDestination
+      ? {
+          method: 'mpesa_stk',
+          channelType,
+          shortCode: shortCode!,
+          accountNumber: channelType === 'bank' ? accountNumber : null,
+        }
+      : null,
+  };
+}
+
+function acceptedAgreementTerms(snapshot: Prisma.JsonValue, currency: string) {
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return null;
+  const terms = snapshot as Prisma.JsonObject;
+  const amount = terms.amountMinor;
+  const baseAmount = terms.baseAmountMinor;
+  const discount = terms.discountPercent;
+  const term = terms.termMonths;
+  const voucherId = terms.voucherId;
+  if (
+    typeof amount !== 'number' || !Number.isSafeInteger(amount) || amount < 1 ||
+    amount > 2_147_483_647 ||
+    typeof baseAmount !== 'number' || !Number.isSafeInteger(baseAmount) ||
+    baseAmount < amount || baseAmount > 2_147_483_647 ||
+    typeof discount !== 'number' || !Number.isInteger(discount) || discount < 0 || discount > 100 ||
+    (term !== null && (typeof term !== 'number' || !Number.isInteger(term) || term < 1 || term > 120)) ||
+    terms.currency !== 'KES' || currency !== 'KES'
+  ) {
+    return null;
+  }
+  return {
+    amountMinor: amount,
+    baseAmountMinor: baseAmount,
+    discountPercent: discount,
+    durationMonths: typeof term === 'number' ? term : 0,
+    voucherApplied: typeof voucherId === 'string' && voucherId.length > 0,
+  };
+}
+
+function subscriptionCheckoutPreview(subscription: SubscriptionBillingData | null) {
+  if (!subscription) return null;
+  if (subscription.agreementId) {
+    const terms = subscription.agreement
+      ? acceptedAgreementTerms(subscription.agreement.snapshot, subscription.currency)
+      : null;
+    if (!terms) return null;
+    return {
+      ...terms,
+      discountAmountMinor: terms.baseAmountMinor - terms.amountMinor,
+      agreementId: subscription.agreementId,
+    };
+  }
+  if (!subscription.priceMinor || subscription.priceMinor < 1) return null;
+  const durationMonths = billingIntervalMonths(subscription.billingInterval);
+  const voucherMatchesInterval = subscription.voucher?.voucherType === 'discount'
+    && subscription.voucher.durationMonths === durationMonths;
+  const discountPercent = effectiveSubscriptionDiscountPercent(
+    subscription.discountPercent,
+    voucherMatchesInterval ? 'discount' : null,
+    voucherMatchesInterval ? subscription.voucher?.discountPercent : null,
+  );
+  const quote = calculateSubscriptionQuote(
+    subscription.priceMinor,
+    durationMonths,
+    discountPercent,
+  );
+  return {
+    ...quote,
+    discountPercent,
+    durationMonths,
+    agreementId: null,
+  };
+}
 
 function managedStaffProfileFilter() {
   return {
@@ -211,10 +330,26 @@ router.get('/subscription', asyncHandler(async (req, res) => {
         orderBy: { createdAt: 'desc' },
       })
     : null;
+  const [entitlement, subscription, settings] = await Promise.all([
+    tenantEntitlement(req.user.tenantId),
+    prisma.tenantSubscription.findUnique({
+      where: { tenantId: req.user.tenantId },
+      include: {
+        voucher: { select: { voucherType: true, durationMonths: true, discountPercent: true } },
+        agreement: { select: { snapshot: true } },
+      },
+    }),
+    prisma.systemSettings.findMany({
+      where: { key: { in: ['billing_channel_id', 'billing_channel_type', 'billing_short_code', 'billing_account_number'] } },
+    }),
+  ]);
+  const billing = paymentConfiguration(settings);
   return res.json({
-    entitlement: await tenantEntitlement(req.user.tenantId),
+    entitlement,
     support: {
       whatsappUrl,
+      paymentMethod: billing.paymentMethod,
+      checkout: subscriptionCheckoutPreview(subscription),
       availableVoucher: availableVoucher
         ? {
             voucherType: availableVoucher.voucherType,
@@ -233,67 +368,41 @@ router.post('/subscription/payment', asyncHandler(async (req, res) => {
     where: { tenantId: req.user.tenantId },
     include: { voucher: { select: { voucherType: true, durationMonths: true, discountPercent: true } } },
   });
-  if (subscription?.agreementId && !input.agreementId) {
-    return res.status(409).json({
-      error: 'Payment must follow the accepted membership agreement',
-      code: 'AGREEMENT_PAYMENT_REQUIRED',
-    });
+  if (!subscription) return res.status(409).json({ error: 'Subscription price has not been set by the system administrator' });
+  if (input.agreementId && input.agreementId !== subscription.agreementId) {
+    return res.status(409).json({ error: 'Payment must follow the accepted membership agreement' });
   }
+  const agreementId = subscription.agreementId;
   let amountMinor: number;
   let baseAmountMinor: number;
   let discountAmountMinor: number;
   let discountPercent: number;
   let durationMonths: number;
-  let agreementId: string | null = null;
   let voucherApplied: boolean;
 
-  if (input.agreementId) {
+  if (agreementId) {
     const agreement = await prisma.membershipAgreement.findFirst({
-      where: { id: input.agreementId, tenantId: req.user.tenantId },
+      where: { id: agreementId, tenantId: req.user.tenantId },
     });
     if (!agreement) return res.status(404).json({ error: 'Accepted agreement not found' });
-    if (!subscription || subscription.agreementId !== agreement.id || subscription.status !== 'awaiting_payment') {
+    if (subscription.agreementId !== agreement.id) {
       return res.status(409).json({ error: 'This agreement is not awaiting payment' });
     }
-    const snapshot = agreement.snapshot;
-    if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
-      return res.status(409).json({ error: 'Accepted agreement terms are invalid' });
-    }
-    const terms = snapshot as Prisma.JsonObject;
-    const amount = terms.amountMinor;
-    const baseAmount = terms.baseAmountMinor;
-    const discount = terms.discountPercent;
-    const term = terms.termMonths;
-    const voucherId = terms.voucherId;
-    if (
-      typeof amount !== 'number' || !Number.isSafeInteger(amount) || amount < 1 ||
-      amount > 2_147_483_647 ||
-      typeof baseAmount !== 'number' || !Number.isSafeInteger(baseAmount) ||
-      baseAmount < amount || baseAmount > 2_147_483_647 ||
-      typeof discount !== 'number' || !Number.isInteger(discount) || discount < 0 || discount > 100 ||
-      (term !== null && (typeof term !== 'number' || !Number.isInteger(term) || term < 1 || term > 120)) ||
-      terms.currency !== 'KES' || subscription.currency !== 'KES'
-    ) {
-      return res.status(409).json({ error: 'Accepted agreement terms are incomplete' });
-    }
-    amountMinor = amount;
-    baseAmountMinor = baseAmount;
-    discountAmountMinor = baseAmount - amount;
-    discountPercent = discount;
-    durationMonths = typeof term === 'number' ? term : 0;
-    agreementId = agreement.id;
-    voucherApplied = typeof voucherId === 'string' && voucherId.length > 0;
+    const terms = acceptedAgreementTerms(agreement.snapshot, subscription.currency);
+    if (!terms) return res.status(409).json({ error: 'Accepted agreement terms are incomplete' });
+    amountMinor = terms.amountMinor;
+    baseAmountMinor = terms.baseAmountMinor;
+    discountAmountMinor = baseAmountMinor - amountMinor;
+    discountPercent = terms.discountPercent;
+    durationMonths = terms.durationMonths;
+    voucherApplied = terms.voucherApplied;
   } else {
-    if (!subscription?.priceMinor) return res.status(409).json({ error: 'Subscription price has not been set by the system administrator' });
+    if (!subscription.priceMinor) return res.status(409).json({ error: 'Subscription price has not been set by the system administrator' });
+    const duration = billingIntervalMonths(subscription.billingInterval);
     const discountVoucher = subscription.voucher?.voucherType === 'discount'
+      && subscription.voucher.durationMonths === duration
       ? subscription.voucher
       : null;
-    if (discountVoucher && input.durationMonths !== discountVoucher.durationMonths) {
-      return res.status(409).json({
-        error: `This discount voucher applies to a ${discountVoucher.durationMonths}-month plan`,
-        code: 'VOUCHER_DURATION_MISMATCH',
-      });
-    }
     discountPercent = effectiveSubscriptionDiscountPercent(
       subscription.discountPercent,
       discountVoucher ? 'discount' : null,
@@ -301,38 +410,53 @@ router.post('/subscription/payment', asyncHandler(async (req, res) => {
     );
     const quote = calculateSubscriptionQuote(
       subscription.priceMinor,
-      input.durationMonths,
+      duration,
       discountPercent,
     );
     amountMinor = quote.amountMinor;
     baseAmountMinor = quote.baseAmountMinor;
     discountAmountMinor = quote.discountAmountMinor;
-    durationMonths = input.durationMonths;
+    durationMonths = duration;
     voucherApplied = Boolean(discountVoucher);
   }
 
-  if (agreementId) {
-    const existingPayment = await prisma.subscriptionPayment.findFirst({
-      where: { agreementId, status: 'PENDING' },
-      orderBy: { createdAt: 'desc' },
-    });
-    if (existingPayment) {
-      return res.json({
-        reference: existingPayment.reference,
-        amountMinor: existingPayment.amountMinor,
-        baseAmountMinor,
-        discountAmountMinor,
-        discountPercent: existingPayment.discountPercent,
-        durationMonths: existingPayment.durationMonths,
-        agreementId,
-        status: existingPayment.status,
-      });
-    }
+  const settings = await prisma.systemSettings.findMany({
+    where: { key: { in: ['billing_channel_id', 'billing_channel_type', 'billing_short_code', 'billing_account_number'] } },
+  });
+  const billing = paymentConfiguration(settings);
+  if (!billing.channelId || !billing.paymentMethod) {
+    return res.status(503).json({ error: 'Subscription payment destination is not configured' });
   }
+  const paymentResponse = (payment: {
+    reference: string;
+    amountMinor: number;
+    discountPercent: number;
+    durationMonths: number;
+    status: string;
+  }) => ({
+    reference: payment.reference,
+    amountMinor: payment.amountMinor,
+    baseAmountMinor,
+    discountAmountMinor,
+    discountPercent: payment.discountPercent,
+    durationMonths: payment.durationMonths,
+    agreementId,
+    paymentMethod: billing.paymentMethod,
+    status: payment.status,
+  });
+  const existingPayment = await prisma.subscriptionPayment.findFirst({
+    where: {
+      tenantId: req.user.tenantId,
+      phoneNumber: input.phoneNumber,
+      amountMinor,
+      durationMonths,
+      agreementId,
+      status: 'PENDING',
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (existingPayment) return res.json(paymentResponse(existingPayment));
 
-  const provider = await prisma.systemSettings.findMany({ where: { key: { in: ['billing_channel_id'] } } });
-  const channelId = Number(provider.find((row) => row.key === 'billing_channel_id')?.value);
-  if (!Number.isSafeInteger(channelId) || channelId <= 0) return res.status(503).json({ error: 'Subscription payment destination is not configured' });
   const reference = `SUBS-${randomUUID()}`;
   let payment;
   try {
@@ -355,33 +479,21 @@ router.post('/subscription/payment', asyncHandler(async (req, res) => {
         orderBy: { createdAt: 'desc' },
       });
       if (existingPayment) {
-        return res.json({
-          reference: existingPayment.reference,
-          amountMinor: existingPayment.amountMinor,
-          baseAmountMinor,
-          discountAmountMinor,
-          discountPercent: existingPayment.discountPercent,
-          durationMonths: existingPayment.durationMonths,
-          agreementId,
-          status: existingPayment.status,
-        });
+        return res.json(paymentResponse(existingPayment));
       }
     }
     throw error;
   }
   try {
-    const push = await initiateStkPush({ amount: amountMinor / 100, phoneNumber: input.phoneNumber, channelId, externalReference: reference, customerName: req.user.name, callbackUrl: `${process.env.PUBLIC_API_URL}/webhooks/payhero-callback` });
+    const push = await initiateStkPush({ amount: amountMinor / 100, phoneNumber: input.phoneNumber, channelId: billing.channelId, externalReference: reference, customerName: req.user.name, callbackUrl: `${process.env.PUBLIC_API_URL}/webhooks/payhero-callback` });
     await prisma.subscriptionPayment.update({ where: { id: payment.id }, data: { checkoutRequestId: push.checkoutRequestId } });
-    return res.status(201).json({
+    return res.status(201).json(paymentResponse({
       reference,
       amountMinor,
-      baseAmountMinor,
-      discountAmountMinor,
       discountPercent,
       durationMonths,
-      agreementId,
       status: 'PENDING',
-    });
+    }));
   } catch (error) {
     await prisma.subscriptionPayment.update({ where: { id: payment.id }, data: { status: 'FAILED', providerStatus: error instanceof Error ? error.message : 'provider_error' } });
     throw error;
@@ -425,6 +537,7 @@ async function activateSubscriptionPayment(paymentId: string) {
     paymentId: payment.id,
     tenantId: payment.tenantId,
     durationMonths: payment.durationMonths,
+    billingInterval: billingIntervalForMonths(payment.durationMonths),
     receiptCode: payment.mpesaReceiptCode,
     voucherApplied: payment.voucherApplied,
   });
@@ -1885,6 +1998,9 @@ router.post(
         await prisma.profile.update({ where: { id: profile.id }, data: successUpdate });
       }
 
+      const credentialVersion = Number(
+        successUpdate.pinCredentialVersion ?? profile.pin_credential_version ?? 0,
+      );
       const deviceId = typeof parsed.device_id === 'string' ? parsed.device_id.trim() : '';
       let offlineLease: { token: string; expires_at: string } | null = null;
       if (deviceId) {
@@ -1905,7 +2021,6 @@ router.post(
           });
           return res.status(403).json({ error: 'Device is revoked', code: 'DEVICE_REVOKED' });
         }
-        const credentialVersion = Number(successUpdate.pinCredentialVersion ?? profile.pin_credential_version ?? 0);
         const lease = issueOfflineLease({ tenantId, profileId: profile.id, deviceId, credentialVersion });
         const leaseExpiresAt = new Date(lease.expiresAt);
         await prisma.deviceAuthorization.upsert({
@@ -1947,7 +2062,8 @@ router.post(
         profileId: profile.id,
         tenantId,
         userId: `staff:${profile.id}`,
-        pinCredentialVersion: profile.pinCredentialVersion ?? 0,
+        deviceId: deviceId || undefined,
+        pinCredentialVersion: credentialVersion,
       });
       response.session_token = staffSession.token;
       if (offlineLease) {
@@ -2560,10 +2676,10 @@ router.post(
       where: { tenantId_deviceId: { tenantId: user.tenantId, deviceId } },
       data: { status: 'revoked', revokedAt: new Date() },
     });
-    await Promise.resolve(prisma.authSession?.updateMany?.({
+    await prisma.authSession.updateMany({
       where: { tenantId: user.tenantId, deviceId, revokedAt: null },
       data: { revokedAt: new Date(), revokedReason: 'device_revoked' },
-    })).catch(() => undefined);
+    });
     await recordAuthAuditEvent({
       tenantId: user.tenantId,
       actorType: 'profile',
@@ -2588,10 +2704,12 @@ router.post(
       where: { tenantId_deviceId: { tenantId: user.tenantId, deviceId } },
     });
     if (!device || device.status !== 'active' || device.revokedAt) throw new HttpError(404, 'Active device not found');
+    const profileId = device.profileId;
+    if (!profileId) throw new HttpError(404, 'Active device has no linked profile');
     const isManager = ['admin', 'manager'].includes(user.role);
-    if (!isManager && device.profileId !== user.id) throw new HttpError(403, 'Cannot refresh lease for another profile device');
+    if (!isManager && profileId !== user.id) throw new HttpError(403, 'Cannot refresh lease for another profile device');
     const profile = await prisma.profile.findFirst({
-      where: { id: device.profileId, tenantId: user.tenantId, active: true, deletedAt: null },
+      where: { id: profileId, tenantId: user.tenantId, active: true, deletedAt: null },
       select: { id: true, pinCredentialVersion: true },
     });
     if (!profile) throw new HttpError(404, 'Profile not found');

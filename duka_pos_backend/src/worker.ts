@@ -305,7 +305,7 @@ export class AdminLiveHub extends DurableObject {
       url.pathname === "/broadcast"
     ) {
       const message = await request.text();
-      let requiredPermissions: string[] = [];
+      let requiredPermissions: string[];
       try {
         const payload = JSON.parse(message) as { requiredPermission?: unknown; requiredPermissions?: unknown };
         requiredPermissions = Array.isArray(payload.requiredPermissions)

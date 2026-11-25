@@ -1,7 +1,7 @@
-const stagingHost = 'duka-pos-backend-staging.brianbmk332.workers.dev';
+export const STAGING_WORKER_HOST = 'duka-pos-backend-staging.brianbmk332.workers.dev';
 
 export function addStagingAuthTestHeader(baseUrl, path, headers) {
-  if (new URL(baseUrl).hostname.toLowerCase() !== stagingHost || path !== '/api/auth/link') {
+  if (new URL(baseUrl).hostname.toLowerCase() !== STAGING_WORKER_HOST || path !== '/api/auth/link') {
     return headers;
   }
   const secret = process.env.STAGING_AUTH_TEST_SECRET;

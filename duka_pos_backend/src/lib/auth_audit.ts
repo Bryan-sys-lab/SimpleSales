@@ -13,6 +13,8 @@ export interface AuthAuditInput {
   ip?: string | null;
   userAgent?: string | null;
   deviceId?: string | null;
+  email?: string | null;
+  requestId?: string | null;
   metadata?: Record<string, unknown> | null;
 }
 
@@ -22,6 +24,11 @@ export async function recordAuthAuditEvent(input: AuthAuditInput): Promise<void>
   const actorId = input.actorId ?? null;
   const profileId = input.profileId ?? (actorType === 'staff' ? actorId : null);
   const userId = input.userId ?? (actorType && actorType !== 'staff' ? actorId : null);
+  const metadata = {
+    ...(input.metadata ?? {}),
+    ...(input.email ? { email: input.email } : {}),
+    ...(input.requestId ? { requestId: input.requestId } : {}),
+  };
   try {
     await prisma.authAuditEvent.create({
       data: {
@@ -34,7 +41,7 @@ export async function recordAuthAuditEvent(input: AuthAuditInput): Promise<void>
         reason: input.reason ?? null,
         ip: input.ip ?? null,
         userAgent: input.userAgent ?? null,
-        metadata: (input.metadata ?? undefined) as any,
+        metadata: Object.keys(metadata).length > 0 ? metadata as any : undefined,
       },
     });
   } catch (error) {

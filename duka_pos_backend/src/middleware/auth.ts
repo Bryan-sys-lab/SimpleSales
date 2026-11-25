@@ -8,8 +8,7 @@
  */
 import express from 'express';
 import { prisma } from '../lib/prisma';
-import { createHash } from 'crypto';
-import { verifyAccessToken, verifyStaffSessionToken } from '../lib/jwt';
+import { verifyAccessToken } from '../lib/jwt';
 import { resolveActiveStaffSession } from '../lib/staff_session';
 import { tenantEntitlement } from '../lib/entitlements';
 import { effectiveAdminPermissions, normalizeAdminPackages } from '../lib/admin_access_catalog';

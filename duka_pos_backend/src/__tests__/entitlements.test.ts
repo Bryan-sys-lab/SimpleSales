@@ -43,7 +43,7 @@ describe('tenant entitlement voucher expiry', () => {
     });
   });
 
-  it('exposes a claimed discount voucher without granting access', async () => {
+  it('does not apply a claimed discount voucher to a different billing interval', async () => {
     mocks.tenantSubscription.findUnique.mockResolvedValue({
       status: 'pending',
       currentPeriodEnd: null,
@@ -62,6 +62,28 @@ describe('tenant entitlement voucher expiry', () => {
     await expect(tenantEntitlement('tenant-1')).resolves.toMatchObject({
       allowed: false,
       status: 'pending',
+      discountPercent: 10,
+      discountVoucherDurationMonths: 3,
+    });
+  });
+
+  it('applies a claimed discount voucher when its term matches the admin period', async () => {
+    mocks.tenantSubscription.findUnique.mockResolvedValue({
+      status: 'pending',
+      currentPeriodEnd: null,
+      graceUntil: null,
+      priceMinor: 10_000,
+      discountPercent: 10,
+      currency: 'KES',
+      billingInterval: 'quarterly',
+      voucher: {
+        voucherType: 'discount',
+        discountPercent: 25,
+        durationMonths: 3,
+      },
+    });
+
+    await expect(tenantEntitlement('tenant-1')).resolves.toMatchObject({
       discountPercent: 25,
       discountVoucherDurationMonths: 3,
     });

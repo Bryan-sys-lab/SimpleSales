@@ -517,7 +517,7 @@ export const subscriptionUpdateSchema = z.object({
   priceMinor: z.number().int().nonnegative().nullable().optional(),
   discountPercent: z.number().int().min(0).max(99).optional(),
   currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).optional(),
-  billingInterval: z.enum(['monthly', 'quarterly', 'annual']).optional(),
+  billingInterval: z.enum(['monthly', 'quarterly', 'semiannual', 'annual']).optional(),
   currentPeriodEnd: z.string().datetime({ offset: true }).nullable().optional(),
   graceUntil: z.string().datetime({ offset: true }).nullable().optional(),
 }).strict();

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { getD1DatabaseBinding, prisma } from '../lib/prisma';
 import { activateSubscriptionPaymentAtomically } from '../lib/subscription_settlement';
+import { billingIntervalForMonths } from '../lib/subscription_pricing';
 import { queryTransactionStatus } from '../services/payhero';
 import { log } from '../lib/observability';
 
@@ -33,6 +34,7 @@ export const handlePayheroCallback = async (req: Request, res: Response) => {
           paymentId: payment.id,
           tenantId: payment.tenantId,
           durationMonths: payment.durationMonths,
+          billingInterval: billingIntervalForMonths(payment.durationMonths),
           receiptCode,
           voucherApplied: payment.voucherApplied,
         });

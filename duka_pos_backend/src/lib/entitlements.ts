@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { prisma } from './prisma';
+import { billingIntervalMonths, effectiveSubscriptionDiscountPercent } from './subscription_pricing';
 
 export type Entitlement = {
   allowed: boolean;
@@ -56,9 +57,13 @@ export async function tenantEntitlement(tenantId: string): Promise<Entitlement> 
   });
   const now = new Date();
   if (!subscription) return { allowed: false, status: 'pending', reason: 'subscription_required', priceMinor: null, discountPercent: 0, currency: 'KES', billingInterval: 'monthly', currentPeriodEnd: null };
-  const discountPercent = subscription.voucher?.voucherType === 'discount'
-    ? Math.max(subscription.discountPercent ?? 0, subscription.voucher.discountPercent)
-    : subscription.discountPercent ?? 0;
+  const discountVoucherMatchesInterval = subscription.voucher?.voucherType === 'discount'
+    && subscription.voucher.durationMonths === billingIntervalMonths(subscription.billingInterval);
+  const discountPercent = effectiveSubscriptionDiscountPercent(
+    subscription.discountPercent,
+    discountVoucherMatchesInterval ? 'discount' : null,
+    discountVoucherMatchesInterval ? subscription.voucher?.discountPercent : null,
+  );
   const discountVoucherDurationMonths = subscription.voucher?.voucherType === 'discount'
     ? subscription.voucher.durationMonths
     : undefined;

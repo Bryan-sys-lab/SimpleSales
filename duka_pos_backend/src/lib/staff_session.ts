@@ -5,6 +5,9 @@ type PrismaLike = {
   authSession?: {
     findUnique?: (args: any) => Promise<any>;
   };
+  deviceAuthorization?: {
+    findUnique?: (args: any) => Promise<any>;
+  };
 };
 
 export type ActiveStaffSession = {
@@ -20,6 +23,16 @@ export async function resolveActiveStaffSession(
 ): Promise<ActiveStaffSession | null> {
   const claims = verifyStaffSessionToken(token);
   if (!claims || claims.tenantId !== tenantId) return null;
+  if (claims.deviceId) {
+    const findDevice = prisma.deviceAuthorization?.findUnique;
+    if (!findDevice) return null;
+    const device = await findDevice({
+      where: {
+        tenantId_deviceId: { tenantId, deviceId: claims.deviceId },
+      },
+    });
+    if (!device || device.status !== 'active' || device.revokedAt) return null;
+  }
   const sessionHash = createHash('sha256').update(token).digest('hex');
   const session = await (prisma.authSession?.findUnique as any)?.({
     where: { refreshTokenHash: sessionHash },

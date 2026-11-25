@@ -1,5 +1,35 @@
 const BILLING_DURATIONS = new Set([1, 3, 6, 12]);
 
+export function billingIntervalMonths(interval: string): number {
+  switch (interval) {
+    case 'monthly':
+      return 1;
+    case 'quarterly':
+      return 3;
+    case 'semiannual':
+      return 6;
+    case 'annual':
+      return 12;
+    default:
+      throw new RangeError(`Unsupported subscription billing interval: ${interval}`);
+  }
+}
+
+export function billingIntervalForMonths(months: number): string | null {
+  switch (months) {
+    case 1:
+      return 'monthly';
+    case 3:
+      return 'quarterly';
+    case 6:
+      return 'semiannual';
+    case 12:
+      return 'annual';
+    default:
+      return null;
+  }
+}
+
 export function effectiveSubscriptionDiscountPercent(
   negotiatedPercent: number | null | undefined,
   voucherType: string | null | undefined,
@@ -39,13 +69,14 @@ export function calculateSubscriptionQuote(
   if (!Number.isSafeInteger(baseAmountMinor)) {
     throw new RangeError('Subscription quote is too large to charge safely');
   }
-  const amountMinor = Math.round(baseAmountMinor * (100 - discountPercent) / 100);
-  if (amountMinor < 1) {
-    throw new RangeError('Discounted subscription total must be at least one minor currency unit');
+  const discountedAmountMinor = Math.round(baseAmountMinor * (100 - discountPercent) / 100);
+  const amountMinor = Math.round(discountedAmountMinor / 100) * 100;
+  if (amountMinor < 100) {
+    throw new RangeError('Discounted subscription total must be at least one whole currency unit');
   }
   return {
     baseAmountMinor,
-    discountAmountMinor: baseAmountMinor - amountMinor,
+    discountAmountMinor: baseAmountMinor - discountedAmountMinor,
     amountMinor,
   };
 }

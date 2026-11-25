@@ -4,6 +4,7 @@ export async function activateSubscriptionPaymentAtomically(params: {
   paymentId: string;
   tenantId: string;
   durationMonths: number;
+  billingInterval: string | null;
   receiptCode: string | null;
   voucherApplied: boolean;
 }): Promise<void> {
@@ -20,7 +21,7 @@ export async function activateSubscriptionPaymentAtomically(params: {
         id, tenant_id, status, currency, billing_interval, current_period_end,
         voucher_id, updated_by, created_at, updated_at
       )
-      SELECT ?, ?, 'active', 'KES', 'monthly',
+      SELECT ?, ?, 'active', 'KES', COALESCE(?, 'monthly'),
              CASE WHEN ? > 0
                THEN date(substr(?, 1, 10), '+' || ? || ' months') || substr(?, 11)
                ELSE NULL
@@ -29,6 +30,7 @@ export async function activateSubscriptionPaymentAtomically(params: {
       WHERE changes() = 1
       ON CONFLICT (tenant_id) DO UPDATE SET
         status = 'active',
+        billing_interval = COALESCE(?, tenant_subscriptions.billing_interval),
         current_period_end = CASE
           WHEN excluded.current_period_end IS NULL THEN NULL
           WHEN tenant_subscriptions.current_period_end > excluded.created_at
@@ -43,12 +45,14 @@ export async function activateSubscriptionPaymentAtomically(params: {
     `).bind(
       globalThis.crypto.randomUUID(),
       params.tenantId,
+      params.billingInterval,
       params.durationMonths,
       now,
       params.durationMonths,
       now,
       now,
       now,
+      params.billingInterval,
       params.durationMonths,
       params.durationMonths,
       params.voucherApplied ? 1 : 0,

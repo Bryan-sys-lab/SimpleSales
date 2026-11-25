@@ -99,7 +99,7 @@ export async function registerPaymentChannel(params: {
     body: JSON.stringify({
       channel_type: params.channelType,
       account_id: accountId,
-      short_code: Number(shortCode),
+      short_code: shortCode,
       // PayHero requires this field for both channel types; Till collections
       // do not use an account number, so an empty string is intentional. Bank
       // channels use it as the destination account.

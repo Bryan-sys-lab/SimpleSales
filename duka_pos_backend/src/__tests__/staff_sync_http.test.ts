@@ -403,13 +403,14 @@ describe('staff registration, pull and bootstrap contracts', () => {
           salt.toString('base64url'),
           digest.toString('base64url'),
         ].join('$'),
+        pin_credential_version: 0,
         shop_name: 'Main shop',
       };
 
       const response = await supertest(app)
         .post('/tenant/staff/authenticate')
         .set('x-tenant-id', 'tenant-1')
-        .send({ username: 'Amina', pin: '123456' });
+        .send({ username: 'Amina', pin: '123456', device_id: 'test-device' });
 
       expect(response.status).toBe(200);
       expect(response.body).toMatchObject({
@@ -423,6 +424,21 @@ describe('staff registration, pull and bootstrap contracts', () => {
       expect(mocks.d1.statements[0].sql).toContain('p.pin_hash');
       expect(mocks.d1.statements[0].values).toEqual(['tenant-1', 'amina']);
       expect(response.body.session_token).toEqual(expect.any(String));
+      expect(response.body.offline_lease).toEqual(expect.any(String));
+      mocks.prisma.deviceAuthorization.findUnique.mockResolvedValue({
+        status: 'active',
+        revokedAt: null,
+      });
+      const { resolveActiveStaffSession } = await import('../lib/staff_session');
+      const session = await resolveActiveStaffSession(
+        response.body.session_token,
+        'tenant-1',
+        mocks.prisma,
+      );
+      expect(session?.claims).toMatchObject({
+        pin_cv: 1,
+        deviceId: 'test-device',
+      });
     });
 
   it('authenticates owner-created Admin staff with the app PIN hash work factor',

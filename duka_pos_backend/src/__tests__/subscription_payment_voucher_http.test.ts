@@ -6,6 +6,7 @@ import { errorHandler } from '../lib/http';
 const mocks = vi.hoisted(() => ({
   prisma: {
     tenantSubscription: { findUnique: vi.fn() },
+    accessVoucher: { findFirst: vi.fn() },
     membershipAgreement: { findFirst: vi.fn() },
     systemSettings: { findMany: vi.fn() },
     subscriptionPayment: { create: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
@@ -24,7 +25,7 @@ vi.mock('../services/payhero', () => ({
 }));
 vi.mock('../middleware/auth', () => ({
   authMiddleware: (req: any, _res: any, next: () => void) => {
-    req.user = { tenantId: 'tenant-1', role: 'admin', name: 'Owner' };
+    req.user = { id: 'owner-1', tenantId: 'tenant-1', role: 'admin', name: 'Owner' };
     req.auth = { sub: 'profile-1', email: 'owner@example.com' };
     next();
   },
@@ -45,9 +46,13 @@ describe('subscription payment discount vouchers', () => {
     vi.clearAllMocks();
     mocks.prisma.tenantSubscription.findUnique.mockResolvedValue({
       tenantId: 'tenant-1',
+      status: 'pending',
       priceMinor: 10_000,
       discountPercent: 10,
       currency: 'KES',
+      billingInterval: 'quarterly',
+      agreementId: null,
+      agreement: null,
       voucher: {
         voucherType: 'discount',
         durationMonths: 3,
@@ -56,7 +61,10 @@ describe('subscription payment discount vouchers', () => {
     });
     mocks.prisma.systemSettings.findMany.mockResolvedValue([
       { key: 'billing_channel_id', value: '12345' },
+      { key: 'billing_channel_type', value: 'paybill' },
+      { key: 'billing_short_code', value: '123456' },
     ]);
+    mocks.prisma.accessVoucher.findFirst.mockResolvedValue(null);
     mocks.prisma.subscriptionPayment.create.mockResolvedValue({
       id: 'payment-1',
     });
@@ -67,10 +75,10 @@ describe('subscription payment discount vouchers', () => {
     });
   });
 
-  it('applies the larger discount once to the matching plan checkout', async () => {
+  it('uses the administrator-set period and applies a matching voucher discount', async () => {
     const response = await supertest(app)
       .post('/tenant/subscription/payment')
-      .send({ phoneNumber: '254700000000', durationMonths: 3 });
+      .send({ phoneNumber: '254700000000', durationMonths: 1 });
 
     expect(response.status).toBe(201);
     expect(response.body).toMatchObject({
@@ -79,7 +87,13 @@ describe('subscription payment discount vouchers', () => {
       amountMinor: 22_500,
       discountPercent: 25,
       durationMonths: 3,
+      paymentMethod: {
+        method: 'mpesa_stk',
+        channelType: 'paybill',
+        shortCode: '123456',
+      },
     });
+
     expect(mocks.prisma.subscriptionPayment.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         amountMinor: 22_500,
@@ -92,21 +106,89 @@ describe('subscription payment discount vouchers', () => {
     );
   });
 
-  it('rejects a checkout term that does not match the claimed discount voucher', async () => {
+  it('uses the same whole-shilling amount in the quote, stored payment, and STK request', async () => {
+    mocks.prisma.tenantSubscription.findUnique.mockResolvedValue({
+      tenantId: 'tenant-1',
+      status: 'pending',
+      priceMinor: 10_050,
+      discountPercent: 0,
+      currency: 'KES',
+      billingInterval: 'monthly',
+      agreementId: null,
+      agreement: null,
+      voucher: null,
+    });
+
     const response = await supertest(app)
       .post('/tenant/subscription/payment')
-      .send({ phoneNumber: '254700000000', durationMonths: 1 });
+      .send({ phoneNumber: '254700000000' });
 
-    expect(response.status).toBe(409);
-    expect(response.body.code).toBe('VOUCHER_DURATION_MISMATCH');
-    expect(mocks.prisma.subscriptionPayment.create).not.toHaveBeenCalled();
-    expect(mocks.initiateStkPush).not.toHaveBeenCalled();
+    expect(response.status).toBe(201);
+    expect(response.body.amountMinor).toBe(10_100);
+    expect(mocks.prisma.subscriptionPayment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ amountMinor: 10_100 }),
+    });
+    expect(mocks.initiateStkPush).toHaveBeenCalledWith(
+      expect.objectContaining({ amount: 101 }),
+    );
+  });
+
+  it('returns the configured amount, billing period, and public payment destination', async () => {
+    const response = await supertest(app).get('/tenant/subscription');
+
+    expect(response.status).toBe(200);
+    expect(response.body.support.checkout).toMatchObject({
+      amountMinor: 22_500,
+      baseAmountMinor: 30_000,
+      discountPercent: 25,
+      durationMonths: 3,
+    });
+    expect(response.body.support.paymentMethod).toEqual({
+      method: 'mpesa_stk',
+      channelType: 'paybill',
+      shortCode: '123456',
+      accountNumber: null,
+    });
+    expect(response.body.support.paymentMethod).not.toHaveProperty('channelId');
+  });
+
+  it('keeps a term-mismatched discount voucher unused and charges the admin discount', async () => {
+    mocks.prisma.tenantSubscription.findUnique.mockResolvedValue({
+      tenantId: 'tenant-1',
+      status: 'pending',
+      priceMinor: 10_000,
+      discountPercent: 10,
+      currency: 'KES',
+      billingInterval: 'monthly',
+      voucher: {
+        voucherType: 'discount',
+        durationMonths: 3,
+        discountPercent: 25,
+      },
+    });
+    const response = await supertest(app)
+      .post('/tenant/subscription/payment')
+      .send({ phoneNumber: '254700000000' });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toMatchObject({
+      amountMinor: 9_000,
+      discountPercent: 10,
+      durationMonths: 1,
+    });
+    expect(mocks.prisma.subscriptionPayment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        amountMinor: 9_000,
+        durationMonths: 1,
+        voucherApplied: false,
+      }),
+    });
   });
 
   it('charges only the immutable accepted offer amount and records voucher use', async () => {
     mocks.prisma.tenantSubscription.findUnique.mockResolvedValue({
       tenantId: 'tenant-1',
-      status: 'awaiting_payment',
+      status: 'active',
       currency: 'KES',
       agreementId: 'agreement-1',
     });
@@ -124,7 +206,7 @@ describe('subscription payment discount vouchers', () => {
 
     const response = await supertest(app)
       .post('/tenant/subscription/payment')
-      .send({ phoneNumber: '254700000000', agreementId: 'agreement-1' });
+      .send({ phoneNumber: '254700000000' });
 
     expect(response.status).toBe(201);
     expect(response.body).toMatchObject({
@@ -148,7 +230,7 @@ describe('subscription payment discount vouchers', () => {
     );
   });
 
-  it('does not allow a fixed-price checkout to bypass an accepted agreement', async () => {
+  it('does not allow checkout to override an accepted agreement', async () => {
     mocks.prisma.tenantSubscription.findUnique.mockResolvedValue({
       tenantId: 'tenant-1',
       status: 'awaiting_payment',
@@ -158,10 +240,10 @@ describe('subscription payment discount vouchers', () => {
 
     const response = await supertest(app)
       .post('/tenant/subscription/payment')
-      .send({ phoneNumber: '254700000000', durationMonths: 3 });
+      .send({ phoneNumber: '254700000000', agreementId: 'different-agreement' });
 
     expect(response.status).toBe(409);
-    expect(response.body.code).toBe('AGREEMENT_PAYMENT_REQUIRED');
+    expect(response.body.error).toContain('accepted membership agreement');
     expect(mocks.prisma.subscriptionPayment.create).not.toHaveBeenCalled();
     expect(mocks.initiateStkPush).not.toHaveBeenCalled();
   });

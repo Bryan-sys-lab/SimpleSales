@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { registerPaymentChannel } from '../services/payhero';
+import {
+  initiateStkPush,
+  queryTransactionStatus,
+  registerPaymentChannel,
+} from '../services/payhero';
 import { payheroReferenceFromCallback } from '../routes/payhero-callback';
 
 describe('PayHero merchant channel integration', () => {
@@ -50,7 +54,7 @@ describe('PayHero merchant channel integration', () => {
     expect(JSON.parse(String(request.body))).toMatchObject({
       channel_type: 'paybill',
       account_id: 42,
-      short_code: 54321,
+      short_code: '54321',
       account_number: '',
     });
     expect((request.headers as Record<string, string>).Authorization)
@@ -74,11 +78,80 @@ describe('PayHero merchant channel integration', () => {
     const request = fetchMock.mock.calls[1][1] as RequestInit;
     expect(JSON.parse(String(request.body))).toMatchObject({
       channel_type: 'bank',
-      short_code: 802200,
+      short_code: '802200',
       account_number: '1234567890',
     });
     expect((request.headers as Record<string, string>).Authorization)
       .toBe('Basic server-only-token');
+  });
+
+  it('initiates an STK push with the documented request and checkout ID', async () => {
+    process.env.PAYHERO_AUTH_TOKEN = 'server-only-token';
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: async () => ({
+        success: true,
+        status: 'QUEUED',
+        reference: 'PAY-123',
+        CheckoutRequestID: 'checkout-123',
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(initiateStkPush({
+      amount: 125,
+      phoneNumber: '0712345678',
+      channelId: 9,
+      externalReference: 'PAY-123',
+      customerName: 'Shop owner',
+      callbackUrl: 'https://api.example.test/webhooks/payhero-callback',
+    })).resolves.toMatchObject({
+      reference: 'PAY-123',
+      checkoutRequestId: 'checkout-123',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://backend.payhero.co.ke/api/v2/payments',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          amount: 125,
+          phone_number: '0712345678',
+          channel_id: 9,
+          provider: 'm-pesa',
+          external_reference: 'PAY-123',
+          customer_name: 'Shop owner',
+          callback_url: 'https://api.example.test/webhooks/payhero-callback',
+        }),
+      }),
+    );
+  });
+
+  it('queries transaction status using the documented reference parameter', async () => {
+    process.env.PAYHERO_AUTH_TOKEN = 'server-only-token';
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        status: 'SUCCESS',
+        reference: 'PAY/123',
+        CheckoutRequestID: 'checkout-123',
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(queryTransactionStatus('PAY/123')).resolves.toMatchObject({
+      success: true,
+      status: 'SUCCESS',
+      reference: 'PAY/123',
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://backend.payhero.co.ke/api/v2/transaction-status?reference=PAY%2F123',
+      expect.objectContaining({ headers: expect.objectContaining({
+        Authorization: 'Basic server-only-token',
+      }) }),
+    );
   });
 
   it('extracts the documented nested callback reference without trusting its status', () => {

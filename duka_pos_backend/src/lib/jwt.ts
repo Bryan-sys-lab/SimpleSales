@@ -5,6 +5,7 @@ export type StaffSessionClaims = {
   sub: string;
   tenantId: string;
   profileId: string;
+  deviceId?: string;
   token_use: 'staff';
   pin_cv?: number;
   iat: number;
@@ -95,6 +96,7 @@ export function issueStaffSessionToken(params: {
   profileId: string;
   tenantId: string;
   userId: string;
+  deviceId?: string;
   pinCredentialVersion?: number | null;
 }): { token: string; expiresIn: number } {
   const secret = process.env.AUTH_JWT_SECRET;
@@ -102,7 +104,15 @@ export function issueStaffSessionToken(params: {
   const jti = (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2));
   return {
     token: jwt.sign(
-      { sub: params.userId, tenantId: params.tenantId, profileId: params.profileId, token_use: 'staff', pin_cv: params.pinCredentialVersion ?? 0, jti },
+      {
+        sub: params.userId,
+        tenantId: params.tenantId,
+        profileId: params.profileId,
+        ...(params.deviceId ? { deviceId: params.deviceId } : {}),
+        token_use: 'staff',
+        pin_cv: params.pinCredentialVersion ?? 0,
+        jti,
+      },
       secret,
       { algorithm: 'HS256', expiresIn: STAFF_SESSION_TTL_SECONDS },
     ),
@@ -119,6 +129,7 @@ export function verifyStaffSessionToken(token: string): StaffSessionClaims | nul
       clockTolerance: CLOCK_SKEW_SECONDS,
     }) as StaffSessionClaims;
     if (claims.token_use !== 'staff' || !claims.sub || !claims.tenantId || !claims.profileId) return null;
+    if (claims.deviceId !== undefined && (typeof claims.deviceId !== 'string' || !claims.deviceId.trim())) return null;
     if (claims.exp - claims.iat > STAFF_SESSION_TTL_SECONDS + CLOCK_SKEW_SECONDS) return null;
     return claims;
   } catch {

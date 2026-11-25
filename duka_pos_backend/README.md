@@ -228,7 +228,9 @@ units. The conversion happens once, in `services/etims.ts`, and `toMajor`
 **throws** on a fractional minor unit rather than rounding it — a tax invoice out
 by a hundred because something upstream sent a float is invisible in review and
 fatal at audit. Amounts leaving for KRA are strings, because KRA's schema is
-`Decimal`.
+`Decimal`. PayHero STK requests require whole-KES amounts, so subscription
+quotes round to the nearest shilling before the same amount is shown, stored,
+and sent to PayHero.
 
 **Reprints are COPY receipts.** KRA requires one original receipt and that
 reprints be watermarked "Copy". Filing a reprint as `NS` would be a second
