@@ -128,10 +128,15 @@ export async function hashStaffPinV2(pin: string, iterations = STAFF_PIN_V2_ITER
   return serializeStaffPinHashV2({ iterations, salt, key });
 }
 
+export function legacyStaffPinHashesAllowed(): boolean {
+  return process.env.AUTH_V2_ALLOW_LEGACY_PIN_HASHES !== 'false';
+}
+
 export async function verifyStaffPinHash(pin: string, stored: string | null | undefined): Promise<boolean> {
   if (typeof pin !== 'string' || pin.length === 0) return false;
   const parsed = parseStaffPinHash(stored);
   if (!parsed) return false;
+  if (!legacyStaffPinHashesAllowed() && parsed.format !== 'v2') return false;
   try {
     const actual = await deriveStaffPinKey(pin, parsed.salt, parsed.iterations, parsed.key.length);
     return constantTimeEqual(actual, parsed.key);

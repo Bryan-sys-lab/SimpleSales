@@ -1866,6 +1866,8 @@ router.post(
       }
 
       const successUpdate: Record<string, unknown> = {};
+      const pinHashDesc = describeStaffPinHash(profile.pin_hash);
+      const legacyHashUsed = pinHashDesc.format !== 'v2';
       if ((profile.pin_failed_attempts ?? 0) > 0 || profile.pin_locked_until) {
         successUpdate.pinFailedAttempts = 0;
         successUpdate.pinLockedUntil = null;
@@ -1980,6 +1982,8 @@ router.post(
           username,
           role: profile.role,
           rehashed: Boolean(successUpdate.pinHash),
+          legacyHashUsed,
+          legacyPinLength: pin.length === 4,
         },
       });
       console.info('[staff-auth] authentication succeeded', {
@@ -2571,6 +2575,48 @@ router.post(
       metadata: { deviceId, deviceAuthorizationId: device.id },
     });
     res.json({ status: 'revoked', device_id: deviceId });
+  }),
+);
+
+router.post(
+  '/devices/:deviceId/lease',
+  asyncHandler(async (req, res) => {
+    const user = requireUser(req);
+    const deviceId = String(req.params.deviceId || '').trim();
+    if (!deviceId) throw new HttpError(400, 'deviceId required');
+    const device = await prisma.deviceAuthorization.findUnique({
+      where: { tenantId_deviceId: { tenantId: user.tenantId, deviceId } },
+    });
+    if (!device || device.status !== 'active' || device.revokedAt) throw new HttpError(404, 'Active device not found');
+    const isManager = ['admin', 'manager'].includes(user.role);
+    if (!isManager && device.profileId !== user.id) throw new HttpError(403, 'Cannot refresh lease for another profile device');
+    const profile = await prisma.profile.findFirst({
+      where: { id: device.profileId, tenantId: user.tenantId, active: true, deletedAt: null },
+      select: { id: true, pinCredentialVersion: true },
+    });
+    if (!profile) throw new HttpError(404, 'Profile not found');
+    const lease = issueOfflineLease({
+      tenantId: user.tenantId,
+      profileId: profile.id,
+      deviceId,
+      credentialVersion: profile.pinCredentialVersion ?? 0,
+    });
+    const leaseExpiresAt = new Date(lease.expiresAt);
+    await prisma.deviceAuthorization.update({
+      where: { tenantId_deviceId: { tenantId: user.tenantId, deviceId } },
+      data: { offlineLeaseExpiresAt: leaseExpiresAt, lastSeenAt: new Date(), status: 'active' },
+    });
+    await recordAuthAuditEvent({
+      tenantId: user.tenantId,
+      actorType: 'profile',
+      actorId: user.id,
+      action: 'device.lease_refresh',
+      outcome: 'success',
+      ip: req.ip,
+      userAgent: req.get('user-agent'),
+      metadata: { deviceId, profileId: profile.id },
+    });
+    res.json({ device_id: deviceId, offline_lease: lease.token, offline_lease_expires_at: lease.expiresAt });
   }),
 );
 

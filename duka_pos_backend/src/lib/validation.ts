@@ -664,7 +664,10 @@ export const stockAdjustSchema = z.object({
 export const staffAuthenticateSchema = z.object({
   username: z.string().trim().min(1).max(120),
   // Accept legacy 4-digit PINs during V1->V2 migration; V2 creation/change requires 6 digits.
-  pin: z.string().trim().regex(/^(?:\d{4}|\d{6})$/),
+  pin: z.string().trim().regex(/^(?:\d{4}|\d{6})$/).refine(
+    (pin) => process.env.AUTH_V2_ALLOW_LEGACY_PIN_LOGIN !== 'false' || pin.length === 6,
+    'PIN must be exactly 6 digits',
+  ),
   device_id: z.string().trim().min(1).max(255).optional(),
   device_label: z.string().trim().max(255).optional(),
   device_platform: z.string().trim().max(64).optional(),
@@ -672,7 +675,10 @@ export const staffAuthenticateSchema = z.object({
 
 export const staffSelfPinSchema = z.object({
   // Current PIN may be legacy 4-digit during migration.
-  currentPin: z.string().trim().regex(/^(?:\d{4}|\d{6})$/),
+  currentPin: z.string().trim().regex(/^(?:\d{4}|\d{6})$/).refine(
+    (pin) => process.env.AUTH_V2_ALLOW_LEGACY_PIN_LOGIN !== 'false' || pin.length === 6,
+    'PIN must be exactly 6 digits',
+  ),
   newPin: z.string().trim().regex(/^\d{6}$/),
 }).strict();
 

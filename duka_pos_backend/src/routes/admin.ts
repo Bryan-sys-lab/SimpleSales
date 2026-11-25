@@ -24,6 +24,7 @@ import { buildCommercialQualityReport, dedupeCommercialRows } from '../lib/comme
 import { generateVoucher } from '../lib/entitlements';
 import { registerPaymentChannel } from '../services/payhero';
 import { createCloudflareEmailTransport } from '../lib/email_sender';
+import { recordAuthAuditEvent } from '../lib/auth_audit';
 
 const router = Router();
 
@@ -248,6 +249,7 @@ router.patch('/billing/provider', asyncHandler(async (req: Request, res: Respons
     ON CONFLICT (key) DO UPDATE SET value = excluded.value
   `).bind(key, value)));
   await prisma.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: 'update_billing_provider', targetType: 'system_settings', tenantId: null } });
+  await recordAuthAuditEvent({ actorType: 'admin', actorId: req.auth?.sub ?? null, action: 'admin.billing_provider.update', outcome: 'success', ip: req.ip, userAgent: req.get('user-agent'), metadata: { channelType: input.channelType, channelId: String(channel.id) } });
   return res.json({ provider: { ...input, channelId: channel.id } });
 }));
 
@@ -292,6 +294,7 @@ router.patch('/billing/subscriptions/:tenantId', asyncHandler(async (req: Reques
     update: { ...input, currentPeriodEnd: input.currentPeriodEnd === undefined ? undefined : input.currentPeriodEnd ? new Date(input.currentPeriodEnd) : null, graceUntil: input.graceUntil === undefined ? undefined : input.graceUntil ? new Date(input.graceUntil) : null, updatedBy: req.auth?.sub },
   });
   await prisma.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: 'update_subscription', targetType: 'tenant_subscription', targetId: subscription.id, tenantId } });
+  await recordAuthAuditEvent({ tenantId, actorType: 'admin', actorId: req.auth?.sub ?? null, action: 'admin.subscription.update', outcome: 'success', ip: req.ip, userAgent: req.get('user-agent'), metadata: { status: subscription.status, priceMinor: subscription.priceMinor } });
   return res.json({ subscription });
 }));
 
@@ -391,6 +394,7 @@ router.post('/billing/vouchers', asyncHandler(async (req: Request, res: Response
     });
   }
   await prisma.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: input.voucherType === 'discount' ? 'create_discount_voucher' : 'create_access_voucher', targetType: 'access_voucher', targetId: voucher.id, tenantId: input.tenantId ?? null } });
+  await recordAuthAuditEvent({ tenantId: voucher.tenantId, actorType: 'admin', actorId: req.auth?.sub ?? null, action: `admin.voucher.create`, outcome: 'success', ip: req.ip, userAgent: req.get('user-agent'), metadata: { voucherId: voucher.id, voucherType: input.voucherType } });
   // The plaintext is returned exactly once. It is never persisted or exposed
   // in list/audit responses.
   return res.status(201).json({ voucher: { id: voucher.id, code: generated.code, codePrefix: voucher.codePrefix, tenantId: voucher.tenantId, email: recipientEmail, voucherType: input.voucherType, durationMonths: input.durationMonths, discountPercent: input.discountPercent, expiresAt: null, emailSent: true } });
@@ -407,6 +411,7 @@ router.post('/billing/vouchers/:id/:action', asyncHandler(async (req: Request, r
   const id = String(req.params.id);
   const voucher = await prisma.accessVoucher.update({ where: { id }, data: action === 'pause' ? { pausedAt: new Date() } : action === 'resume' ? { pausedAt: null } : action === 'revoke' ? { revokedAt: new Date() } : { deletedAt: new Date() } });
   await prisma.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: `${action}_access_voucher`, targetType: 'access_voucher', targetId: voucher.id, tenantId: voucher.tenantId } });
+  await recordAuthAuditEvent({ tenantId: voucher.tenantId, actorType: 'admin', actorId: req.auth?.sub ?? null, action: `admin.voucher.${action}`, outcome: 'success', ip: req.ip, userAgent: req.get('user-agent'), metadata: { voucherId: voucher.id } });
   return res.json({ status: action });
 }));
 
@@ -539,6 +544,7 @@ router.post('/commercial/partners', asyncHandler(async (req: Request, res: Respo
   await prisma.adminAuditLog.create({
     data: { adminId: req.auth?.sub ?? 'unknown', action: 'create_partner', targetType: 'partner', targetId: partner.id, tenantId: null },
   });
+  await recordAuthAuditEvent({ actorType: 'admin', actorId: req.auth?.sub ?? null, action: 'admin.partner.create', outcome: 'success', ip: req.ip, userAgent: req.get('user-agent'), metadata: { partnerId: partner.id } });
   return res.status(201).json({ partner });
 }));
 
@@ -579,6 +585,7 @@ router.post('/commercial/partners/:partnerId/grant', asyncHandler(async (req: Re
   await prisma.adminAuditLog.create({
     data: { adminId: req.auth?.sub ?? 'unknown', action: 'issue_partner_credential', targetType: 'partner_credential', targetId: credential.id, tenantId: null },
   });
+  await recordAuthAuditEvent({ actorType: 'admin', actorId: req.auth?.sub ?? null, action: 'admin.partner_credential.issue', outcome: 'success', ip: req.ip, userAgent: req.get('user-agent'), metadata: { partnerId, credentialId: credential.id, grantId: grant.id } });
   return res.status(201).json({
     grant,
     credential: { id: credential.id, keyPrefix: credential.keyPrefix, expiresAt: credential.expiresAt, quotaPerDay: credential.quotaPerDay },
@@ -597,6 +604,7 @@ router.post('/commercial/partners/credentials/:credentialId/revoke', asyncHandle
   await prisma.adminAuditLog.create({
     data: { adminId: req.auth?.sub ?? 'unknown', action: 'revoke_partner_credential', targetType: 'partner_credential', targetId: credentialId, tenantId: null },
   });
+  await recordAuthAuditEvent({ actorType: 'admin', actorId: req.auth?.sub ?? null, action: 'admin.partner_credential.revoke', outcome: 'success', ip: req.ip, userAgent: req.get('user-agent'), metadata: { credentialId, reason: input.reason } });
   log('info', 'partner.credential_revoked', { credentialId, reason: input.reason });
   return res.json({ status: 'revoked' });
 }));
@@ -876,12 +884,14 @@ router.post('/announcement', asyncHandler(async (req: Request, res: Response) =>
   ]);
   platformAnnouncementNotifier?.({ id, title: input.title, body: input.body });
   await broadcastAdmin({ type: 'platform_announcement', announcement: { id, title: input.title, body: input.body } });
+  await recordAuthAuditEvent({ actorType: 'admin', actorId: req.auth?.sub ?? null, action: 'admin.announcement.publish', outcome: 'success', ip: req.ip, userAgent: req.get('user-agent'), metadata: { announcementId: id } });
   return res.status(201).json({ id, title: input.title, body: input.body, active: input.active });
 }));
 
 router.delete('/announcement', asyncHandler(async (req: Request, res: Response) => {
   await prisma.systemSettings.updateMany({ where: { key: 'platform_announcement_active' }, data: { value: 'false' } });
   await prisma.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: 'clear_platform_announcement', targetType: 'platform_announcement', tenantId: null } });
+  await recordAuthAuditEvent({ actorType: 'admin', actorId: req.auth?.sub ?? null, action: 'admin.announcement.clear', outcome: 'success', ip: req.ip, userAgent: req.get('user-agent') });
   platformAnnouncementNotifier?.({ id: '', title: '', body: '' });
   await broadcastAdmin({ type: 'platform_announcement_cleared' });
   return res.status(204).send();

@@ -563,6 +563,7 @@ router.post('/voucher/redeem', authMiddleware, asyncHandler(async (req: Request,
     return res.status(400).json({ error: 'Voucher is invalid, expired, or already used', code: 'VOUCHER_INVALID' });
   }
   const voucherType = voucher.voucherType === 'discount' ? 'discount' : 'access';
+  await recordAuthAuditEvent({ tenantId: profile.tenantId, actorType: 'owner', actorId: profile.id, action: 'owner.voucher_redeem', outcome: 'success', ip: req.ip, userAgent: req.get('user-agent'), metadata: { voucherId: voucher.id, voucherType } });
   return res.json({
     status: voucherType === 'discount' ? 'discount_voucher_applied' : 'voucher_redeemed',
     voucher: { voucherType, durationMonths: voucher.durationMonths, discountPercent: voucher.discountPercent ?? 0 },
@@ -614,6 +615,7 @@ router.post('/voucher/claim', authMiddleware, asyncHandler(async (req: Request, 
       code: 'VOUCHER_REDEEM_FAILED',
     });
   }
+  await recordAuthAuditEvent({ tenantId: profile.tenantId, actorType: 'owner', actorId: profile.id, action: 'owner.voucher_claim', outcome: 'success', ip: req.ip, userAgent: req.get('user-agent'), metadata: { voucherId: voucher.id, voucherType: voucher.voucherType === 'discount' ? 'discount' : 'access' } });
   return res.json({
     status: voucher.voucherType === 'discount' ? 'discount_voucher_applied' : 'voucher_redeemed',
     voucher: {
