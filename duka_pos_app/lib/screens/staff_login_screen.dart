@@ -433,8 +433,17 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
             } else if (backendResponse?['_transportFailure'] == true ||
                 backendResponse == null ||
                 backendResponse.isEmpty) {
-              _lastAuthSummary =
-                  'Remote auth unavailable; kept locally verified staff session (${_backendErrorSummary(backendResponse)})';
+              final lease = staff.id == null ? null : await StaffCredentialCache.readOfflineLease(staff.id!);
+              final leaseExpiresAt = DateTime.tryParse((lease?['expiresAt'] as String?) ?? '');
+              final leaseValid = lease == null || (leaseExpiresAt != null && leaseExpiresAt.isAfter(DateTime.now()));
+              if (!leaseValid) {
+                staff = null;
+                await AuthService.recordFailure(userKey);
+                _lastAuthSummary = 'Offline lease expired; online staff authentication required';
+              } else {
+                _lastAuthSummary =
+                    'Remote auth unavailable; kept locally verified staff session (${_backendErrorSummary(backendResponse)})';
+              }
             } else {
               final merged = await _mergeOnlineStaff(backendResponse, staff,
                   username: username,

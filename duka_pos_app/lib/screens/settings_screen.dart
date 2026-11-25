@@ -343,7 +343,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
     controller.dispose();
     final String? temporaryPin = pin?.trim();
-    if (temporaryPin == null || !RegExp(r'^\d{4}$').hasMatch(temporaryPin)) {
+    if (temporaryPin == null || !RegExp(r'^\d{6}$').hasMatch(temporaryPin)) {
       return;
     }
     if (!mounted) return;
@@ -368,6 +368,94 @@ class _SettingsScreenState extends State<SettingsScreen>
         );
       }
     }
+  }
+
+  Future<void> _openManagedDevices() async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            Future<List<Map<String, dynamic>>> load() => BackendService.listManagedDevices();
+            return AlertDialog(
+              title: const Text('Managed devices'),
+              content: SizedBox(
+                width: 560,
+                child: FutureBuilder<List<Map<String, dynamic>>>(
+                  future: load(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState != ConnectionState.done) {
+                      return const SizedBox(height: 120, child: Center(child: CircularProgressIndicator()));
+                    }
+                    if (snapshot.hasError) {
+                      return Text('Could not load devices: ${snapshot.error}');
+                    }
+                    final devices = snapshot.data ?? const <Map<String, dynamic>>[];
+                    if (devices.isEmpty) {
+                      return const Text('No managed devices enrolled yet. Devices are enrolled when staff sign in on this shop.');
+                    }
+                    return SizedBox(
+                      height: 360,
+                      child: ListView.separated(
+                        itemCount: devices.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final d = devices[index];
+                          final deviceId = d['deviceId']?.toString() ?? '';
+                          final label = d['label']?.toString().trim();
+                          final status = d['status']?.toString() ?? 'unknown';
+                          final lastSeen = d['lastSeenAt']?.toString();
+                          final leaseExp = d['offlineLeaseExpiresAt']?.toString();
+                          final revoked = status == 'revoked';
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(revoked ? Icons.phonelink_erase_outlined : Icons.devices_outlined),
+                            title: Text(label != null && label.isNotEmpty ? label : deviceId),
+                            subtitle: Text([
+                              'Status: $status',
+                              if (lastSeen != null) 'Last seen: $lastSeen',
+                              if (leaseExp != null) 'Offline lease: $leaseExp',
+                            ].join('\n')),
+                            isThreeLine: true,
+                            trailing: revoked
+                                ? null
+                                : TextButton(
+                                    onPressed: deviceId.isEmpty
+                                        ? null
+                                        : () async {
+                                            final messenger = ScaffoldMessenger.of(this.context);
+                                            try {
+                                              await BackendService.revokeManagedDevice(deviceId);
+                                              if (!mounted) return;
+                                              messenger.showSnackBar(
+                                                const SnackBar(content: Text('Device revoked')),
+                                              );
+                                              setDialogState(() {});
+                                            } catch (e) {
+                                              if (!mounted) return;
+                                              messenger.showSnackBar(
+                                                SnackBar(content: Text('Could not revoke device: $e')),
+                                              );
+                                            }
+                                          },
+                                    child: const Text('Revoke'),
+                                  ),
+                          );
+                        },
+                      ),
+                    );
+                  },
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Close')),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   bool get _printerBusy => _printerBusyCount > 0;
@@ -2524,6 +2612,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       onCompletePinReset: _completeStaffPinReset,
       onOpenPermissions:
           ownerSession ? () => context.push(Routes.permissionsMatrix) : null,
+      onOpenManagedDevices: ownerSession ? _openManagedDevices : null,
       mpesaEnabled: _mpesaEnabled,
       mpesaChannelId: _mpesaChannelId,
       mpesaChannelType: _mpesaChannelType,
@@ -2725,6 +2814,7 @@ class SettingsPanel extends StatelessWidget {
     this.pinResetRequests = const <Map<String, dynamic>>[],
     this.onCompletePinReset,
     this.onOpenPermissions,
+    this.onOpenManagedDevices,
     required this.mpesaEnabled,
     this.mpesaChannelId,
     this.mpesaChannelType = 'Till',
@@ -2814,6 +2904,7 @@ class SettingsPanel extends StatelessWidget {
   final List<Map<String, dynamic>> pinResetRequests;
   final Future<void> Function(Map<String, dynamic>)? onCompletePinReset;
   final VoidCallback? onOpenPermissions;
+  final VoidCallback? onOpenManagedDevices;
 
   final bool mpesaEnabled;
   final int? mpesaChannelId;
@@ -2947,6 +3038,7 @@ class SettingsPanel extends StatelessWidget {
           onAdd: onAddStaff,
           onRemove: onRemoveStaff,
           onOpenPermissions: onOpenPermissions,
+          onOpenManagedDevices: onOpenManagedDevices,
         ),
         _PaymentsPanel(
           mpesaEnabled: mpesaEnabled,
@@ -3951,6 +4043,7 @@ class _StaffPanel extends StatelessWidget {
     required this.onAdd,
     required this.onRemove,
     this.onOpenPermissions,
+    this.onOpenManagedDevices,
   });
 
   final List<Staff> staff;
@@ -3959,6 +4052,7 @@ class _StaffPanel extends StatelessWidget {
   final Future<void> Function() onAdd;
   final Future<void> Function(Staff) onRemove;
   final VoidCallback? onOpenPermissions;
+  final VoidCallback? onOpenManagedDevices;
 
   @override
   Widget build(BuildContext context) {
@@ -4029,6 +4123,12 @@ class _StaffPanel extends StatelessWidget {
               icon: Icons.admin_panel_settings_outlined,
               title: 'Permissions matrix',
               onTap: onOpenPermissions!,
+            ),
+          if (onOpenManagedDevices != null)
+            SettingsNavRow(
+              icon: Icons.devices_outlined,
+              title: 'Managed devices',
+              onTap: onOpenManagedDevices!,
             ),
         ],
       ),

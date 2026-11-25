@@ -2087,6 +2087,34 @@ class BackendService {
     await _dio.get('$backendUrl/system/access');
   }
 
+  static Future<List<Map<String, dynamic>>> listManagedDevices() async {
+    await ensureInitialized();
+    final response = await _dio.get('$backendUrl/tenant/devices');
+    final data = response.data;
+    if (data is Map && data['devices'] is List) {
+      return (data['devices'] as List)
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e.map((k, v) => MapEntry(k.toString(), v))))
+          .toList();
+    }
+    return const <Map<String, dynamic>>[];
+  }
+
+  static Future<void> revokeManagedDevice(String deviceId) async {
+    await ensureInitialized();
+    await _dio.post('$backendUrl/tenant/devices/${Uri.encodeComponent(deviceId)}/revoke');
+  }
+
+  static Future<Map<String, dynamic>?> refreshManagedDeviceLease(String deviceId) async {
+    await ensureInitialized();
+    final response = await _dio.post('$backendUrl/tenant/devices/${Uri.encodeComponent(deviceId)}/lease');
+    final data = response.data;
+    if (data is Map) {
+      return Map<String, dynamic>.from(data.map((k, v) => MapEntry(k.toString(), v)));
+    }
+    return null;
+  }
+
   static Future<void> configureTenantAsSystemAdmin(
       {required String tenantId, required int channelId}) async {
     await requireSystemAdmin();
