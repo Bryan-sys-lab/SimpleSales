@@ -27,6 +27,7 @@ import { createCloudflareEmailTransport } from '../lib/email_sender';
 import { recordAuthAuditEvent } from '../lib/auth_audit';
 
 const router = Router();
+const userDirectoryPageSize = 25;
 
 function buildMailer() {
   return createCloudflareEmailTransport({
@@ -208,20 +209,29 @@ router.use(systemAdminMiddleware);
 // listings because a newly verified owner may not have completed shop
 // provisioning yet; the admin must still see the account immediately.
 router.get('/users', asyncHandler(async (_req: Request, res: Response) => {
-  const users = await prisma.user.findMany({
-    select: {
-      id: true,
-      email: true,
-      emailVerifiedAt: true,
-      createdAt: true,
-      profiles: {
-        where: { active: true, deletedAt: null },
-        select: { id: true, name: true, role: true, tenant: { select: { id: true, shopName: true } } },
-        orderBy: { createdAt: 'asc' },
+  const users = [];
+  let cursor: { id: string } | undefined;
+  while (true) {
+    const page = await prisma.user.findMany({
+      ...(cursor ? { cursor, skip: 1 } : {}),
+      take: userDirectoryPageSize,
+      select: {
+        id: true,
+        email: true,
+        emailVerifiedAt: true,
+        createdAt: true,
+        profiles: {
+          where: { active: true, deletedAt: null },
+          select: { id: true, name: true, role: true, tenant: { select: { id: true, shopName: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
       },
-    },
-    orderBy: { createdAt: 'desc' },
-  });
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+    users.push(...page);
+    if (page.length < userDirectoryPageSize) break;
+    cursor = { id: page[page.length - 1].id };
+  }
   return res.json({ users });
 }));
 

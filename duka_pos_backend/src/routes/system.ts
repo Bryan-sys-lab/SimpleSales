@@ -6,6 +6,7 @@ import { taxReportingActivated } from '../services/tax_reporting';
 import { z } from 'zod';
 
 const router = Router();
+const userDirectoryPageSize = 25;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -14,11 +15,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 router.get('/access', (_req, res) => res.json({ systemAdmin: true }));
 
 router.get('/users', asyncHandler(async (_req: Request, res) => {
-  const users = await prisma.profile.findMany({
-    where: { deletedAt: null },
-    select: { id: true, name: true, role: true, active: true, createdAt: true, user: { select: { email: true } }, tenant: { select: { id: true, shopName: true } } },
-    orderBy: { createdAt: 'desc' },
-  });
+  const users = [];
+  let cursor: { id: string } | undefined;
+  while (true) {
+    const page = await prisma.profile.findMany({
+      where: { deletedAt: null },
+      ...(cursor ? { cursor, skip: 1 } : {}),
+      select: { id: true, name: true, role: true, active: true, createdAt: true, user: { select: { email: true } }, tenant: { select: { id: true, shopName: true } } },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: userDirectoryPageSize,
+    });
+    users.push(...page);
+    if (page.length < userDirectoryPageSize) break;
+    cursor = { id: page[page.length - 1].id };
+  }
   res.json({ users });
 }));
 
