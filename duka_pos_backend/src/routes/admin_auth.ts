@@ -10,6 +10,7 @@ import { issueAccessToken } from '../lib/jwt';
 import { systemAdminMiddleware } from '../middleware/auth';
 import { log } from '../lib/observability';
 import { issueAdminWebSocketTicket } from '../services/admin_ws_tickets';
+import { recordAuthAuditEvent } from '../lib/auth_audit';
 import {
   adminPackagePermissions,
   adminPackages,
@@ -77,11 +78,68 @@ async function isWithinAdminScope(
   return false;
 }
 
+const ADMIN_LOCKOUT_MAX_ATTEMPTS = 5;
+const ADMIN_LOCKOUT_MS = 15 * 60 * 1000;
+
+type AdminLockoutState = { count: number; lockedUntil: number };
+
+async function readAdminLockout(email: string): Promise<AdminLockoutState | null> {
+  const key = `admin_lockout:${email.toLowerCase()}`;
+  try {
+    const row = await prisma.systemSettings.findUnique({ where: { key } });
+    if (!row?.value) return null;
+    const parsed = JSON.parse(row.value) as Partial<AdminLockoutState>;
+    if (typeof parsed.count !== 'number' || typeof parsed.lockedUntil !== 'number') return null;
+    return { count: parsed.count, lockedUntil: parsed.lockedUntil };
+  } catch {
+    return null;
+  }
+}
+
+async function writeAdminLockout(email: string, state: AdminLockoutState): Promise<void> {
+  const key = `admin_lockout:${email.toLowerCase()}`;
+  const value = JSON.stringify(state);
+  try {
+    await prisma.systemSettings.upsert({
+      where: { key },
+      update: { value },
+      create: { key, value, description: 'Durable admin login lockout state' },
+    });
+  } catch {
+    // Best-effort: lockout enforcement still benefits from in-request checks and AdminKey DB lockout.
+  }
+}
+
+async function clearAdminLockout(email: string): Promise<void> {
+  const key = `admin_lockout:${email.toLowerCase()}`;
+  try {
+    await prisma.systemSettings.deleteMany({ where: { key } });
+  } catch {
+    // Best-effort.
+  }
+}
+
 router.post('/login', loginLimiter, asyncHandler(async (req: Request, res: Response) => {
   const input = parseBody(loginSchema, req.body);
+  const failureKey = (input.email || '').toLowerCase();
+  const failureState = await readAdminLockout(failureKey);
+  if (failureState && failureState.lockedUntil > Date.now()) {
+    await recordAuthAuditEvent({ eventType: 'admin_login_locked', actorType: 'admin', outcome: 'failure', reason: 'account_locked', email: input.email, ip: req.ip, requestId: req.requestId, userAgent: req.header('user-agent') || undefined });
+    return res.status(429).json({ error: 'Account locked. Try again later.', code: 'ADMIN_LOCKED' });
+  }
   const superEmail = (process.env.SYSTEM_ADMIN_EMAIL ?? 'brian@nerva.co.ke').trim().toLowerCase();
   const masterToken = process.env.SYSTEM_ADMIN_TOKEN;
+  const registerFailure = async () => {
+    const prev = await readAdminLockout(failureKey);
+    const count = (prev?.count ?? 0) + 1;
+    await writeAdminLockout(failureKey, {
+      count,
+      lockedUntil: count >= ADMIN_LOCKOUT_MAX_ATTEMPTS ? Date.now() + ADMIN_LOCKOUT_MS : 0,
+    });
+  };
+
   if (input.email === superEmail && input.masterToken && masterToken && constantTimeEqual(input.masterToken, masterToken)) {
+    await clearAdminLockout(failureKey);
     const { token, expiresIn } = issueAccessToken({
       userId: 'super-admin',
       email: superEmail,
@@ -90,14 +148,45 @@ router.post('/login', loginLimiter, asyncHandler(async (req: Request, res: Respo
       rememberMe: input.rememberMe,
     });
     log('info', 'admin.auth.login', { subject: 'super-admin' });
+    await recordAuthAuditEvent({ eventType: 'admin_login_success', actorType: 'super_admin', outcome: 'success', email: superEmail, ip: req.ip, requestId: req.requestId, userAgent: req.header('user-agent') || undefined });
     return res.json({ access_token: token, token_type: 'Bearer', expires_in: expiresIn, email: superEmail, role: 'super_admin' });
   }
-  if (!input.phone || !input.key) return res.status(401).json({ error: 'Invalid administrator credentials' });
-  const key = await prisma.adminKey.findFirst({ where: { email: input.email, phone: input.phone, revokedAt: null, expiresAt: { gt: new Date() } }, orderBy: { createdAt: 'desc' } });
-  if (!key || key.revokedAt || key.expiresAt <= new Date() || !constantTimeEqual(crypto.createHash('sha256').update(input.key).digest('hex'), key.keyHash)) {
+  if (!input.phone || !input.key) {
+    await registerFailure();
+    await recordAuthAuditEvent({ eventType: 'admin_login_failure', actorType: 'admin', outcome: 'failure', reason: 'missing_credentials', email: input.email, ip: req.ip, requestId: req.requestId, userAgent: req.header('user-agent') || undefined });
     return res.status(401).json({ error: 'Invalid administrator credentials' });
   }
-  await prisma.adminKey.update({ where: { id: key.id }, data: { usedAt: new Date() } });
+  const now = new Date();
+  const key = await prisma.adminKey.findFirst({
+    where: { email: input.email, phone: input.phone, revokedAt: null, expiresAt: { gt: now } },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (key?.lockedUntil && key.lockedUntil > now) {
+    await recordAuthAuditEvent({ eventType: 'admin_login_locked', actorType: 'admin', actorId: `admin:${key.id}`, outcome: 'failure', reason: 'account_locked', email: input.email, ip: req.ip, requestId: req.requestId, userAgent: req.header('user-agent') || undefined });
+    return res.status(429).json({ error: 'Account locked. Try again later.', code: 'ADMIN_LOCKED' });
+  }
+  const validKey = !!key && constantTimeEqual(crypto.createHash('sha256').update(input.key).digest('hex'), key.keyHash);
+  if (!key || !validKey) {
+    if (key) {
+      const failedAttempts = (key.failedAttempts ?? 0) + 1;
+      await prisma.adminKey.update({
+        where: { id: key.id },
+        data: {
+          failedAttempts,
+          lockedUntil: failedAttempts >= ADMIN_LOCKOUT_MAX_ATTEMPTS ? new Date(Date.now() + ADMIN_LOCKOUT_MS) : null,
+        },
+      });
+    } else {
+      await registerFailure();
+    }
+    await recordAuthAuditEvent({ eventType: 'admin_login_failure', actorType: 'admin', actorId: key ? `admin:${key.id}` : undefined, outcome: 'failure', reason: 'invalid_credentials', email: input.email, ip: req.ip, requestId: req.requestId, userAgent: req.header('user-agent') || undefined });
+    return res.status(401).json({ error: 'Invalid administrator credentials' });
+  }
+  await clearAdminLockout(failureKey);
+  await prisma.adminKey.update({
+    where: { id: key.id },
+    data: { usedAt: new Date(), failedAttempts: 0, lockedUntil: null },
+  });
   const { token, expiresIn } = issueAccessToken({
     userId: `admin:${key.id}`,
     email: input.email,
@@ -106,10 +195,11 @@ router.post('/login', loginLimiter, asyncHandler(async (req: Request, res: Respo
     rememberMe: input.rememberMe,
   });
   log('info', 'admin.auth.login', { subject: `admin:${key.id}` });
+  await recordAuthAuditEvent({ eventType: 'admin_login_success', actorType: 'admin', actorId: `admin:${key.id}`, outcome: 'success', email: input.email, ip: req.ip, requestId: req.requestId, userAgent: req.header('user-agent') || undefined });
   return res.json({ access_token: token, token_type: 'Bearer', expires_in: expiresIn, email: input.email, role: 'department_admin' });
 }));
 
-router.post('/refresh', refreshLimiter, systemAdminMiddleware, (req: Request, res: Response) => {
+router.post('/refresh', refreshLimiter, systemAdminMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const auth = req.auth;
   if (!auth || auth.token_use !== 'admin' || typeof auth.sub !== 'string' || typeof auth.email !== 'string') {
     return res.status(401).json({ error: 'Active administrator session required' });
@@ -121,9 +211,10 @@ router.post('/refresh', refreshLimiter, systemAdminMiddleware, (req: Request, re
     tier: 'admin',
     rememberMe: auth.remembered === true,
   });
+  await recordAuthAuditEvent({ eventType: 'admin_refresh_success', actorType: 'admin', actorId: auth.sub, outcome: 'success', email: auth.email, ip: req.ip, requestId: req.requestId, userAgent: req.header('user-agent') || undefined });
   res.setHeader('cache-control', 'no-store');
   return res.json({ access_token: token, token_type: 'Bearer', expires_in: expiresIn });
-});
+}));
 
 router.get('/session', systemAdminMiddleware, (req, res) => res.json({
   email: req.auth?.email,
@@ -136,14 +227,15 @@ router.get('/session', systemAdminMiddleware, (req, res) => res.json({
   canAssignTasks: req.adminAccess?.canAssignTasks ?? false,
 }));
 
-router.post('/ws-ticket', systemAdminMiddleware, (req, res) => {
+router.post('/ws-ticket', systemAdminMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const isSuperAdmin = req.adminAccess?.isSuperAdmin ?? false;
   const permissions = isSuperAdmin
     ? [...permissionOptions]
     : req.adminAccess?.permissions ?? [];
   const ticket = issueAdminWebSocketTicket({ isSuperAdmin, permissions });
+  await recordAuthAuditEvent({ eventType: 'admin_ws_ticket_issued', actorType: 'admin', actorId: typeof req.auth?.sub === 'string' ? req.auth.sub : undefined, outcome: 'success', email: typeof req.auth?.email === 'string' ? req.auth.email : undefined, ip: req.ip, requestId: req.requestId, userAgent: req.header('user-agent') || undefined });
   return res.json({ ticket, expiresIn: 30, isSuperAdmin, permissions });
-});
+}));
 
 router.get('/access-catalog', systemAdminMiddleware, (req, res) => {
   const access = req.adminAccess;
@@ -248,6 +340,7 @@ router.post('/keys/mint', systemAdminMiddleware, asyncHandler(async (req: Reques
     canAssignTasks: input.canAssignTasks,
   };
   log('info', 'admin.key.minted', { keyId: key.id, createdBy: req.auth?.sub, department: key.department });
+  await recordAuthAuditEvent({ eventType: 'admin_key_minted', actorType: 'admin', actorId: req.auth?.sub ?? undefined, outcome: 'success', email: key.email, ip: req.ip, requestId: req.requestId, userAgent: req.header('user-agent') || undefined });
   res.status(201).json({ key: rawKey, id: key.id, email: key.email, phone: key.phone, department: key.department, role: key.role, packages: key.packages, permissions: key.permissions, canRecruit: key.canRecruit, canMintKeys: key.canMintKeys, canAssignTasks: key.canAssignTasks, expiresAt });
 }));
 
@@ -316,6 +409,7 @@ router.patch('/keys/:id', systemAdminMiddleware, asyncHandler(async (req: Reques
   const updated = await prisma.adminKey.findUnique({ where: { id: target.id }, select: { id: true, email: true, department: true, role: true, packages: true, permissions: true, canRecruit: true, canMintKeys: true, canAssignTasks: true, expiresAt: true, revokedAt: true } });
   if (!updated) throw new Error('Updated administrator key could not be reloaded');
   log('info', 'admin.key.permissions_updated', { keyId: updated.id, updatedBy: req.auth?.sub });
+  await recordAuthAuditEvent({ eventType: 'admin_key_updated', actorType: 'admin', actorId: req.auth?.sub ?? undefined, outcome: 'success', email: updated.email, ip: req.ip, requestId: req.requestId, userAgent: req.header('user-agent') || undefined });
   const updatedPackages = normalizeAdminPackages(updated.packages, updated.department);
   const updatedPermissions = Array.isArray(updated.permissions) ? updated.permissions.filter((permission): permission is string => typeof permission === 'string') : [];
   res.json({ key: { ...updated, packages: updatedPackages, permissions: effectiveAdminPermissions(updatedPackages, updatedPermissions) } });
@@ -350,6 +444,7 @@ router.post('/keys/:id/revoke', systemAdminMiddleware, asyncHandler(async (req: 
   ]);
   const key = { id: target.id, revokedAt };
   log('info', 'admin.key.revoked', { keyId: key.id, revokedBy: req.auth?.sub });
+  await recordAuthAuditEvent({ eventType: 'admin_key_revoked', actorType: 'admin', actorId: req.auth?.sub ?? undefined, outcome: 'success', email: target.email, ip: req.ip, requestId: req.requestId, userAgent: req.header('user-agent') || undefined });
   res.json({ key });
 }));
 

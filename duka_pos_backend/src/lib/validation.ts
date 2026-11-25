@@ -665,6 +665,9 @@ export const staffAuthenticateSchema = z.object({
   username: z.string().trim().min(1).max(120),
   // Accept legacy 4-digit PINs during V1->V2 migration; V2 creation/change requires 6 digits.
   pin: z.string().trim().regex(/^(?:\d{4}|\d{6})$/),
+  device_id: z.string().trim().min(1).max(255).optional(),
+  device_label: z.string().trim().max(255).optional(),
+  device_platform: z.string().trim().max(64).optional(),
 });
 
 export const staffSelfPinSchema = z.object({

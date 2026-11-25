@@ -40,6 +40,21 @@ const mocks = vi.hoisted(() => ({
       findFirst: vi.fn(),
       findUnique: vi.fn(),
     },
+    authSession: {
+      create: vi.fn().mockResolvedValue({}),
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      update: vi.fn().mockResolvedValue({}),
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
+    authAuditEvent: {
+      create: vi.fn().mockResolvedValue({}),
+    },
+    deviceAuthorization: {
+      upsert: vi.fn().mockResolvedValue({}),
+      findUnique: vi.fn().mockResolvedValue(null),
+      findMany: vi.fn().mockResolvedValue([]),
+      update: vi.fn().mockResolvedValue({}),
+    },
   },
   sendEmail: vi.fn(),
   redeemVoucherAtomically: vi.fn(),

@@ -21,6 +21,7 @@ import {
   parseBody,
 } from '../lib/validation';
 import { log } from '../lib/observability';
+import { recordAuthAuditEvent } from '../lib/auth_audit';
 import {
   CODE_REQUEST_WINDOW_MINUTES,
   MAX_CODES_PER_WINDOW,
@@ -206,35 +207,71 @@ async function ensureOwnerProfile(input: { userId: string; email: string; shopNa
   return { tenantId: created.tenant.id, shopName: created.tenant.shopName, profileId: created.profile.id, created: true };
 }
 
-async function issueRefreshToken(profileId: string, tier: 'device' | 'access') {
+async function issueRefreshToken(
+  profileId: string,
+  tier: 'device' | 'access',
+  ctx?: { userId?: string; tenantId?: string; actorType?: string; deviceId?: string; ip?: string; userAgent?: string },
+) {
   const token = randomBytes(32).toString('base64url');
   const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
+  const refreshTokenHash = hashRefreshToken(token);
   await prisma.profile.update({
     where: { id: profileId },
     data: {
-      refreshTokenHash: hashRefreshToken(token),
+      refreshTokenHash,
       refreshTokenPreviousHash: null,
       refreshTokenExpiresAt: expiresAt,
       refreshTokenTier: tier,
     },
   });
+  if (prisma.authSession) {
+    await Promise.resolve(prisma.authSession?.updateMany?.({
+      where: { profileId, revokedAt: null },
+      data: { revokedAt: new Date(), revokedReason: 'replaced' },
+    })).catch(() => undefined);
+    await prisma.authSession.create({
+      data: {
+        tenantId: ctx?.tenantId,
+        userId: ctx?.userId,
+        profileId,
+        actorType: ctx?.actorType ?? 'owner',
+        deviceId: ctx?.deviceId,
+        refreshTokenHash,
+        expiresAt,
+        lastSeenAt: new Date(),
+        ip: ctx?.ip,
+        userAgent: ctx?.userAgent,
+      },
+    }).catch(() => undefined);
+  }
   return { token, expiresAt };
 }
 
-async function rotateRefreshToken(profile: any, tier: string) {
+async function rotateRefreshToken(
+  profile: any,
+  tier: string,
+  ctx?: { userId?: string; tenantId?: string; actorType?: string; deviceId?: string; ip?: string; userAgent?: string },
+) {
   const newToken = randomBytes(32).toString('base64url');
   const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
   const currentHash = profile.refreshTokenHash;
+  const refreshTokenHash = hashRefreshToken(newToken);
   await prisma.profile.update({
     where: { id: profile.id },
     data: {
       refreshTokenPreviousHash: currentHash,
-      refreshTokenHash: hashRefreshToken(newToken),
+      refreshTokenHash,
       refreshTokenExpiresAt: expiresAt,
       refreshTokenTier: tier,
       refreshTokenRotatedAt: new Date(),
     },
   });
+  if (prisma.authSession) {
+    await Promise.resolve(prisma.authSession?.updateMany?.({
+      where: { profileId: profile.id, revokedAt: null },
+      data: { previousTokenHash: currentHash, refreshTokenHash, expiresAt, lastSeenAt: new Date(), ip: ctx?.ip ?? undefined, userAgent: ctx?.userAgent ?? undefined },
+    })).catch(() => undefined);
+  }
   return { token: newToken, expiresAt };
 }
 
@@ -412,7 +449,7 @@ router.post('/verify', verifyLimiter, asyncHandler(async (req: Request, res: Res
 
   const tier = 'device';
   const access = issueAccessToken({ userId: user.id, email, emailVerified: true, tier });
-  const refresh = await issueRefreshToken(shop.profileId, tier);
+  const refresh = await issueRefreshToken(shop.profileId, tier, { userId: user.id, tenantId: shop.tenantId, actorType: 'owner', ip: req.ip, userAgent: req.header('user-agent') || undefined });
 
   res.json({
     status: 'verified',
@@ -446,12 +483,16 @@ router.post('/login', loginLimiter, asyncHandler(async (req: Request, res: Respo
     // unknown or unverified
     if (user) {
       await prisma.user.update({ where: { id: user.id }, data: { failedLoginAttempts: { increment: 1 } } });
+      await recordAuthAuditEvent({ eventType: 'owner_login_failure', actorType: 'owner', actorId: user.id, outcome: 'failure', reason: 'unverified_or_invalid', email, ip: req.ip, requestId, userAgent: req.header('user-agent') || undefined });
+    } else {
+      await recordAuthAuditEvent({ eventType: 'owner_login_failure', actorType: 'owner', outcome: 'failure', reason: 'invalid_credentials', email, ip: req.ip, requestId, userAgent: req.header('user-agent') || undefined });
     }
     return res.status(401).json({ error: 'Invalid credentials', code: 'INVALID_CREDENTIALS', requestId });
   }
 
   // lockout check
   if (user.lockedUntil && user.lockedUntil > new Date()) {
+    await recordAuthAuditEvent({ eventType: 'owner_login_locked', actorType: 'owner', actorId: user.id, outcome: 'failure', reason: 'account_locked', email, ip: req.ip, requestId, userAgent: req.header('user-agent') || undefined });
     return res.status(429).json({ error: 'Account locked', code: 'ACCOUNT_LOCKED', requestId });
   }
 
@@ -463,6 +504,7 @@ router.post('/login', loginLimiter, asyncHandler(async (req: Request, res: Respo
       lockedUntil = new Date(Date.now() + lockMs);
     }
     await prisma.user.update({ where: { id: user.id }, data: { failedLoginAttempts: attempts, lockedUntil } });
+    await recordAuthAuditEvent({ eventType: lockedUntil ? 'owner_login_locked' : 'owner_login_failure', actorType: 'owner', actorId: user.id, outcome: 'failure', reason: lockedUntil ? 'account_locked' : 'invalid_credentials', email, ip: req.ip, requestId, userAgent: req.header('user-agent') || undefined });
     return res.status(401).json({ error: 'Invalid credentials', code: 'INVALID_CREDENTIALS', requestId });
   }
 
@@ -479,7 +521,9 @@ router.post('/login', loginLimiter, asyncHandler(async (req: Request, res: Respo
   const access = issueAccessToken({ userId: user.id, email, emailVerified: true, tier });
   // store refresh on first admin/manager profile? Plan: one refresh per profile. For login, use first profile.
   const primaryProfile = profiles[0];
-  const refresh = await issueRefreshToken(primaryProfile.id, tier);
+  const refresh = await issueRefreshToken(primaryProfile.id, tier, { userId: user.id, tenantId: primaryProfile.tenantId, actorType: 'owner', ip: req.ip, userAgent: req.header('user-agent') || undefined });
+
+  await recordAuthAuditEvent({ eventType: 'owner_login_success', actorType: 'owner', actorId: user.id, tenantId: primaryProfile.tenantId, profileId: primaryProfile.id, outcome: 'success', email, ip: req.ip, requestId, userAgent: req.header('user-agent') || undefined });
 
   res.json({
     status: 'logged_in',
@@ -600,9 +644,11 @@ router.post('/refresh', refreshLimiter, asyncHandler(async (req: Request, res: R
     },
   });
   if (!p) {
+    await recordAuthAuditEvent({ eventType: 'auth_refresh_failure', actorType: 'owner', outcome: 'failure', reason: 'invalid_refresh_token', ip: req.ip, requestId, userAgent: req.header('user-agent') || undefined });
     return res.status(401).json({ error: 'Invalid refresh token', code: 'INVALID_REFRESH_TOKEN', requestId });
   }
   if (!p.refreshTokenExpiresAt || p.refreshTokenExpiresAt <= now) {
+    await recordAuthAuditEvent({ eventType: 'auth_refresh_failure', actorType: 'owner', actorId: p.userId || undefined, tenantId: p.tenantId, profileId: p.id, outcome: 'failure', reason: 'session_expired', ip: req.ip, requestId, userAgent: req.header('user-agent') || undefined });
     return res.status(401).json({ error: 'Session expired', code: 'SESSION_EXPIRED', requestId });
   }
 
@@ -626,13 +672,16 @@ router.post('/refresh', refreshLimiter, asyncHandler(async (req: Request, res: R
     }
     // reuse detected
     await prisma.profile.update({ where: { id: p.id }, data: { refreshTokenHash: null, refreshTokenPreviousHash: null } });
+    await Promise.resolve(prisma.authSession?.updateMany?.({ where: { profileId: p.id, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: 'refresh_reuse_detected' } })).catch(() => undefined);
+    await recordAuthAuditEvent({ eventType: 'auth_refresh_reuse_detected', actorType: 'owner', actorId: p.userId || undefined, tenantId: p.tenantId, profileId: p.id, outcome: 'failure', reason: 'refresh_reuse_detected', ip: req.ip, requestId, userAgent: req.header('user-agent') || undefined });
     return res.status(401).json({ error: 'Refresh reuse detected', code: 'REFRESH_REUSE_DETECTED', requestId });
   }
 
   // matches current: rotate
-  const refresh = await rotateRefreshToken(p, tier);
+  const refresh = await rotateRefreshToken(p, tier, { userId: p.userId || undefined, tenantId: p.tenantId, actorType: 'owner', ip: req.ip, userAgent: req.header('user-agent') || undefined });
   const user = await prisma.user.findUnique({ where: { id: p.userId! } });
   const access = issueAccessToken({ userId: p.userId!, email: user?.email ?? '', emailVerified: !!user?.emailVerifiedAt, tier });
+  await recordAuthAuditEvent({ eventType: 'auth_refresh_success', actorType: 'owner', actorId: p.userId || undefined, tenantId: p.tenantId, profileId: p.id, outcome: 'success', ip: req.ip, requestId, userAgent: req.header('user-agent') || undefined });
   res.json({
     status: 'refreshed',
     access_token: access.token,
@@ -709,6 +758,8 @@ router.post('/reset-password', loginLimiter, asyncHandler(async (req: Request, r
 
   // clear refresh hashes on all profiles
   await prisma.profile.updateMany({ where: { userId: user.id }, data: { refreshTokenHash: null, refreshTokenPreviousHash: null } });
+  await Promise.resolve(prisma.authSession?.updateMany?.({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: 'password_reset' } })).catch(() => undefined);
+  await recordAuthAuditEvent({ eventType: 'owner_password_reset', actorType: 'owner', actorId: user.id, outcome: 'success', email, ip: req.ip, requestId, userAgent: req.header('user-agent') || undefined });
 
   res.json({ status: 'password_reset' });
 }));
@@ -726,11 +777,16 @@ router.post('/change-password', authMiddleware, asyncHandler(async (req: Request
   if (!user) return res.status(401).json({ error: 'Unauthorized', requestId });
 
   const ok = await verifyPassword(currentPassword, user.passwordHash);
-  if (!ok) return res.status(401).json({ error: 'Invalid current password', code: 'INVALID_CREDENTIALS', requestId });
+  if (!ok) {
+    await recordAuthAuditEvent({ eventType: 'owner_password_change_failure', actorType: 'owner', actorId: userId, outcome: 'failure', reason: 'invalid_current_password', ip: req.ip, requestId, userAgent: req.header('user-agent') || undefined });
+    return res.status(401).json({ error: 'Invalid current password', code: 'INVALID_CREDENTIALS', requestId });
+  }
 
   const passwordHash = await hashPassword(newPassword);
   await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
   await prisma.profile.updateMany({ where: { userId }, data: { refreshTokenHash: null, refreshTokenPreviousHash: null } });
+  await Promise.resolve(prisma.authSession?.updateMany?.({ where: { userId, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: 'password_change' } })).catch(() => undefined);
+  await recordAuthAuditEvent({ eventType: 'owner_password_change', actorType: 'owner', actorId: userId, outcome: 'success', ip: req.ip, requestId, userAgent: req.header('user-agent') || undefined });
 
   res.json({ status: 'password_changed' });
 }));
@@ -744,12 +800,16 @@ router.post('/logout', authMiddleware, asyncHandler(async (req: Request, res: Re
 
   if (all) {
     await prisma.profile.updateMany({ where: { userId }, data: { refreshTokenHash: null, refreshTokenPreviousHash: null } });
+    await Promise.resolve(prisma.authSession?.updateMany?.({ where: { userId, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: 'logout_all' } })).catch(() => undefined);
   } else if (refreshToken) {
     const hash = hashRefreshToken(refreshToken);
     await prisma.profile.updateMany({ where: { userId, refreshTokenHash: hash }, data: { refreshTokenHash: null, refreshTokenPreviousHash: null } });
+    await Promise.resolve(prisma.authSession?.updateMany?.({ where: { userId, refreshTokenHash: hash, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: 'logout' } })).catch(() => undefined);
   } else {
     await prisma.profile.updateMany({ where: { userId }, data: { refreshTokenHash: null, refreshTokenPreviousHash: null } });
+    await Promise.resolve(prisma.authSession?.updateMany?.({ where: { userId, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: 'logout' } })).catch(() => undefined);
   }
+  await recordAuthAuditEvent({ eventType: 'auth_logout', actorType: 'owner', actorId: userId, outcome: 'success', reason: all ? 'all_sessions' : refreshToken ? 'single_session' : 'default', ip: req.ip, requestId, userAgent: req.header('user-agent') || undefined });
   res.json({ status: 'logged_out' });
 }));
 
@@ -811,6 +871,7 @@ router.post('/pin-reset/request', pinResetLimiter, asyncHandler(async (req: Requ
   }
 
   log('info', 'auth.pin_reset_code_sent', { requestId, email: maskEmail(email) });
+  await recordAuthAuditEvent({ eventType: 'owner_pin_reset_requested', actorType: 'owner', actorId: user?.id, outcome: 'success', email, ip: req.ip, requestId, userAgent: req.header('user-agent') || undefined });
   res.json({
     status: 'code_sent',
     challengeId: challenge.id,
@@ -860,6 +921,8 @@ router.post('/pin-reset/confirm', loginLimiter, asyncHandler(async (req: Request
   const passwordHash = await hashPassword(newPin);
   await prisma.user.update({ where: { id: user.id }, data: { passwordHash, emailVerifiedAt: user.emailVerifiedAt ?? now } });
   await prisma.profile.updateMany({ where: { userId: user.id }, data: { refreshTokenHash: null, refreshTokenPreviousHash: null } });
+  await Promise.resolve(prisma.authSession?.updateMany?.({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: 'pin_reset' } })).catch(() => undefined);
+  await recordAuthAuditEvent({ eventType: 'owner_pin_reset', actorType: 'owner', actorId: user.id, outcome: 'success', email, ip: req.ip, requestId, userAgent: req.header('user-agent') || undefined });
 
   log('info', 'auth.pin_reset', { requestId, email: maskEmail(email) });
   res.json({ status: 'password_reset' });

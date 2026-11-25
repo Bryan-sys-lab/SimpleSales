@@ -1,9 +1,22 @@
-﻿import { timingSafeEqual } from 'node:crypto';
+﻿import { pbkdf2 as pbkdf2Callback } from 'node:crypto';
+import { promisify } from 'node:util';
+
+const pbkdf2Async = promisify(pbkdf2Callback);
+
+// Pure constant-time compare keeps Workers runtime compatibility (no node:crypto Buffer dependency).
+function timingSafeEqualBytes(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) diff |= a[i] ^ b[i];
+  return diff === 0;
+}
 
 export const STAFF_PIN_V2_ALGORITHM = 'pbkdf2';
 export const STAFF_PIN_V2_VERSION = 'v2';
 export const STAFF_PIN_V2_PRF = 'sha256';
-export const STAFF_PIN_V2_ITERATIONS = 600_000;
+// Cloudflare Workers WebCrypto/node:crypto PBKDF2 currently caps iterations at 100000.
+// V2 uses the platform maximum; keep the versioned format so iterations can increase when supported.
+export const STAFF_PIN_V2_ITERATIONS = 100_000;
 export const STAFF_PIN_V2_SALT_BYTES = 16;
 export const STAFF_PIN_V2_KEY_BYTES = 32;
 export const STAFF_PIN_MIN_ITERATIONS = 100_000;
@@ -46,10 +59,7 @@ export function decodeBase64Url(value: string): Uint8Array {
 }
 
 export function constantTimeEqual(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false;
-  const ab = Buffer.from(a);
-  const bb = Buffer.from(b);
-  return timingSafeEqual(ab, bb);
+  return timingSafeEqualBytes(a, b);
 }
 
 export async function deriveStaffPinKey(
@@ -58,19 +68,10 @@ export async function deriveStaffPinKey(
   iterations: number,
   keyBytes = STAFF_PIN_V2_KEY_BYTES,
 ): Promise<Uint8Array> {
-  const key = await globalThis.crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(pin),
-    'PBKDF2',
-    false,
-    ['deriveBits'],
-  );
-  const bits = await globalThis.crypto.subtle.deriveBits(
-    { name: 'PBKDF2', hash: 'SHA-256', salt: new Uint8Array(salt), iterations },
-    key,
-    keyBytes * 8,
-  );
-  return new Uint8Array(bits);
+  // Workers WebCrypto PBKDF2 currently rejects iteration counts above 100000;
+  // use node:crypto pbkdf2 (nodejs_compat) for V2's higher iteration target.
+  const derived = await pbkdf2Async(pin, Buffer.from(salt), iterations, keyBytes, 'sha256');
+  return new Uint8Array(derived);
 }
 
 export function serializeStaffPinHashV2(params: {

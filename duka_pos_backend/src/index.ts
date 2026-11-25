@@ -417,7 +417,7 @@ app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
 
 app.use(errorHandler);
 
-if (isNode && require.main === module) {
+if (isNode && typeof require !== 'undefined' && typeof module !== 'undefined' && require.main === module) {
   const server = app.listen(PORT, () =>
     log('info', 'server.started', { port: PORT, environment: process.env.NODE_ENV ?? 'development' }),
   );

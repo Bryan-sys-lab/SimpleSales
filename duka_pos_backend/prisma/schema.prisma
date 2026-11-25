@@ -1530,6 +1530,8 @@ model AdminKey {
   usedAt    DateTime? @map("used_at")
   expiresAt DateTime  @map("expires_at")
   revokedAt DateTime? @map("revoked_at")
+  failedAttempts Int  @default(0) @map("failed_attempts")
+  lockedUntil DateTime? @map("locked_until")
   department String @default("operations")
   role String @default("worker")
   packages Json @default("[]")
@@ -1606,4 +1608,31 @@ model DeviceAuthorization {
   @@index([tenantId, profileId, status])
   @@index([tenantId, deviceId, status])
   @@map("device_authorizations")
+}
+
+model AuthSession {
+  id                 String    @id @default(cuid())
+  tenantId           String?   @map("tenant_id")
+  userId             String?   @map("user_id")
+  profileId          String?   @map("profile_id")
+  actorType          String    @map("actor_type")
+  deviceId           String?   @map("device_id")
+  refreshTokenHash   String?   @map("refresh_token_hash")
+  previousTokenHash  String?   @map("previous_token_hash")
+  issuedAt           DateTime  @default(now()) @map("issued_at")
+  expiresAt          DateTime? @map("expires_at")
+  lastSeenAt         DateTime? @map("last_seen_at")
+  revokedAt          DateTime? @map("revoked_at")
+  revokedReason      String?   @map("revoked_reason")
+  ip                 String?
+  userAgent          String?   @map("user_agent")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  @@index([userId, revokedAt])
+  @@index([profileId, revokedAt])
+  @@index([tenantId, revokedAt])
+  @@index([refreshTokenHash])
+  @@index([previousTokenHash])
+  @@map("auth_sessions")
 }

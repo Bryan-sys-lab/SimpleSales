@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
       findMany: vi.fn(),
       findFirst: vi.fn(),
       create: vi.fn(),
-      update: vi.fn(),
+      update: vi.fn().mockResolvedValue({}),
     },
     tenantSubscription: {
       findUnique: vi.fn(),
@@ -24,6 +24,18 @@ const mocks = vi.hoisted(() => ({
       findMany: vi.fn(),
       findFirst: vi.fn(),
       update: vi.fn(),
+    },
+    authSession: {
+      create: vi.fn().mockResolvedValue({}),
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
+    authAuditEvent: {
+      create: vi.fn().mockResolvedValue({}),
+    },
+    deviceAuthorization: {
+      upsert: vi.fn().mockResolvedValue({}),
+      findUnique: vi.fn().mockResolvedValue(null),
+      update: vi.fn().mockResolvedValue({}),
     },
     $transaction: vi.fn(),
   },
@@ -484,7 +496,7 @@ describe('staff registration, pull and bootstrap contracts', () => {
     expect(mocks.prisma.profile.update).toHaveBeenCalledWith({
       where: { id: 'remote-staff-1' },
       data: expect.objectContaining({
-        pinHash: expect.stringMatching(/^pbkdf2\$v2\$sha256\$600000\$/),
+        pinHash: expect.stringMatching(/^pbkdf2\$v2\$sha256\$100000\$/),
         pinFormat: 'v2',
         pinFailedAttempts: 0,
         pinLockedUntil: null,
@@ -543,7 +555,7 @@ describe('staff registration, pull and bootstrap contracts', () => {
     expect(completed.status).toBe(200);
     expect(mocks.d1.batch).toHaveBeenCalledTimes(1);
     expect(mocks.d1.statements[0].sql).toContain('UPDATE profiles');
-    expect(mocks.d1.statements[0].values[0]).toMatch(/^pbkdf2\$v2\$sha256\$600000\$/);
+    expect(mocks.d1.statements[0].values[0]).toMatch(/^pbkdf2\$v2\$sha256\$100000\$/);
     expect(mocks.d1.statements[0].values[0]).not.toContain('567890');
     expect(JSON.parse(String(mocks.d1.statements[1].values[0]))).toMatchObject({
       status: 'completed',

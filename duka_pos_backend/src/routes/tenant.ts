@@ -6,7 +6,7 @@
  * tenant-selected staff bootstrap route.
  */
 import { Router } from 'express';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { Prisma } from '../generated/prisma/client';
 import { asyncHandler, HttpError, requireUser } from '../lib/http';
 import { parseBody } from '../lib/validation';
@@ -22,6 +22,7 @@ import {
   verifyStaffPinHash as verifyStaffPinHashV2,
 } from '../lib/auth_v2_crypto';
 import { recordAuthAuditEvent } from '../lib/auth_audit';
+import { issueOfflineLease } from '../lib/auth_device_lease';
 import { registerPaymentChannel, initiateStkPush, queryTransactionStatus } from '../services/payhero';
 import { taxReportingActivated, taxReportingStatus } from '../services/tax_reporting';
 import { encryptTaxSecret, lastFour } from '../services/tax_entity';
@@ -504,6 +505,16 @@ router.post(
     if (results.some((result) => (result.meta.changes ?? 0) !== 1)) {
       throw new Error('Tenant provisioning did not create all required records');
     }
+    await recordAuthAuditEvent({
+      tenantId,
+      actorType: 'account',
+      actorId: userId,
+      action: 'tenant.provisioned',
+      outcome: 'success',
+      ip: req.ip,
+      userAgent: req.get('user-agent'),
+      metadata: { shopName: shopName.trim() },
+    });
     return res.json({ tenant_id: tenantId });
   })
 );
@@ -623,6 +634,22 @@ router.patch(
     }
     const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
     if (!tenant) return res.status(404).json({ error: 'Shop not found' });
+    await recordAuthAuditEvent({
+      tenantId,
+      actorType: 'profile',
+      actorId: requireUser(req).id,
+      action: 'tenant.settings_updated',
+      outcome: 'success',
+      ip: req.ip,
+      userAgent: req.get('user-agent'),
+      metadata: {
+        mpesaEnabled,
+        etimsEnabled,
+        payheroChannelId: payheroChannelId !== undefined ? Boolean(payheroChannelId) : undefined,
+        businessProfile,
+        risitiMerchantId: risitiMerchantId !== undefined ? Boolean(risitiMerchantId) : undefined,
+      },
+    });
     return res.json(tenant);
   })
 );
@@ -1530,6 +1557,16 @@ router.post(
         throw new HttpError(409, 'One or more staff profiles changed during sync; retry the roster');
       }
     }
+    await recordAuthAuditEvent({
+      tenantId,
+      actorType: 'profile',
+      actorId: requireUser(req).id,
+      action: 'staff.sync',
+      outcome: 'success',
+      ip: req.ip,
+      userAgent: req.get('user-agent'),
+      metadata: { syncedCount: synced.length, requestedCount: staff.length },
+    });
     return res.json({ synced });
   })
 );
@@ -1614,6 +1651,20 @@ router.delete(
     if ((results[0]?.meta.changes ?? 0) !== 1 || (results[1]?.meta.changes ?? 0) !== 1) {
       return res.status(409).json({ error: 'Staff profile changed during deletion; reload before retrying' });
     }
+    await Promise.resolve(prisma.authSession?.updateMany?.({
+      where: { profileId: profile.id, revokedAt: null },
+      data: { revokedAt: new Date(), revokedReason: 'staff_deleted' },
+    })).catch(() => undefined);
+    await recordAuthAuditEvent({
+      tenantId,
+      actorType: 'profile',
+      actorId: requireUser(req).id,
+      action: 'staff.deleted',
+      outcome: 'success',
+      ip: req.ip,
+      userAgent: req.get('user-agent'),
+      metadata: { staffProfileId: profile.id, reason: reason ?? null },
+    });
     return res.json({ deleted: true, profile_id: profile.id });
   })
 );
@@ -1831,19 +1882,91 @@ router.post(
         await prisma.profile.update({ where: { id: profile.id }, data: successUpdate });
       }
 
-      const response = {
+      const deviceId = typeof parsed.device_id === 'string' ? parsed.device_id.trim() : '';
+      let offlineLease: { token: string; expires_at: string } | null = null;
+      if (deviceId) {
+        const existingDevice = await prisma.deviceAuthorization.findUnique({
+          where: { tenantId_deviceId: { tenantId, deviceId } },
+        });
+        if (existingDevice?.status === 'revoked' || existingDevice?.revokedAt) {
+          await recordAuthAuditEvent({
+            tenantId,
+            actorType: 'staff',
+            actorId: profile.id,
+            action: 'staff.login',
+            outcome: 'denied',
+            reason: 'DEVICE_REVOKED',
+            ip: req.ip,
+            userAgent: req.get('user-agent'),
+            metadata: { username, deviceId },
+          });
+          return res.status(403).json({ error: 'Device is revoked', code: 'DEVICE_REVOKED' });
+        }
+        const credentialVersion = Number(successUpdate.pinCredentialVersion ?? profile.pin_credential_version ?? 0);
+        const lease = issueOfflineLease({ tenantId, profileId: profile.id, deviceId, credentialVersion });
+        const leaseExpiresAt = new Date(lease.expiresAt);
+        await prisma.deviceAuthorization.upsert({
+          where: { tenantId_deviceId: { tenantId, deviceId } },
+          update: {
+            profileId: profile.id,
+            label: typeof parsed.device_label === 'string' ? parsed.device_label.trim() || undefined : undefined,
+            platform: typeof parsed.device_platform === 'string' ? parsed.device_platform.trim() || undefined : undefined,
+            status: 'active',
+            lastSeenAt: new Date(),
+            revokedAt: null,
+            offlineLeaseExpiresAt: leaseExpiresAt,
+            credentialVersion,
+          },
+          create: {
+            tenantId,
+            profileId: profile.id,
+            deviceId,
+            label: typeof parsed.device_label === 'string' ? parsed.device_label.trim() || null : null,
+            platform: typeof parsed.device_platform === 'string' ? parsed.device_platform.trim() || null : null,
+            status: 'active',
+            lastSeenAt: new Date(),
+            offlineLeaseExpiresAt: leaseExpiresAt,
+            credentialVersion,
+          },
+        });
+        offlineLease = { token: lease.token, expires_at: lease.expiresAt };
+      }
+
+      const response: Record<string, unknown> = {
         staff_id: profile.id,
         local_id: profile.local_id ?? null,
         name: profile.name,
         role: profile.role,
         tenant_id: tenantId,
         shop_name: profile.shop_name,
-        session_token: issueStaffSessionToken({
-          profileId: profile.id,
+      };
+      const staffSession = issueStaffSessionToken({
+        profileId: profile.id,
+        tenantId,
+        userId: `staff:${profile.id}`,
+        pinCredentialVersion: profile.pinCredentialVersion ?? 0,
+      });
+      response.session_token = staffSession.token;
+      if (offlineLease) {
+        response.offline_lease = offlineLease.token;
+        response.offline_lease_expires_at = offlineLease.expires_at;
+        response.device_id = deviceId;
+      }
+      const staffSessionHash = createHash('sha256').update(staffSession.token).digest('hex');
+      await prisma.authSession.create({
+        data: {
           tenantId,
           userId: `staff:${profile.id}`,
-        }).token,
-      };
+          profileId: profile.id,
+          actorType: 'staff',
+          deviceId: typeof req.body?.device_id === 'string' ? req.body.device_id.trim() || undefined : undefined,
+          refreshTokenHash: staffSessionHash,
+          expiresAt: new Date(Date.now() + staffSession.expiresIn * 1000),
+          lastSeenAt: new Date(),
+          ip: req.ip,
+          userAgent: req.get('user-agent'),
+        },
+      }).catch(() => undefined);
       await recordAuthAuditEvent({
         tenantId,
         actorType: 'staff',
@@ -1909,7 +2032,18 @@ router.post(
         AND: [managedStaffProfileFilter()],
       },
     });
-    if (!profile || !await verifyStaffPin(currentPin, profile.pinHash)) {
+    if (!profile) {
+      return res.status(401).json({ error: 'Staff session required' });
+    }
+    if (typeof claims.pin_cv === 'number' && claims.pin_cv !== (profile.pinCredentialVersion ?? 0)) {
+      return res.status(401).json({ error: 'Staff session revoked' });
+    }
+    const staffSessionHash = createHash('sha256').update(token).digest('hex');
+    const authSession = await (prisma.authSession?.findUnique as any)?.({ where: { refreshTokenHash: staffSessionHash } }).catch(() => null);
+    if (authSession?.revokedAt || (authSession?.expiresAt && new Date(authSession.expiresAt).getTime() <= Date.now())) {
+      return res.status(401).json({ error: 'Staff session revoked' });
+    }
+    if (!await verifyStaffPin(currentPin, profile.pinHash)) {
       return res.status(401).json({ error: 'Current PIN is incorrect' });
     }
     const newPinHash = await hashStaffPin(newPin);
@@ -1923,7 +2057,20 @@ router.post(
         pinUpdatedAt: new Date(),
         pinFailedAttempts: 0,
         pinLockedUntil: null,
+        refreshTokenHash: null,
+        refreshTokenPreviousHash: null,
       },
+    });
+    await Promise.resolve(prisma.authSession?.updateMany?.({ where: { profileId: profile.id, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: 'staff_self_pin_change' } })).catch(() => undefined);
+    await recordAuthAuditEvent({
+      tenantId,
+      actorType: 'staff',
+      actorId: profile.id,
+      action: 'staff.self_pin_change',
+      outcome: 'success',
+      ip: req.ip,
+      userAgent: req.get('user-agent'),
+      metadata: { credentialVersionBumped: true },
     });
     return res.json({ status: 'pin_changed', staff_id: profile.id });
   }),
@@ -2081,6 +2228,21 @@ router.post(
     }
     // Never include the temporary PIN in the response, live signal, or audit
     // payload. The owner communicates it directly to the named staff member.
+    await prisma.profile.update({
+      where: { id: profile.id },
+      data: { refreshTokenHash: null, refreshTokenPreviousHash: null },
+    }).catch(() => undefined);
+    await Promise.resolve(prisma.authSession?.updateMany?.({ where: { profileId: profile.id, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: 'staff_pin_reset_approved' } })).catch(() => undefined);
+    await recordAuthAuditEvent({
+      tenantId: user.tenantId,
+      actorType: 'profile',
+      actorId: user.id,
+      action: 'staff.pin_reset_completed',
+      outcome: 'success',
+      ip: req.ip,
+      userAgent: req.get('user-agent'),
+      metadata: { staffProfileId: profile.id, requestId },
+    });
     broadcastTenantChange(user.tenantId, ['staff_pin_reset_completed']);
     return res.json({ status: 'reset_completed', staff_profile_id: profile.id });
   }),
@@ -2357,6 +2519,61 @@ router.get(
       ? `${new Date(filtered[filtered.length - 1].createdAt).toISOString()}|${filtered[filtered.length - 1].eventId}`
       : null;
     return res.json({ from: from.toISOString(), to: to.toISOString(), events: filtered, nextCursor });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Device enrollment / offline lease management (V2)
+// ---------------------------------------------------------------------------
+
+router.get(
+  '/devices',
+  asyncHandler(async (req, res) => {
+    const user = requireUser(req);
+    if (!['admin', 'manager'].includes(user.role)) throw new HttpError(403, 'Admin/manager access required');
+    const devices = await prisma.deviceAuthorization.findMany({
+      where: { tenantId: user.tenantId },
+      orderBy: { updatedAt: 'desc' },
+      select: {
+        id: true, deviceId: true, profileId: true, label: true, platform: true,
+        status: true, enrolledAt: true, lastSeenAt: true, revokedAt: true,
+        offlineLeaseExpiresAt: true, credentialVersion: true,
+      },
+    });
+    res.json({ devices });
+  }),
+);
+
+router.post(
+  '/devices/:deviceId/revoke',
+  asyncHandler(async (req, res) => {
+    const user = requireUser(req);
+    if (!['admin', 'manager'].includes(user.role)) throw new HttpError(403, 'Admin/manager access required');
+    const deviceId = String(req.params.deviceId || '').trim();
+    if (!deviceId) throw new HttpError(400, 'deviceId required');
+    const existing = await prisma.deviceAuthorization.findUnique({
+      where: { tenantId_deviceId: { tenantId: user.tenantId, deviceId } },
+    });
+    if (!existing) throw new HttpError(404, 'Device not found');
+    const device = await prisma.deviceAuthorization.update({
+      where: { tenantId_deviceId: { tenantId: user.tenantId, deviceId } },
+      data: { status: 'revoked', revokedAt: new Date() },
+    });
+    await Promise.resolve(prisma.authSession?.updateMany?.({
+      where: { tenantId: user.tenantId, deviceId, revokedAt: null },
+      data: { revokedAt: new Date(), revokedReason: 'device_revoked' },
+    })).catch(() => undefined);
+    await recordAuthAuditEvent({
+      tenantId: user.tenantId,
+      actorType: 'profile',
+      actorId: user.id,
+      action: 'device.revoke',
+      outcome: 'success',
+      ip: req.ip,
+      userAgent: req.get('user-agent'),
+      metadata: { deviceId, deviceAuthorizationId: device.id },
+    });
+    res.json({ status: 'revoked', device_id: deviceId });
   }),
 );
 

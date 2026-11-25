@@ -6,6 +6,7 @@ export type StaffSessionClaims = {
   tenantId: string;
   profileId: string;
   token_use: 'staff';
+  pin_cv?: number;
   iat: number;
   exp: number;
   jti: string;
@@ -94,13 +95,14 @@ export function issueStaffSessionToken(params: {
   profileId: string;
   tenantId: string;
   userId: string;
+  pinCredentialVersion?: number | null;
 }): { token: string; expiresIn: number } {
   const secret = process.env.AUTH_JWT_SECRET;
   if (!secret) throw new Error('AUTH_JWT_SECRET must be configured');
   const jti = (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2));
   return {
     token: jwt.sign(
-      { sub: params.userId, tenantId: params.tenantId, profileId: params.profileId, token_use: 'staff', jti },
+      { sub: params.userId, tenantId: params.tenantId, profileId: params.profileId, token_use: 'staff', pin_cv: params.pinCredentialVersion ?? 0, jti },
       secret,
       { algorithm: 'HS256', expiresIn: STAFF_SESSION_TTL_SECONDS },
     ),

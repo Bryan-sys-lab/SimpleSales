@@ -8,6 +8,7 @@
  */
 import express from 'express';
 import { prisma } from '../lib/prisma';
+import { createHash } from 'crypto';
 import { verifyAccessToken, verifyStaffSessionToken } from '../lib/jwt';
 import { tenantEntitlement } from '../lib/entitlements';
 import { effectiveAdminPermissions, normalizeAdminPackages } from '../lib/admin_access_catalog';
@@ -98,19 +99,37 @@ export const authMiddleware = async (req: express.Request, res: express.Response
       err.status = 401;
       return next(err);
     }
-    return prisma.profile.findFirst({
+    const profile = await prisma.profile.findFirst({
       where: { id: staffClaims.profileId, tenantId: staffClaims.tenantId, active: true, deletedAt: null },
-      select: { id: true, tenantId: true, role: true, name: true },
-    }).then((profile) => {
-      if (!profile) {
-        const err: any = new Error('Invalid or expired staff session');
+      select: { id: true, tenantId: true, role: true, name: true, pinCredentialVersion: true },
+    });
+    if (!profile) {
+      const err: any = new Error('Invalid or expired staff session');
+      err.status = 401;
+      return next(err);
+    }
+    if (typeof staffClaims.pin_cv === 'number' && staffClaims.pin_cv !== (profile.pinCredentialVersion ?? 0)) {
+      const err: any = new Error('Staff session revoked');
+      err.status = 401;
+      return next(err);
+    }
+    try {
+      const sessionHash = createHash('sha256').update(token).digest('hex');
+      const session = await prisma.authSession.findFirst({
+        where: { refreshTokenHash: sessionHash, profileId: profile.id },
+        select: { revokedAt: true, expiresAt: true },
+      });
+      if (session && (session.revokedAt || session.expiresAt <= new Date())) {
+        const err: any = new Error('Staff session revoked');
         err.status = 401;
         return next(err);
       }
-      req.auth = { sub: staffClaims.sub, token_use: 'staff' };
-      req.user = { id: profile.id, tenantId: profile.tenantId, role: profile.role, name: profile.name };
-      return next();
-    }).catch(next);
+    } catch {
+      // Backward-compatible: if session lookup is unavailable, pin_cv/signature checks still apply.
+    }
+    req.auth = { sub: staffClaims.sub, token_use: 'staff' };
+    req.user = { id: profile.id, tenantId: profile.tenantId, role: profile.role, name: profile.name };
+    return next();
   }
   const claims = verifyAccessToken(token);
   if (!claims) {
@@ -139,7 +158,6 @@ export const authMiddleware = async (req: express.Request, res: express.Response
       '/tenant',
       '/products',
       '/reports',
-      '/admin',
       '/sales',
       '/backups',
       '/payments',
@@ -147,6 +165,22 @@ export const authMiddleware = async (req: express.Request, res: express.Response
     const ok = voucherBillingPath ||
       allowedPrefixes.some((p) => normalizedOriginalPath === p || normalizedOriginalPath.startsWith(p + '/'));
     if (!ok) {
+      return res.status(403).json({ error: 'Device token not allowed', code: 'DEVICE_TOKEN_NOT_ALLOWED', requestId: req.requestId });
+    }
+    const deviceDeniedTenantPaths = [
+      '/tenant/provision',
+      '/tenant/settings',
+      '/tenant/staff/sync',
+      '/tenant/staff/pin-reset-requests',
+      '/tenant/devices',
+      '/tenant/tax-entity',
+      '/tenant/portfolio',
+      '/tenant/activity',
+    ];
+    const deviceDenied = deviceDeniedTenantPaths.some(
+      (p) => normalizedOriginalPath === p || normalizedOriginalPath.startsWith(p + '/'),
+    );
+    if (deviceDenied && !(req.method === 'GET' && normalizedOriginalPath === '/tenant/settings')) {
       return res.status(403).json({ error: 'Device token not allowed', code: 'DEVICE_TOKEN_NOT_ALLOWED', requestId: req.requestId });
     }
   }
@@ -208,8 +242,6 @@ export const authMiddleware = async (req: express.Request, res: express.Response
   }
 };
 
-// Alias for compatibility with existing route registration.
-export const checkJwt = authMiddleware;
 
 export const requireOwner = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (req.user?.role !== 'admin') {

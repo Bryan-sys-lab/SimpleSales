@@ -1,11 +1,13 @@
-﻿import { Prisma } from '../generated/client/client.js';
-import { prisma } from './prisma.js';
+﻿import { prisma } from './prisma.js';
 
 export interface AuthAuditInput {
   tenantId?: string | null;
-  actorType: string;
+  actorType?: string | null;
   actorId?: string | null;
-  action: string;
+  profileId?: string | null;
+  userId?: string | null;
+  eventType?: string;
+  action?: string;
   outcome: 'success' | 'failure' | 'denied' | 'error';
   reason?: string | null;
   ip?: string | null;
@@ -15,24 +17,29 @@ export interface AuthAuditInput {
 }
 
 export async function recordAuthAuditEvent(input: AuthAuditInput): Promise<void> {
+  const eventType = input.eventType ?? input.action ?? 'unknown_auth_event';
+  const actorType = input.actorType ?? null;
+  const actorId = input.actorId ?? null;
+  const profileId = input.profileId ?? (actorType === 'staff' ? actorId : null);
+  const userId = input.userId ?? (actorType && actorType !== 'staff' ? actorId : null);
   try {
     await prisma.authAuditEvent.create({
       data: {
         tenantId: input.tenantId ?? null,
-        actorType: input.actorType,
-        actorId: input.actorId ?? null,
-        action: input.action,
+        profileId,
+        userId,
+        deviceId: input.deviceId ?? null,
+        eventType,
         outcome: input.outcome,
         reason: input.reason ?? null,
         ip: input.ip ?? null,
         userAgent: input.userAgent ?? null,
-        deviceId: input.deviceId ?? null,
-        metadataJson: input.metadata ? JSON.stringify(input.metadata) : null,
+        metadata: (input.metadata ?? undefined) as any,
       },
     });
   } catch (error) {
     console.warn('[auth-audit] failed to record event', {
-      action: input.action,
+      eventType,
       outcome: input.outcome,
       error: error instanceof Error ? error.message : String(error),
     });
