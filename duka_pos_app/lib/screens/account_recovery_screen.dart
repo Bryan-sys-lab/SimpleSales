@@ -5,7 +5,9 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../l10n/generated/app_localizations.dart';
+import '../models/models.dart';
 import '../routing/routes.dart';
+import '../services/auth_service.dart';
 import '../services/app_state.dart';
 import '../services/backend_service.dart';
 import '../services/identity_service.dart';
@@ -72,6 +74,7 @@ class _AccountRecoveryScreenState extends State<AccountRecoveryScreen> {
     final email = _email.text.trim().toLowerCase();
     final pin = _pin.text.trim();
     final passphrase = _passphrase.text;
+    final recoveryPath = accountRecoveryPathForPassphrase(passphrase);
     if (email.isEmpty) {
       setState(() => _error = l10n.accountRecoveryEnterEmail);
       return;
@@ -80,7 +83,7 @@ class _AccountRecoveryScreenState extends State<AccountRecoveryScreen> {
       setState(() => _error = l10n.accountRecoveryInvalidPin);
       return;
     }
-    if (passphrase.length < 8) {
+    if (recoveryPath == null) {
       setState(() => _error = l10n.accountRecoveryInvalidPassphrase);
       return;
     }
@@ -137,18 +140,39 @@ class _AccountRecoveryScreenState extends State<AccountRecoveryScreen> {
         true,
       );
 
-      final restored =
-          await BackendService.restorePortableFullBackupFromBackend(passphrase);
-      if (!restored) throw StateError(l10n.accountRecoveryNoBackup);
+      final shopName = shop['shopName'] as String? ?? 'Shop';
+      if (recoveryPath == AccountRecoveryPath.portableBackup) {
+        final restored =
+            await BackendService.restorePortableFullBackupFromBackend(
+          passphrase,
+        );
+        if (!restored) throw StateError(l10n.accountRecoveryNoBackup);
 
-      // The email-authenticated PIN becomes the local owner PIN on the
-      // replacement device, so the restored shop can be unlocked immediately.
-      await PinResetService.installPin(pin);
-      await appState.switchWorkspace(
-        recoveryWorkspace,
-        signIn: true,
-        endOnlineSession: false,
-      );
+        // The email-authenticated PIN becomes the local owner PIN on the
+        // replacement device, so the restored shop can be unlocked immediately.
+        await PinResetService.installPin(pin);
+        await appState.switchWorkspace(
+          recoveryWorkspace,
+          signIn: true,
+          endOnlineSession: false,
+        );
+      } else {
+        final owner = Owner(
+          id: 1,
+          name: email.split('@').first,
+          pinHash: await AuthService.hashPin(pin),
+          email: email,
+          shopName: shopName,
+          createdAt: DateTime.now().toUtc().toIso8601String(),
+        );
+        await appState.switchWorkspace(
+          recoveryWorkspace,
+          createOwnerFor: owner,
+          signIn: true,
+          endOnlineSession: false,
+        );
+        await BackendService.pullLiveSnapshot();
+      }
       if (!mounted) return;
       context.go(Routes.dashboard);
     } catch (error, stack) {
@@ -341,4 +365,12 @@ class _AccountRecoveryScreenState extends State<AccountRecoveryScreen> {
       ),
     );
   }
+}
+
+enum AccountRecoveryPath { cloudSync, portableBackup }
+
+AccountRecoveryPath? accountRecoveryPathForPassphrase(String passphrase) {
+  if (passphrase.isEmpty) return AccountRecoveryPath.cloudSync;
+  if (passphrase.length < 8) return null;
+  return AccountRecoveryPath.portableBackup;
 }

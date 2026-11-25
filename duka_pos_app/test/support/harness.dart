@@ -141,6 +141,7 @@ extension TestHarness on WidgetTester {
     bool disableAnimations = false,
     double surfaceSize = double.infinity,
     bool hapticsEnabled = false,
+    Duration appStageRetryTimeout = AppStageController.defaultRetryTimeout,
     Locale locale = const Locale('en'),
     Iterable<Locale> supportedLocales = _appLocales,
   }) async {
@@ -165,8 +166,10 @@ extension TestHarness on WidgetTester {
         // preferences, and a harness that booted the app would make every
         // widget test depend on both.
         ChangeNotifierProvider<AppStageController>(
-          create: (BuildContext context) =>
-              AppStageController(context.read<AppState>()),
+          create: (BuildContext context) => AppStageController(
+            context.read<AppState>(),
+            retryTimeout: appStageRetryTimeout,
+          ),
         ),
         ChangeNotifierProvider<LiveChannelService>(
             create: (_) => LiveChannelService(random: _FakeRandomForHarness())),

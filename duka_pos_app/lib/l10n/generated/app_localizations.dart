@@ -3889,7 +3889,7 @@ abstract class AppLocalizations {
   /// No description provided for @paywallVoucherChooseText.
   ///
   /// In en, this message translates to:
-  /// **'Choose a subscription or enter an administrator-issued voucher. Access is shared by the shop\'s owner and staff.'**
+  /// **'The price and billing period set for this shop are shown above. Enter an administrator-issued voucher to activate access.'**
   String get paywallVoucherChooseText;
 
   /// No description provided for @paywallVoucherClaimText.
@@ -3945,6 +3945,132 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Payment prompt: {currency} {amount} for {duration} months'**
   String paywallPaymentPrompt(String currency, String amount, int duration);
+
+  /// No description provided for @paywallPaymentMethodTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment method'**
+  String get paywallPaymentMethodTitle;
+
+  /// No description provided for @paywallPaymentMethodMpesa.
+  ///
+  /// In en, this message translates to:
+  /// **'M-Pesa prompt'**
+  String get paywallPaymentMethodMpesa;
+
+  /// No description provided for @paywallPaymentDestinationTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'PayHero collection destination'**
+  String get paywallPaymentDestinationTitle;
+
+  /// No description provided for @paywallPaymentTillDestination.
+  ///
+  /// In en, this message translates to:
+  /// **'Till: {code}'**
+  String paywallPaymentTillDestination(String code);
+
+  /// No description provided for @paywallPaymentPaybillDestination.
+  ///
+  /// In en, this message translates to:
+  /// **'Paybill: {code}'**
+  String paywallPaymentPaybillDestination(String code);
+
+  /// No description provided for @paywallPaymentBankDestination.
+  ///
+  /// In en, this message translates to:
+  /// **'Bank code: {code} · Account: {account}'**
+  String paywallPaymentBankDestination(String code, String account);
+
+  /// No description provided for @paywallPaymentUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'The administrator has not finished configuring payments. Please try again later.'**
+  String get paywallPaymentUnavailable;
+
+  /// No description provided for @paywallPaymentPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'M-Pesa phone number'**
+  String get paywallPaymentPhone;
+
+  /// No description provided for @paywallPaymentPhoneInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a valid phone number to receive the M-Pesa prompt.'**
+  String get paywallPaymentPhoneInvalid;
+
+  /// No description provided for @paywallPaymentReference.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment reference: {reference}'**
+  String paywallPaymentReference(String reference);
+
+  /// No description provided for @paywallPaymentPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment is still pending. Approve the M-Pesa prompt, then check again.'**
+  String get paywallPaymentPending;
+
+  /// No description provided for @paywallPaymentFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment was not completed. You can try again.'**
+  String get paywallPaymentFailed;
+
+  /// No description provided for @paywallPaymentReceived.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment was received, but the subscription status could not be refreshed. Refresh and try again.'**
+  String get paywallPaymentReceived;
+
+  /// No description provided for @paywallPaymentDuration.
+  ///
+  /// In en, this message translates to:
+  /// **'Every {months} months'**
+  String paywallPaymentDuration(int months);
+
+  /// No description provided for @paywallCheckingPayment.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking payment…'**
+  String get paywallCheckingPayment;
+
+  /// No description provided for @paywallCheckPaymentStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'Check payment status'**
+  String get paywallCheckPaymentStatus;
+
+  /// No description provided for @paywallVoucherPeriodMismatch.
+  ///
+  /// In en, this message translates to:
+  /// **'Your {months}-month discount voucher does not match the administrator-set billing period; it will remain available for a matching plan.'**
+  String paywallVoucherPeriodMismatch(int months);
+
+  /// No description provided for @billingIntervalMonthly.
+  ///
+  /// In en, this message translates to:
+  /// **'Monthly'**
+  String get billingIntervalMonthly;
+
+  /// No description provided for @billingIntervalQuarterly.
+  ///
+  /// In en, this message translates to:
+  /// **'Quarterly (3 months)'**
+  String get billingIntervalQuarterly;
+
+  /// No description provided for @billingIntervalSemiannual.
+  ///
+  /// In en, this message translates to:
+  /// **'Semiannual (6 months)'**
+  String get billingIntervalSemiannual;
+
+  /// No description provided for @billingIntervalAnnual.
+  ///
+  /// In en, this message translates to:
+  /// **'Annual (12 months)'**
+  String get billingIntervalAnnual;
 
   /// No description provided for @membershipTitle.
   ///
@@ -4889,10 +5015,106 @@ abstract class AppLocalizations {
   /// **'{name} will no longer be able to sign in. Their past sales stay on record.'**
   String settingsRemoveStaffMessage(Object name);
 
+  /// No description provided for @settingsPayHeroGuideTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Set up M-Pesa and bank collections'**
+  String get settingsPayHeroGuideTitle;
+
+  /// No description provided for @settingsPayHeroGuideSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose the destination where you want customer payments to arrive.'**
+  String get settingsPayHeroGuideSummary;
+
+  /// No description provided for @settingsPayHeroGuideIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'PayHero connects your shop\'s M-Pesa Till, Paybill or bank Paybill. The app registers the channel for you; do not enter PayHero API keys or your M-Pesa PIN here.'**
+  String get settingsPayHeroGuideIntro;
+
+  /// No description provided for @settingsPayHeroTillGuide.
+  ///
+  /// In en, this message translates to:
+  /// **'M-Pesa Till: choose this for a Buy Goods Till and enter the Till number registered to your shop. Customers receive an M-Pesa STK prompt and the payment goes to this Till. No account number is needed.'**
+  String get settingsPayHeroTillGuide;
+
+  /// No description provided for @settingsPayHeroPaybillGuide.
+  ///
+  /// In en, this message translates to:
+  /// **'M-Pesa Paybill: enter your business Paybill number. If your Paybill needs an account number or reference to route payments, enter it in the optional account field; otherwise leave it blank.'**
+  String get settingsPayHeroPaybillGuide;
+
+  /// No description provided for @settingsPayHeroBankGuide.
+  ///
+  /// In en, this message translates to:
+  /// **'Bank: enter the bank\'s M-Pesa Paybill number and the destination bank account number. PayHero uses both to route the customer\'s STK payment to that bank account.'**
+  String get settingsPayHeroBankGuide;
+
+  /// No description provided for @settingsPayHeroActivationGuide.
+  ///
+  /// In en, this message translates to:
+  /// **'Save the channel to register it with PayHero and enable M-Pesa. Setup and STK prompts need an internet connection. Test with your own phone and confirm the payment reaches the selected destination.'**
+  String get settingsPayHeroActivationGuide;
+
+  /// No description provided for @settingsPayHeroSubscriptionNote.
+  ///
+  /// In en, this message translates to:
+  /// **'This destination collects your shop\'s sales. Membership or subscription payments use a separate destination configured by the platform.'**
+  String get settingsPayHeroSubscriptionNote;
+
+  /// No description provided for @settingsPayHeroCollectionType.
+  ///
+  /// In en, this message translates to:
+  /// **'Collection destination'**
+  String get settingsPayHeroCollectionType;
+
+  /// No description provided for @settingsPayHeroBankChannel.
+  ///
+  /// In en, this message translates to:
+  /// **'Bank account (via M-Pesa Paybill)'**
+  String get settingsPayHeroBankChannel;
+
+  /// No description provided for @settingsPayHeroBankPaybillNumber.
+  ///
+  /// In en, this message translates to:
+  /// **'Bank M-Pesa Paybill number'**
+  String get settingsPayHeroBankPaybillNumber;
+
+  /// No description provided for @settingsPayHeroBankAccountNumber.
+  ///
+  /// In en, this message translates to:
+  /// **'Destination bank account number'**
+  String get settingsPayHeroBankAccountNumber;
+
+  /// No description provided for @settingsPayHeroPaybillAccountNumber.
+  ///
+  /// In en, this message translates to:
+  /// **'Paybill account number (optional)'**
+  String get settingsPayHeroPaybillAccountNumber;
+
+  /// No description provided for @settingsPayHeroShortCodeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the Till or Paybill number registered to your business.'**
+  String get settingsPayHeroShortCodeHint;
+
+  /// No description provided for @settingsPayHeroPaybillAccountHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Only enter an account number if your Paybill requires one; otherwise leave this blank.'**
+  String get settingsPayHeroPaybillAccountHint;
+
+  /// No description provided for @settingsPayHeroBankAccountHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the bank account that should receive payments through this Paybill.'**
+  String get settingsPayHeroBankAccountHint;
+
   /// No description provided for @settingsConnectMpesaMessage.
   ///
   /// In en, this message translates to:
-  /// **'The platform connects this shop to M-Pesa through PayHero. Enter only the shop Till or Paybill number; PayHero credentials stay on the backend. Staff continue using local PINs for the till.'**
+  /// **'The platform connects this shop\'s Till, Paybill or bank Paybill through PayHero. Enter destination details in the setup form; PayHero credentials stay on the backend. Staff continue using local PINs for the till.'**
   String get settingsConnectMpesaMessage;
 
   /// No description provided for @settingsPaymentChannelHint.
@@ -13367,13 +13589,13 @@ abstract class AppLocalizations {
   /// No description provided for @accountRecoveryTitle.
   ///
   /// In en, this message translates to:
-  /// **'Recover your shop'**
+  /// **'Sign in to your shop'**
   String get accountRecoveryTitle;
 
   /// No description provided for @accountRecoveryDescription.
   ///
   /// In en, this message translates to:
-  /// **'Sign in with the owner email and PIN, then restore a portable cloud backup. Your backup passphrase is required and is never sent to the server.'**
+  /// **'Sign in with the owner email and PIN. This device creates its local encryption key automatically. A backup passphrase is only needed to restore a portable backup you created. Leave it blank to connect the shop and download supported cloud-synced data. The full local sales history, device-only records, and anything not synced require a portable backup.'**
   String get accountRecoveryDescription;
 
   /// No description provided for @accountRecoveryEmail.
@@ -13397,25 +13619,25 @@ abstract class AppLocalizations {
   /// No description provided for @accountRecoveryPassphrase.
   ///
   /// In en, this message translates to:
-  /// **'Backup passphrase'**
+  /// **'Portable backup passphrase (optional)'**
   String get accountRecoveryPassphrase;
 
   /// No description provided for @accountRecoveryPassphraseHelp.
   ///
   /// In en, this message translates to:
-  /// **'Use the passphrase chosen when the portable backup was created (at least 8 characters).'**
+  /// **'Only used to decrypt a portable backup locally; it is never sent to the server. Leave blank if you did not create one.'**
   String get accountRecoveryPassphraseHelp;
 
   /// No description provided for @accountRecoveryAction.
   ///
   /// In en, this message translates to:
-  /// **'Sign in and restore shop'**
+  /// **'Sign in to shop'**
   String get accountRecoveryAction;
 
   /// No description provided for @accountRecoveryWorking.
   ///
   /// In en, this message translates to:
-  /// **'Signing in and restoringâ€¦'**
+  /// **'Signing inâ€¦'**
   String get accountRecoveryWorking;
 
   /// No description provided for @accountRecoveryInvalidPin.
@@ -13427,7 +13649,7 @@ abstract class AppLocalizations {
   /// No description provided for @accountRecoveryInvalidPassphrase.
   ///
   /// In en, this message translates to:
-  /// **'Enter the backup passphrase (at least 8 characters).'**
+  /// **'A backup passphrase must be at least 8 characters.'**
   String get accountRecoveryInvalidPassphrase;
 
   /// No description provided for @accountRecoverySignInFailed.
@@ -13457,7 +13679,7 @@ abstract class AppLocalizations {
   /// No description provided for @accountRecoveryFailed.
   ///
   /// In en, this message translates to:
-  /// **'The shop could not be restored. Check your connection and backup passphrase, then try again.'**
+  /// **'Could not connect or restore the shop. Check your connection and try again; if restoring a backup, check its passphrase.'**
   String get accountRecoveryFailed;
 
   /// No description provided for @accountRecoveryEnterEmail.
@@ -13469,7 +13691,7 @@ abstract class AppLocalizations {
   /// No description provided for @accountRecoveryChooseShop.
   ///
   /// In en, this message translates to:
-  /// **'Choose the shop to restore'**
+  /// **'Choose the shop to connect'**
   String get accountRecoveryChooseShop;
 
   /// No description provided for @accountRecoveryCleanupFailed.
@@ -13477,6 +13699,96 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Recovery failed and this device could not return to its previous shop. Restart the app before trying again.'**
   String get accountRecoveryCleanupFailed;
+
+  /// No description provided for @planDetailsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Plan details'**
+  String get planDetailsTitle;
+
+  /// No description provided for @planDetailsCurrentPlan.
+  ///
+  /// In en, this message translates to:
+  /// **'Current plan'**
+  String get planDetailsCurrentPlan;
+
+  /// No description provided for @planDetailsStatusLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Status'**
+  String get planDetailsStatusLabel;
+
+  /// No description provided for @planDetailsPriceLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Plan price'**
+  String get planDetailsPriceLabel;
+
+  /// No description provided for @planDetailsBillingPeriodLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Billing period'**
+  String get planDetailsBillingPeriodLabel;
+
+  /// No description provided for @planDetailsPeriodEndLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Paid through'**
+  String get planDetailsPeriodEndLabel;
+
+  /// No description provided for @planDetailsNoPeriodEnd.
+  ///
+  /// In en, this message translates to:
+  /// **'No end date recorded'**
+  String get planDetailsNoPeriodEnd;
+
+  /// No description provided for @planDetailsManageVoucher.
+  ///
+  /// In en, this message translates to:
+  /// **'Manage vouchers'**
+  String get planDetailsManageVoucher;
+
+  /// No description provided for @planDetailsBillingPeriod.
+  ///
+  /// In en, this message translates to:
+  /// **'Billing period: {period}'**
+  String planDetailsBillingPeriod(String period);
+
+  /// No description provided for @planDetailsStatusActive.
+  ///
+  /// In en, this message translates to:
+  /// **'Active'**
+  String get planDetailsStatusActive;
+
+  /// No description provided for @planDetailsStatusGrace.
+  ///
+  /// In en, this message translates to:
+  /// **'Grace period'**
+  String get planDetailsStatusGrace;
+
+  /// No description provided for @planDetailsStatusExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'Expired'**
+  String get planDetailsStatusExpired;
+
+  /// No description provided for @planDetailsStatusPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment required'**
+  String get planDetailsStatusPending;
+
+  /// No description provided for @paywallVoucherRedemptionFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Voucher could not be redeemed. Check the code and try again.'**
+  String get paywallVoucherRedemptionFailed;
+
+  /// No description provided for @paywallVoucherClaimFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The issued voucher could not be claimed. Refresh and try again.'**
+  String get paywallVoucherClaimFailed;
 }
 
 class _AppLocalizationsDelegate

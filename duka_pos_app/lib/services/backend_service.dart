@@ -176,7 +176,9 @@ class SubscriptionEntitlement {
       this.availableVoucherDiscountPercent,
       this.claimedVoucherType,
       this.claimedVoucherDurationMonths,
-      this.claimedVoucherDiscountPercent});
+      this.claimedVoucherDiscountPercent,
+      this.paymentMethod,
+      this.checkout});
   factory SubscriptionEntitlement.fromJson(Map<String, dynamic> json) =>
       SubscriptionEntitlement(
         allowed: json['allowed'] == true,
@@ -195,6 +197,8 @@ class SubscriptionEntitlement {
       );
   SubscriptionEntitlement copyWith({
     String? whatsappUrl,
+    SubscriptionPaymentMethod? paymentMethod,
+    SubscriptionCheckoutPreview? checkout,
     String? availableVoucherType,
     int? availableVoucherDurationMonths,
     int? availableVoucherDiscountPercent,
@@ -212,6 +216,8 @@ class SubscriptionEntitlement {
         billingInterval: billingInterval,
         currentPeriodEnd: currentPeriodEnd,
         whatsappUrl: whatsappUrl ?? this.whatsappUrl,
+        paymentMethod: paymentMethod ?? this.paymentMethod,
+        checkout: checkout ?? this.checkout,
         discountVoucherDurationMonths: discountVoucherDurationMonths,
         availableVoucherType: availableVoucherType ?? this.availableVoucherType,
         availableVoucherDurationMonths: availableVoucherDurationMonths ??
@@ -233,6 +239,8 @@ class SubscriptionEntitlement {
   final String billingInterval;
   final String? currentPeriodEnd;
   final String? whatsappUrl;
+  final SubscriptionPaymentMethod? paymentMethod;
+  final SubscriptionCheckoutPreview? checkout;
   final int? discountVoucherDurationMonths;
   final String? availableVoucherType;
   final int? availableVoucherDurationMonths;
@@ -240,6 +248,56 @@ class SubscriptionEntitlement {
   final String? claimedVoucherType;
   final int? claimedVoucherDurationMonths;
   final int? claimedVoucherDiscountPercent;
+}
+
+class SubscriptionPaymentMethod {
+  const SubscriptionPaymentMethod({
+    required this.method,
+    required this.channelType,
+    required this.shortCode,
+    this.accountNumber,
+  });
+
+  factory SubscriptionPaymentMethod.fromJson(Map<String, dynamic> json) =>
+      SubscriptionPaymentMethod(
+        method: json['method'] as String? ?? '',
+        channelType: json['channelType'] as String? ?? '',
+        shortCode: json['shortCode'] as String? ?? '',
+        accountNumber: json['accountNumber'] as String?,
+      );
+
+  final String method;
+  final String channelType;
+  final String shortCode;
+  final String? accountNumber;
+}
+
+class SubscriptionCheckoutPreview {
+  const SubscriptionCheckoutPreview({
+    required this.amountMinor,
+    required this.baseAmountMinor,
+    required this.discountAmountMinor,
+    required this.discountPercent,
+    required this.durationMonths,
+    this.agreementId,
+  });
+
+  factory SubscriptionCheckoutPreview.fromJson(Map<String, dynamic> json) =>
+      SubscriptionCheckoutPreview(
+        amountMinor: (json['amountMinor'] as num).toInt(),
+        baseAmountMinor: (json['baseAmountMinor'] as num).toInt(),
+        discountAmountMinor: (json['discountAmountMinor'] as num).toInt(),
+        discountPercent: (json['discountPercent'] as num).toInt(),
+        durationMonths: (json['durationMonths'] as num).toInt(),
+        agreementId: json['agreementId'] as String?,
+      );
+
+  final int amountMinor;
+  final int baseAmountMinor;
+  final int discountAmountMinor;
+  final int discountPercent;
+  final int durationMonths;
+  final String? agreementId;
 }
 
 class SubscriptionPaymentQuote {
@@ -250,6 +308,9 @@ class SubscriptionPaymentQuote {
     required this.discountAmountMinor,
     required this.discountPercent,
     required this.durationMonths,
+    required this.status,
+    this.agreementId,
+    this.paymentMethod,
   });
 
   factory SubscriptionPaymentQuote.fromJson(Map<String, dynamic> json) =>
@@ -260,6 +321,12 @@ class SubscriptionPaymentQuote {
         discountAmountMinor: (json['discountAmountMinor'] as num).toInt(),
         discountPercent: (json['discountPercent'] as num).toInt(),
         durationMonths: (json['durationMonths'] as num).toInt(),
+        status: json['status'] as String? ?? 'PENDING',
+        agreementId: json['agreementId'] as String?,
+        paymentMethod: json['paymentMethod'] is Map
+            ? SubscriptionPaymentMethod.fromJson(
+                Map<String, dynamic>.from(json['paymentMethod'] as Map))
+            : null,
       );
 
   final String reference;
@@ -268,6 +335,9 @@ class SubscriptionPaymentQuote {
   final int discountAmountMinor;
   final int discountPercent;
   final int durationMonths;
+  final String status;
+  final String? agreementId;
+  final SubscriptionPaymentMethod? paymentMethod;
 }
 
 class MembershipMessage {
@@ -1190,6 +1260,9 @@ class BackendService {
         support is Map ? support['whatsappUrl'] as String? : null;
     final availableVoucher =
         support is Map ? support['availableVoucher'] : null;
+    final paymentMethod =
+        support is Map ? support['paymentMethod'] : null;
+    final checkout = support is Map ? support['checkout'] : null;
     return SubscriptionEntitlement(
       allowed: entitlement.allowed,
       status: entitlement.status,
@@ -1200,6 +1273,14 @@ class BackendService {
       billingInterval: entitlement.billingInterval,
       currentPeriodEnd: entitlement.currentPeriodEnd,
       whatsappUrl: whatsappUrl,
+      paymentMethod: paymentMethod is Map
+          ? SubscriptionPaymentMethod.fromJson(
+              Map<String, dynamic>.from(paymentMethod))
+          : null,
+      checkout: checkout is Map
+          ? SubscriptionCheckoutPreview.fromJson(
+              Map<String, dynamic>.from(checkout))
+          : null,
       discountVoucherDurationMonths: entitlement.discountVoucherDurationMonths,
       availableVoucherType: availableVoucher is Map
           ? availableVoucher['voucherType'] as String?
@@ -1315,14 +1396,10 @@ class BackendService {
 
   static Future<SubscriptionPaymentQuote> startSubscriptionPayment({
     required String phoneNumber,
-    int durationMonths = 1,
-    String? agreementId,
   }) async {
     final response = await _dio.post('$backendUrl/tenant/subscription/payment',
         data: <String, dynamic>{
           'phoneNumber': phoneNumber,
-          'durationMonths': durationMonths,
-          if (agreementId != null) 'agreementId': agreementId,
         });
     return SubscriptionPaymentQuote.fromJson(
       Map<String, dynamic>.from(response.data as Map),

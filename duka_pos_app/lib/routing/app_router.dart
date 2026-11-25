@@ -26,6 +26,7 @@ import '../screens/sync_center_screen.dart';
 import '../screens/permissions_matrix_screen.dart';
 import '../screens/profile_screen.dart';
 import '../screens/paywall_screen.dart';
+import '../screens/plan_details_screen.dart';
 import '../screens/settings_screen.dart';
 import '../screens/customers_screen.dart';
 import '../screens/layby_screen.dart';
@@ -629,6 +630,12 @@ List<RouteBase> _shellRoutes(AppStageController stage, AppState appState) {
                       subscriptionRequired: stage.snapshot.subscriptionRequired,
                     ),
                   ),
+                ),
+                GoRoute(
+                  path: 'plan',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder: (BuildContext context, GoRouterState state) =>
+                      _fadeThrough(state, const PlanDetailsScreen()),
                 ),
                 // The rows an import asked about. A child of Settings for the
                 // same reason as the others — an owner looks for what needs

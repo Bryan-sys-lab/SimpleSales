@@ -47,6 +47,7 @@ abstract final class Routes {
   static const String permissionsMatrix = '/settings/permissions';
   static const String profile = '/settings/profile';
   static const String paywall = '/settings/subscription';
+  static const String planDetails = '/settings/plan';
   static const String imports = '/settings/imports';
   static const String taxSettings = '/settings/tax';
   static const String cameraScan = '/sell/scan';

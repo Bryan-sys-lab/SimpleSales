@@ -23,10 +23,16 @@ import '../services/backend_service.dart';
 /// It holds no navigation. It only reports what is true; where to go is
 /// `appRedirect`'s problem.
 class AppStageController extends ChangeNotifier {
+  // A first open can include a one-time migration of a large local database.
+  static const Duration startupTimeout = Duration(minutes: 5);
+  static const Duration defaultRetryTimeout = startupTimeout;
+
   AppStageController(
     this._state, {
-    Duration bootTimeout = const Duration(seconds: 60),
-  }) : _bootTimeout = bootTimeout {
+    Duration bootTimeout = startupTimeout,
+    Duration retryTimeout = defaultRetryTimeout,
+  })  : _bootTimeout = bootTimeout,
+        _retryTimeout = retryTimeout {
     // The router's `refreshListenable` is this controller, not [AppState].
     // Without forwarding [AppState] changes, a successful sign-in — which
     // updates [AppState] and calls its `notifyListeners` — never reaches the
@@ -38,6 +44,7 @@ class AppStageController extends ChangeNotifier {
 
   final AppState _state;
   final Duration _bootTimeout;
+  final Duration _retryTimeout;
 
   bool _loading = true;
   bool _databaseFailed = false;
@@ -240,8 +247,6 @@ class AppStageController extends ChangeNotifier {
   }
 
   /// How long a retry waits before it gives up and says so.
-  static const Duration retryTimeout = Duration(seconds: 60);
-
   /// Tries the database again, and reports whether it worked.
   ///
   /// The recovery screen was a dead end without this. It told the owner their
@@ -261,7 +266,7 @@ class AppStageController extends ChangeNotifier {
       // Bounded, because opening the database is file I/O on a phone that may
       // be the very thing that is broken. The recovery screen must not become
       // another spinner that never stops.
-      await _state.loadOwner().timeout(retryTimeout);
+      await _state.loadOwner().timeout(_retryTimeout);
       await _state.loadRememberedStaff();
       if (_disposed) return false;
       _databaseFailed = false;

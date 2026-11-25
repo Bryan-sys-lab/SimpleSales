@@ -70,7 +70,10 @@ void main() {
     failureRecorder.trail.jot('opened the till');
     failureRecorder.trail.jot('broke the database');
 
-    await tester.pumpApp(home: const DatabaseErrorScreen());
+    await tester.pumpApp(
+      home: const DatabaseErrorScreen(),
+      appStageRetryTimeout: const Duration(milliseconds: 1),
+    );
     await tester.tap(
       find.widgetWithText(OutlinedButton, l10n.databaseErrorShareAction),
     );
@@ -86,15 +89,18 @@ void main() {
     // The database cannot open in a plain widget test — there is no platform
     // channel behind it — so the retry fails, which is the case worth seeing:
     // the owner must not be left staring at a button that did nothing.
-    await tester.pumpApp(home: const DatabaseErrorScreen());
+    await tester.pumpApp(
+      home: const DatabaseErrorScreen(),
+      appStageRetryTimeout: const Duration(milliseconds: 1),
+    );
 
     await tester.tap(
       find.widgetWithText(FilledButton, l10n.databaseErrorRetryAction),
     );
     // The retry opens a database that cannot open, and the open does not
-    // answer — so the retry's own timeout is what ends it. The clock is
-    // advanced past that timeout to reach the answer.
-    await tester.pump(const Duration(seconds: 65));
+    // answer — so the retry's own timeout is what ends it. The harness uses a
+    // short retry timeout so the test need not wait for the production limit.
+    await tester.pump(const Duration(milliseconds: 2));
     await tester.pump();
 
     expect(find.text(l10n.databaseErrorRetryFailed), findsOneWidget);

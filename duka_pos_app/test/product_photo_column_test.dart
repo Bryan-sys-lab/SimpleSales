@@ -85,14 +85,30 @@ void main() {
     final DatabaseHelper db = await withProduct();
 
     await db.setProductImage('product_photos/legacy/5.jpg', 1);
-    final Product afterFirst = (await db.getProducts(activeOnly: false)).single;
+    final database = await db.database;
+    await database.update(
+      'products',
+      <String, Object?>{
+        'updated_at':
+            DateTime.now().add(const Duration(days: 1)).toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: <Object?>[1],
+    );
+    final Product beforeRemoval =
+        (await db.getProducts(activeOnly: false)).single;
 
     await db.setProductImage(null, 1);
     final Product afterSecond =
         (await db.getProducts(activeOnly: false)).single;
 
     expect(afterSecond.imagePath, isNull);
-    expect(afterSecond.updatedAt, isNot(afterFirst.updatedAt));
+    expect(
+      DateTime.parse(afterSecond.updatedAt)
+          .isAfter(DateTime.parse(beforeRemoval.updatedAt)),
+      isTrue,
+      reason: 'image revisions must advance even if the system clock stalls',
+    );
   });
 
   test('writing a photograph touches nothing else on the row', () async {

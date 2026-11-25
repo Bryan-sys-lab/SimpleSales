@@ -486,10 +486,27 @@
   "termOpenPrimaryAction": "Record sale",
   "settingsCashierPayoutApprovalLimit": "Limu ya malipo ya kabla",
   "settingsDiscountsPriceOverrides": "Ubakaji na mabadiliko ya bei",
-  "settingsSetupMpesaPayHero": "Inaweza kuwekwa na M-Pesa na PayHero",
-  "settingsMpesaTill": "M-Pesa Tilli",
-  "settingsMpesaPaybill": "M-Pesa Lipa Namba",
-  "settingsSaveChannel": "Hifadhi salio",
+  "settingsSetupMpesaPayHero": "Sanidi M-Pesa kupitia PayHero",
+  "settingsMpesaTill": "Till ya M-Pesa",
+  "settingsMpesaPaybill": "M-Pesa Paybill (Lipa na M-Pesa)",
+  "settingsPayHeroGuideTitle": "Mwongozo wa kupokea malipo kwa PayHero",
+  "settingsPayHeroGuideSummary": "Chagua njia inayolingana na mahali unapotaka malipo ya wateja yafike.",
+  "settingsPayHeroGuideIntro": "PayHero huunganisha Till, Paybill au Paybill ya benki ya duka lako. Programu husajili njia uliyochagua; usiweke funguo za API za PayHero au PIN yako ya M-Pesa hapa.",
+  "settingsPayHeroTillGuide": "M-Pesa Till: chagua hii kwa Buy Goods Till na uweke namba ya Till ya biashara yako. Wateja hupokea ombi la M-Pesa STK na malipo huenda kwenye Till hiyo. Namba ya akaunti haihitajiki.",
+  "settingsPayHeroPaybillGuide": "M-Pesa Paybill: weka namba ya Paybill ya biashara yako. Ikiwa Paybill yako inahitaji namba ya akaunti au rejea ili kuelekeza malipo, iweke kwenye sehemu ya akaunti ya hiari; vinginevyo iache wazi.",
+  "settingsPayHeroBankGuide": "Benki: weka namba ya Paybill ya M-Pesa ya benki pamoja na namba ya akaunti ya benki inayopaswa kupokea malipo. PayHero hutumia zote mbili kuelekeza malipo ya STK kwenye akaunti hiyo.",
+  "settingsPayHeroActivationGuide": "Hifadhi njia ili isajiliwe kwa PayHero na kuwasha M-Pesa. Usanidi na maombi ya STK yanahitaji intaneti. Jaribu kwa simu yako na uthibitishe kuwa malipo yamefika kwenye sehemu uliyochagua.",
+  "settingsPayHeroSubscriptionNote": "Njia hii hupokea malipo ya mauzo ya duka lako. Malipo ya uanachama hutumia sehemu tofauti iliyowekwa na mfumo.",
+  "settingsPayHeroCollectionType": "Sehemu ya kupokea malipo",
+  "settingsPayHeroBankChannel": "Akaunti ya benki (kupitia M-Pesa Paybill)",
+  "settingsPayHeroBankPaybillNumber": "Namba ya M-Pesa Paybill ya benki",
+  "settingsPayHeroBankAccountNumber": "Namba ya akaunti ya benki inayopokea fedha",
+  "settingsPayHeroPaybillAccountNumber": "Namba ya akaunti ya Paybill (si lazima)",
+  "settingsPayHeroShortCodeHint": "Weka namba ya Till au Paybill iliyosajiliwa kwa biashara yako.",
+  "settingsPayHeroPaybillAccountHint": "Weka namba ya akaunti tu ikiwa Paybill yako inaihitaji; vinginevyo iache wazi.",
+  "settingsPayHeroBankAccountHint": "Weka akaunti ya benki inayopaswa kupokea malipo kupitia Paybill hii.",
+  "settingsConnectMpesaMessage": "Mfumo huunganisha Till, Paybill au Paybill ya benki ya duka hili kupitia PayHero. Weka maelezo ya sehemu ya kupokea malipo kwenye fomu ya usanidi; funguo za PayHero hubaki kwenye seva. Wafanyakazi wataendelea kutumia PIN zao za hapa kwenye kifaa.",
+  "settingsSaveChannel": "Hifadhi njia",
   "settingsCouldNotOpenDocument": "Haikuweza kufungua hati",
   "settingsTermsOfService": "Masharti ya Huduma",
   "settingsPrivacyPolicy": "Sera ya Faragha",
@@ -837,7 +854,7 @@
     }
   },
   "paywallActivateTitle": "Washa ufikiaji wa duka hili",
-  "paywallVoucherChooseText": "Chagua usajili au weka vocha iliyotolewa na msimamizi. Ufikiaji unashirikiwa na mmiliki na wafanyakazi wa duka.",
+  "paywallVoucherChooseText": "Bei na kipindi cha malipo kilichowekwa kwa duka hili vimeonyeshwa hapo juu. Weka vocha iliyotolewa na msimamizi ili kuwezesha ufikiaji.",
   "paywallVoucherClaimText": "Dai vocha iliyotolewa sasa, au weka msimbo wake hapa chini. Muda wake huanza unapoidai.",
   "paywallVoucherSectionTitle": "Una vocha?",
   "paywallVoucherManualHelp": "Weka msimbo kutoka kwenye barua pepe ikiwa kitufe cha kudai hakionekani.",
@@ -860,6 +877,72 @@
       }
     }
   },
+  "paywallPaymentMethodTitle": "Njia ya malipo",
+  "paywallPaymentMethodMpesa": "Ombi la M-Pesa",
+  "paywallPaymentDestinationTitle": "Mahali pa PayHero pa kupokea malipo",
+  "paywallPaymentTillDestination": "Till: {code}",
+  "@paywallPaymentTillDestination": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "paywallPaymentPaybillDestination": "Paybill: {code}",
+  "@paywallPaymentPaybillDestination": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "paywallPaymentBankDestination": "Nambari ya benki: {code} · Akaunti: {account}",
+  "@paywallPaymentBankDestination": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      },
+      "account": {
+        "type": "String"
+      }
+    }
+  },
+  "paywallPaymentUnavailable": "Msimamizi bado hajakamilisha mipangilio ya malipo. Tafadhali jaribu tena baadaye.",
+  "paywallPaymentPhone": "Nambari ya simu ya M-Pesa",
+  "paywallPaymentPhoneInvalid": "Weka nambari sahihi ya simu ili kupokea ombi la M-Pesa.",
+  "paywallPaymentReference": "Rejeleo la malipo: {reference}",
+  "@paywallPaymentReference": {
+    "placeholders": {
+      "reference": {
+        "type": "String"
+      }
+    }
+  },
+  "paywallPaymentPending": "Malipo bado yanasubiri. Kubali ombi la M-Pesa kisha uangalie tena.",
+  "paywallPaymentFailed": "Malipo hayakukamilika. Unaweza kujaribu tena.",
+  "paywallPaymentReceived": "Malipo yamepokelewa, lakini hali ya usajili haikuweza kusasishwa. Onyesha upya kisha ujaribu tena.",
+  "paywallPaymentDuration": "Kila miezi {months}",
+  "@paywallPaymentDuration": {
+    "placeholders": {
+      "months": {
+        "type": "int"
+      }
+    }
+  },
+  "paywallCheckingPayment": "Inaangalia malipo…",
+  "paywallCheckPaymentStatus": "Angalia hali ya malipo",
+  "paywallVoucherPeriodMismatch": "Vocha yako ya punguzo ya miezi {months} hailingani na kipindi cha malipo kilichowekwa na msimamizi; itabaki tayari kwa mpango unaolingana.",
+  "@paywallVoucherPeriodMismatch": {
+    "placeholders": {
+      "months": {
+        "type": "int"
+      }
+    }
+  },
+  "billingIntervalMonthly": "Kila mwezi",
+  "billingIntervalQuarterly": "Kila robo mwaka (miezi 3)",
+  "billingIntervalSemiannual": "Kila miezi 6",
+  "billingIntervalAnnual": "Kila mwaka (miezi 12)",
   "membershipTitle": "Uanachama",
   "membershipPlans": "Mipango",
   "membershipQuote": "Bei yako",
@@ -929,23 +1012,45 @@
   "membershipQuoteEmptyDescription": "Tuambie cha kujumuisha na timu yetu itakuandalia ofa binafsi.",
   "membershipDiscussOnWhatsApp": "Endelea kwa WhatsApp",
   "supportContactOpenFailed": "WhatsApp haikufunguka. Tafadhali jaribu tena.",
-  "accountRecoveryTitle": "Rejesha duka lako",
-  "accountRecoveryDescription": "Ingia kwa barua pepe ya mmiliki na PIN, kisha urejeshe nakala ya wingu inayoweza kuhamishwa. Nenosiri la nakala linahitajika na halitumwi kwa seva.",
+  "accountRecoveryTitle": "Ingia kwenye duka lako",
+  "accountRecoveryDescription": "Ingia kwa barua pepe ya mmiliki na PIN. Kifaa hiki huunda ufunguo wake wa ndani wa usimbaji kiotomatiki. Kaulisiri ya nakala inahitajika tu kurejesha nakala inayoweza kuhamishwa uliyounda. Iache wazi ili kuunganisha duka na kupakua data inayoweza kusawazishwa kutoka wingu. Historia yote ya mauzo ya ndani, rekodi za kifaa pekee, na data ambayo haijasawazishwa vinahitaji nakala ya kuhamisha.",
   "accountRecoveryEmail": "Barua pepe ya mmiliki",
   "accountRecoveryPin": "PIN ya mmiliki",
   "accountRecoveryForgotPin": "Umesahau PIN ya mmiliki?",
-  "accountRecoveryPassphrase": "Nenosiri la nakala rudufu",
-  "accountRecoveryPassphraseHelp": "Tumia nenosiri lililowekwa wakati wa kuunda nakala ya wingu (angalau herufi 8).",
-  "accountRecoveryAction": "Ingia na urejeshe duka",
+  "accountRecoveryPassphrase": "Kaulisiri ya nakala ya kuhamisha (si lazima)",
+  "accountRecoveryPassphraseHelp": "Hutumika tu kufungua nakala kwenye kifaa hiki na haitumwi kwa seva. Iache wazi ikiwa hukutengeneza nakala.",
+  "accountRecoveryAction": "Ingia kwenye duka",
   "accountRecoveryWorking": "Inaingia na kurejesha…",
   "accountRecoveryInvalidPin": "Weka PIN ya mmiliki yenye tarakimu 6.",
-  "accountRecoveryInvalidPassphrase": "Weka nenosiri la nakala (angalau herufi 8).",
+  "accountRecoveryInvalidPassphrase": "Kaulisiri ya nakala lazima iwe na angalau herufi 8.",
   "accountRecoverySignInFailed": "Imeshindwa kuingia. Kagua barua pepe na PIN ya mmiliki.",
   "accountRecoveryNoOwnedShop": "Hakuna duka la mmiliki lililounganishwa na akaunti hii.",
   "accountRecoveryAlreadyOnDevice": "Duka hili tayari limesajiliwa kwenye kifaa hiki. Tumia ukurasa wake wa kawaida wa kuingia.",
   "accountRecoveryNoBackup": "Hakuna nakala ya wingu inayoweza kuhamishwa. Duka halikurejeshwa; nakala inayotegemea kifaa haiwezi kufunguliwa kwenye simu mpya.",
-  "accountRecoveryFailed": "Duka halikuweza kurejeshwa. Kagua muunganisho na nenosiri la nakala kisha ujaribu tena.",
+  "accountRecoveryFailed": "Duka halikuweza kuunganishwa au kurejeshwa. Kagua muunganisho kisha ujaribu tena; ikiwa unarejesha nakala, hakikisha kaulisiri ni sahihi.",
   "accountRecoveryEnterEmail": "Weka barua pepe ya mmiliki kwanza.",
-  "accountRecoveryChooseShop": "Chagua duka la kurejesha",
-  "accountRecoveryCleanupFailed": "Urejeshaji umeshindwa na kifaa hakikuweza kurudi kwenye duka lake la awali. Anzisha programu upya kabla ya kujaribu tena."
+  "accountRecoveryChooseShop": "Chagua duka la kuunganisha",
+  "accountRecoveryCleanupFailed": "Urejeshaji umeshindwa na kifaa hakikuweza kurudi kwenye duka lake la awali. Anzisha programu upya kabla ya kujaribu tena.",
+  "planDetailsTitle": "Maelezo ya mpango",
+  "planDetailsCurrentPlan": "Mpango wa sasa",
+  "planDetailsStatusLabel": "Hali",
+  "planDetailsPriceLabel": "Bei ya mpango",
+  "planDetailsBillingPeriodLabel": "Kipindi cha malipo",
+  "planDetailsPeriodEndLabel": "Imelipiwa hadi",
+  "planDetailsNoPeriodEnd": "Hakuna tarehe ya mwisho iliyorekodiwa",
+  "planDetailsManageVoucher": "Dhibiti vocha",
+  "planDetailsBillingPeriod": "Kipindi cha malipo: {period}",
+  "@planDetailsBillingPeriod": {
+    "placeholders": {
+      "period": {
+        "type": "String"
+      }
+    }
+  },
+  "planDetailsStatusActive": "Inatumika",
+  "planDetailsStatusGrace": "Kipindi cha nyongeza",
+  "planDetailsStatusExpired": "Muda umeisha",
+  "planDetailsStatusPending": "Malipo yanahitajika",
+  "paywallVoucherRedemptionFailed": "Vocha haikuweza kutumika. Kagua msimbo kisha ujaribu tena.",
+  "paywallVoucherClaimFailed": "Vocha iliyotolewa haikuweza kudaiwa. Onyesha upya kisha ujaribu tena."
 }

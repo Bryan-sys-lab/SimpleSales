@@ -26,6 +26,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../support/harness.dart';
 
+void _noop() {}
+
 /// A panel with defaults, so each case overrides only what it is about.
 Widget _panel({
   bool identityLinkPending = false,
@@ -40,6 +42,7 @@ Widget _panel({
   String tin = '',
   String tillCode = 'TILL-1',
   SubscriptionEntitlement? subscription,
+  VoidCallback onOpenSubscription = _noop,
 }) =>
     SettingsPanel(
       // The handlers are inert: this suite asserts LAYOUT, not behaviour, and
@@ -74,7 +77,7 @@ Widget _panel({
       identityLinkPending: identityLinkPending,
       identityVerified: identityVerified,
       subscription: subscription,
-      onOpenSubscription: () {},
+      onOpenSubscription: onOpenSubscription,
       staff: staff,
       printer: printer,
       mpesaEnabled: mpesaEnabled,
@@ -174,6 +177,100 @@ void main() {
         findsOneWidget,
       );
       tester.expectNoOverflow('subscription plan settings');
+    });
+
+    testWidgets('uses the full quarterly server quote in subscription summary',
+        (tester) async {
+      tester.useDevice(Device.small);
+      await tester.pumpApp(
+        home: _panel(
+          subscription: const SubscriptionEntitlement(
+            allowed: false,
+            status: 'pending',
+            priceMinor: 10000,
+            discountPercent: 10,
+            currency: 'KES',
+            billingInterval: 'quarterly',
+            checkout: SubscriptionCheckoutPreview(
+              amountMinor: 22500,
+              baseAmountMinor: 30000,
+              discountAmountMinor: 7500,
+              discountPercent: 25,
+              durationMonths: 3,
+            ),
+          ),
+        ),
+      );
+
+      expect(
+        find.textContaining(
+            l10n.settingsSubscriptionPrice('KES', '300.00', 'quarterly')),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining(l10n.settingsSubscriptionAmountDue(
+            'KES', '225.00', 'quarterly', 25)),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('subscription settings row opens plan details', (tester) async {
+      tester.useDevice(Device.small);
+      var opened = false;
+      await tester.pumpApp(
+        home: _panel(onOpenSubscription: () => opened = true),
+      );
+
+      await tester.tap(find.text(l10n.settingsSubscriptionTitle));
+      expect(opened, isTrue);
+    });
+
+    testWidgets('PayHero guide explains Till, Paybill, bank, and activation',
+        (tester) async {
+      tester.useDevice(Device.small);
+      await tester.pumpApp(home: _panel());
+
+      final Finder guide = find.byKey(
+        const ValueKey<String>('payhero-setup-guide'),
+      );
+      await tester.scrollUntilVisible(
+        guide,
+        240,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(guide);
+      await tester.pumpAndSettle();
+
+      expect(find.text(l10n.settingsPayHeroTillGuide), findsOneWidget);
+      expect(find.text(l10n.settingsPayHeroPaybillGuide), findsOneWidget);
+      expect(find.text(l10n.settingsPayHeroBankGuide), findsOneWidget);
+      expect(find.text(l10n.settingsPayHeroActivationGuide), findsOneWidget);
+      expect(find.text(l10n.settingsPayHeroSubscriptionNote), findsOneWidget);
+      tester.expectNoOverflow('expanded PayHero setup guide');
+    });
+
+    testWidgets('PayHero guide is translated in Swahili', (tester) async {
+      tester.useDevice(Device.small);
+      await tester.pumpApp(home: _panel(), locale: const Locale('sw'));
+
+      final AppLocalizations swahili =
+          AppLocalizations.of(tester.element(find.byType(SettingsPanel)));
+      final Finder guide = find.byKey(
+        const ValueKey<String>('payhero-setup-guide'),
+      );
+      await tester.scrollUntilVisible(
+        guide,
+        240,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(guide);
+      await tester.pumpAndSettle();
+
+      expect(find.text(swahili.settingsPayHeroGuideTitle), findsOneWidget);
+      expect(find.text(swahili.settingsPayHeroTillGuide), findsOneWidget);
+      expect(find.text(swahili.settingsPayHeroPaybillGuide), findsOneWidget);
+      expect(find.text(swahili.settingsPayHeroBankGuide), findsOneWidget);
+      tester.expectNoOverflow('Swahili PayHero setup guide');
     });
 
     testWidgets('credit sales are visibly off by default and configurable',
@@ -330,8 +427,11 @@ void main() {
       // A live region: a screen-reader user is told the sync landed instead of
       // having to find the line they cannot see.
       expect(
-        find.byWidgetPredicate(
-          (w) => w is Semantics && w.properties.liveRegion == true,
+        find.ancestor(
+          of: find.text(l10n.settingsSyncSheets),
+          matching: find.byWidgetPredicate(
+            (w) => w is Semantics && w.properties.liveRegion == true,
+          ),
         ),
         findsOneWidget,
       );

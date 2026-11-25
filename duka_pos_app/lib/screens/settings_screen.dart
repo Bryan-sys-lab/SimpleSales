@@ -377,7 +377,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            Future<List<Map<String, dynamic>>> load() => BackendService.listManagedDevices();
+            Future<List<Map<String, dynamic>>> load() =>
+                BackendService.listManagedDevices();
             return AlertDialog(
               title: const Text('Managed devices'),
               content: SizedBox(
@@ -386,14 +387,18 @@ class _SettingsScreenState extends State<SettingsScreen>
                   future: load(),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState != ConnectionState.done) {
-                      return const SizedBox(height: 120, child: Center(child: CircularProgressIndicator()));
+                      return const SizedBox(
+                          height: 120,
+                          child: Center(child: CircularProgressIndicator()));
                     }
                     if (snapshot.hasError) {
                       return Text('Could not load devices: ${snapshot.error}');
                     }
-                    final devices = snapshot.data ?? const <Map<String, dynamic>>[];
+                    final devices =
+                        snapshot.data ?? const <Map<String, dynamic>>[];
                     if (devices.isEmpty) {
-                      return const Text('No managed devices enrolled yet. Devices are enrolled when staff sign in on this shop.');
+                      return const Text(
+                          'No managed devices enrolled yet. Devices are enrolled when staff sign in on this shop.');
                     }
                     return SizedBox(
                       height: 360,
@@ -406,12 +411,17 @@ class _SettingsScreenState extends State<SettingsScreen>
                           final label = d['label']?.toString().trim();
                           final status = d['status']?.toString() ?? 'unknown';
                           final lastSeen = d['lastSeenAt']?.toString();
-                          final leaseExp = d['offlineLeaseExpiresAt']?.toString();
+                          final leaseExp =
+                              d['offlineLeaseExpiresAt']?.toString();
                           final revoked = status == 'revoked';
                           return ListTile(
                             contentPadding: EdgeInsets.zero,
-                            leading: Icon(revoked ? Icons.phonelink_erase_outlined : Icons.devices_outlined),
-                            title: Text(label != null && label.isNotEmpty ? label : deviceId),
+                            leading: Icon(revoked
+                                ? Icons.phonelink_erase_outlined
+                                : Icons.devices_outlined),
+                            title: Text(label != null && label.isNotEmpty
+                                ? label
+                                : deviceId),
                             subtitle: Text([
                               'Status: $status',
                               if (lastSeen != null) 'Last seen: $lastSeen',
@@ -424,18 +434,26 @@ class _SettingsScreenState extends State<SettingsScreen>
                                     onPressed: deviceId.isEmpty
                                         ? null
                                         : () async {
-                                            final messenger = ScaffoldMessenger.of(this.context);
+                                            final messenger =
+                                                ScaffoldMessenger.of(
+                                                    this.context);
                                             try {
-                                              await BackendService.revokeManagedDevice(deviceId);
+                                              await BackendService
+                                                  .revokeManagedDevice(
+                                                      deviceId);
                                               if (!mounted) return;
                                               messenger.showSnackBar(
-                                                const SnackBar(content: Text('Device revoked')),
+                                                const SnackBar(
+                                                    content:
+                                                        Text('Device revoked')),
                                               );
                                               setDialogState(() {});
                                             } catch (e) {
                                               if (!mounted) return;
                                               messenger.showSnackBar(
-                                                SnackBar(content: Text('Could not revoke device: $e')),
+                                                SnackBar(
+                                                    content: Text(
+                                                        'Could not revoke device: $e')),
                                               );
                                             }
                                           },
@@ -449,7 +467,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Close')),
+                TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    child: const Text('Close')),
               ],
             );
           },
@@ -1270,6 +1290,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     required String initialMerchantNumber,
     required String initialAccountNumber,
   }) async {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final merchantController =
         TextEditingController(text: initialMerchantNumber);
     final accountController = TextEditingController(text: initialAccountNumber);
@@ -1282,29 +1303,54 @@ class _SettingsScreenState extends State<SettingsScreen>
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => AlertDialog(
-          title: const Text('Set up M-Pesa with PayHero'),
+          title: Text(l10n.settingsSetupMpesaPayHero),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                const Text(
-                  'Enter the shop’s Till or Paybill number. The backend registers it with PayHero and keeps the API credentials off this till.',
+                Text(
+                  l10n.settingsPayHeroGuideIntro,
+                  style: AppTypography.of(context).bodyMedium,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  switch (channelType) {
+                    'Paybill' => l10n.settingsPayHeroPaybillGuide,
+                    'Bank' => l10n.settingsPayHeroBankGuide,
+                    _ => l10n.settingsPayHeroTillGuide,
+                  },
+                  style: AppTypography.of(context).bodySmall,
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'The number must belong to this shop. STK prompts require an online connection at checkout.',
+                Text(
+                  l10n.settingsPayHeroActivationGuide,
+                  style: AppTypography.of(context).bodySmall,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  l10n.settingsPayHeroSubscriptionNote,
+                  style: AppTypography.of(context).bodySmall,
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
                   initialValue: channelType,
-                  decoration: const InputDecoration(labelText: 'Channel type'),
-                  items: const <DropdownMenuItem<String>>[
-                    DropdownMenuItem(value: 'Till', child: Text('M-Pesa Till')),
+                  decoration: InputDecoration(
+                    labelText: l10n.settingsPayHeroCollectionType,
+                  ),
+                  items: <DropdownMenuItem<String>>[
                     DropdownMenuItem(
-                        value: 'Paybill', child: Text('M-Pesa Paybill')),
+                      value: 'Till',
+                      child: Text(l10n.settingsMpesaTill),
+                    ),
                     DropdownMenuItem(
-                        value: 'Bank', child: Text('Bank account')),
+                      value: 'Paybill',
+                      child: Text(l10n.settingsMpesaPaybill),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Bank',
+                      child: Text(l10n.settingsPayHeroBankChannel),
+                    ),
                   ],
                   onChanged: (value) {
                     if (value != null) {
@@ -1318,22 +1364,25 @@ class _SettingsScreenState extends State<SettingsScreen>
                   keyboardType: TextInputType.number,
                   decoration: InputDecoration(
                     labelText: channelType == 'Paybill'
-                        ? 'Paybill number'
+                        ? l10n.settingsMpesaPaybill
                         : channelType == 'Bank'
-                            ? 'Bank paybill number'
-                            : 'Till number',
-                    helperText:
-                        'For your records; PayHero uses the channel ID below.',
+                            ? l10n.settingsPayHeroBankPaybillNumber
+                            : l10n.settingsMpesaTill,
+                    helperText: l10n.settingsPayHeroShortCodeHint,
                   ),
                 ),
-                if (channelType == 'Bank') ...[
+                if (channelType == 'Bank' || channelType == 'Paybill') ...[
                   const SizedBox(height: 12),
                   TextField(
                     controller: accountController,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Bank account number',
-                      helperText: 'The account where the bank channel settles.',
+                    decoration: InputDecoration(
+                      labelText: channelType == 'Bank'
+                          ? l10n.settingsPayHeroBankAccountNumber
+                          : l10n.settingsPayHeroPaybillAccountNumber,
+                      helperText: channelType == 'Bank'
+                          ? l10n.settingsPayHeroBankAccountHint
+                          : l10n.settingsPayHeroPaybillAccountHint,
                     ),
                   ),
                 ],
@@ -1348,9 +1397,13 @@ class _SettingsScreenState extends State<SettingsScreen>
             FilledButton(
               onPressed: () {
                 final merchant = merchantController.text.trim();
-                final account = accountController.text.trim();
+                final account =
+                    channelType == 'Till' ? '' : accountController.text.trim();
                 if (!RegExp(r'^\d{5,12}$').hasMatch(merchant) ||
                     (channelType == 'Bank' &&
+                        !RegExp(r'^\d{3,30}$').hasMatch(account)) ||
+                    (channelType == 'Paybill' &&
+                        account.isNotEmpty &&
                         !RegExp(r'^\d{3,30}$').hasMatch(account))) {
                   return;
                 }
@@ -1626,8 +1679,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           '${report.completed.length == 1 ? 'area' : 'areas'} updated).';
     } else if (report.completed.isEmpty) {
       final failed = report.failed.map((f) => f.domain).join(', ');
-      statusLabel =
-          'Could not sync with the live server. Failed: $failed. '
+      statusLabel = 'Could not sync with the live server. Failed: $failed. '
           'Check your connection and try again.';
     } else {
       final failed = report.failed.map((f) => f.domain).join(', ');
@@ -2602,7 +2654,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       subscription: _subscriptionEntitlement,
       subscriptionLoading: _subscriptionLoading,
       subscriptionUnavailable: _subscriptionUnavailable,
-      onOpenSubscription: () => context.push(Routes.paywall),
+      onOpenSubscription: () => context.push(Routes.planDetails),
       verifyingIdentity: _verifyingIdentity,
       onVerifyIdentity: ownerSession ? _verifyIdentityOnline : null,
       staff: _staff,
@@ -3135,26 +3187,42 @@ class SettingsPanel extends StatelessWidget {
     }
 
     final SubscriptionEntitlement? current = subscription;
-    final int? priceMinor = current?.priceMinor;
-    if (current == null || priceMinor == null || priceMinor <= 0) {
+    if (current == null) {
+      return l10n.settingsSubscriptionNotConfigured;
+    }
+
+    final checkout = current.checkout;
+    final int? baseAmountMinor =
+        checkout?.baseAmountMinor ?? current.priceMinor;
+    if (baseAmountMinor == null || baseAmountMinor <= 0) {
       return l10n.settingsSubscriptionNotConfigured;
     }
 
     String amount(int minor) => (minor / 100).toStringAsFixed(2);
+    final String interval = checkout == null
+        ? current.billingInterval
+        : switch (checkout.durationMonths) {
+            1 => 'monthly',
+            3 => 'quarterly',
+            6 => 'semiannual',
+            12 => 'annual',
+            _ => l10n.paywallPaymentDuration(checkout.durationMonths),
+          };
     final String price = l10n.settingsSubscriptionPrice(
       current.currency,
-      amount(priceMinor),
-      current.billingInterval,
+      amount(baseAmountMinor),
+      interval,
     );
-    if (current.discountPercent <= 0) return price;
+    final int discountPercent =
+        checkout?.discountPercent ?? current.discountPercent;
+    if (discountPercent <= 0) return price;
 
-    final int discountPercent = current.discountPercent.clamp(0, 100).toInt();
-    final int discountedMinor =
-        (priceMinor * (100 - discountPercent) / 100).round();
+    final int amountDueMinor = checkout?.amountMinor ??
+        (baseAmountMinor * (100 - discountPercent.clamp(0, 100)) / 100).round();
     return '$price\n${l10n.settingsSubscriptionAmountDue(
       current.currency,
-      amount(discountedMinor),
-      current.billingInterval,
+      amount(amountDueMinor),
+      interval,
       discountPercent,
     )}';
   }
@@ -4237,6 +4305,45 @@ class _PaymentsPanel extends StatelessWidget {
             value: mpesaEnabled,
             enabled: !saving,
             onChanged: (value) => onToggleMpesa(value),
+          ),
+          ExpansionTile(
+            key: const ValueKey<String>('payhero-setup-guide'),
+            leading: const Icon(Icons.info_outline),
+            title: Text(l10n.settingsPayHeroGuideTitle),
+            subtitle: Text(l10n.settingsPayHeroGuideSummary),
+            childrenPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            children: <Widget>[
+              Text(
+                l10n.settingsPayHeroGuideIntro,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 8),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(l10n.settingsMpesaTill),
+                subtitle: Text(l10n.settingsPayHeroTillGuide),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(l10n.settingsMpesaPaybill),
+                subtitle: Text(l10n.settingsPayHeroPaybillGuide),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(l10n.settingsPayHeroBankChannel),
+                subtitle: Text(l10n.settingsPayHeroBankGuide),
+              ),
+              Text(
+                l10n.settingsPayHeroActivationGuide,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                l10n.settingsPayHeroSubscriptionNote,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
           ),
         ],
       ),

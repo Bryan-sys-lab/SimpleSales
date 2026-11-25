@@ -682,7 +682,7 @@
     }
   },
   "paywallActivateTitle": "Activate access for this shop",
-  "paywallVoucherChooseText": "Choose a subscription or enter an administrator-issued voucher. Access is shared by the shop's owner and staff.",
+  "paywallVoucherChooseText": "The price and billing period set for this shop are shown above. Enter an administrator-issued voucher to activate access.",
   "paywallVoucherClaimText": "Claim the issued voucher now, or enter its code manually below. Its access period begins when claimed.",
   "paywallVoucherSectionTitle": "Have a voucher?",
   "paywallVoucherManualHelp": "Enter the code from your email if the claim button is unavailable.",
@@ -705,6 +705,72 @@
       }
     }
   },
+  "paywallPaymentMethodTitle": "Payment method",
+  "paywallPaymentMethodMpesa": "M-Pesa prompt",
+  "paywallPaymentDestinationTitle": "PayHero collection destination",
+  "paywallPaymentTillDestination": "Till: {code}",
+  "@paywallPaymentTillDestination": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "paywallPaymentPaybillDestination": "Paybill: {code}",
+  "@paywallPaymentPaybillDestination": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "paywallPaymentBankDestination": "Bank code: {code} · Account: {account}",
+  "@paywallPaymentBankDestination": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      },
+      "account": {
+        "type": "String"
+      }
+    }
+  },
+  "paywallPaymentUnavailable": "The administrator has not finished configuring payments. Please try again later.",
+  "paywallPaymentPhone": "M-Pesa phone number",
+  "paywallPaymentPhoneInvalid": "Enter a valid phone number to receive the M-Pesa prompt.",
+  "paywallPaymentReference": "Payment reference: {reference}",
+  "@paywallPaymentReference": {
+    "placeholders": {
+      "reference": {
+        "type": "String"
+      }
+    }
+  },
+  "paywallPaymentPending": "Payment is still pending. Approve the M-Pesa prompt, then check again.",
+  "paywallPaymentFailed": "Payment was not completed. You can try again.",
+  "paywallPaymentReceived": "Payment was received, but the subscription status could not be refreshed. Refresh and try again.",
+  "paywallPaymentDuration": "Every {months} months",
+  "@paywallPaymentDuration": {
+    "placeholders": {
+      "months": {
+        "type": "int"
+      }
+    }
+  },
+  "paywallCheckingPayment": "Checking payment…",
+  "paywallCheckPaymentStatus": "Check payment status",
+  "paywallVoucherPeriodMismatch": "Your {months}-month discount voucher does not match the administrator-set billing period; it will remain available for a matching plan.",
+  "@paywallVoucherPeriodMismatch": {
+    "placeholders": {
+      "months": {
+        "type": "int"
+      }
+    }
+  },
+  "billingIntervalMonthly": "Monthly",
+  "billingIntervalQuarterly": "Quarterly (3 months)",
+  "billingIntervalSemiannual": "Semiannual (6 months)",
+  "billingIntervalAnnual": "Annual (12 months)",
   "membershipTitle": "Membership",
   "membershipPlans": "Plans",
   "membershipQuote": "Quote",
@@ -869,7 +935,23 @@
   "settingsResetPinFailed": "Couldnâ€™t reset PIN â€” try again.",
   "settingsRemoveStaffFailed": "Couldnâ€™t remove staff â€” try again.",
   "settingsRemoveStaffMessage": "{name} will no longer be able to sign in. Their past sales stay on record.",
-  "settingsConnectMpesaMessage": "The platform connects this shop to M-Pesa through PayHero. Enter only the shop Till or Paybill number; PayHero credentials stay on the backend. Staff continue using local PINs for the till.",
+  "settingsPayHeroGuideTitle": "Set up M-Pesa and bank collections",
+  "settingsPayHeroGuideSummary": "Choose the destination where you want customer payments to arrive.",
+  "settingsPayHeroGuideIntro": "PayHero connects your shop's M-Pesa Till, Paybill or bank Paybill. The app registers the channel for you; do not enter PayHero API keys or your M-Pesa PIN here.",
+  "settingsPayHeroTillGuide": "M-Pesa Till: choose this for a Buy Goods Till and enter the Till number registered to your shop. Customers receive an M-Pesa STK prompt and the payment goes to this Till. No account number is needed.",
+  "settingsPayHeroPaybillGuide": "M-Pesa Paybill: enter your business Paybill number. If your Paybill needs an account number or reference to route payments, enter it in the optional account field; otherwise leave it blank.",
+  "settingsPayHeroBankGuide": "Bank: enter the bank's M-Pesa Paybill number and the destination bank account number. PayHero uses both to route the customer's STK payment to that bank account.",
+  "settingsPayHeroActivationGuide": "Save the channel to register it with PayHero and enable M-Pesa. Setup and STK prompts need an internet connection. Test with your own phone and confirm the payment reaches the selected destination.",
+  "settingsPayHeroSubscriptionNote": "This destination collects your shop's sales. Membership or subscription payments use a separate destination configured by the platform.",
+  "settingsPayHeroCollectionType": "Collection destination",
+  "settingsPayHeroBankChannel": "Bank account (via M-Pesa Paybill)",
+  "settingsPayHeroBankPaybillNumber": "Bank M-Pesa Paybill number",
+  "settingsPayHeroBankAccountNumber": "Destination bank account number",
+  "settingsPayHeroPaybillAccountNumber": "Paybill account number (optional)",
+  "settingsPayHeroShortCodeHint": "Enter the Till or Paybill number registered to your business.",
+  "settingsPayHeroPaybillAccountHint": "Only enter an account number if your Paybill requires one; otherwise leave this blank.",
+  "settingsPayHeroBankAccountHint": "Enter the bank account that should receive payments through this Paybill.",
+  "settingsConnectMpesaMessage": "The platform connects this shop's Till, Paybill or bank Paybill through PayHero. Enter destination details in the setup form; PayHero credentials stay on the backend. Staff continue using local PINs for the till.",
   "settingsPaymentChannelHint": "Enter the shop Till or Paybill number. The platform registers the payment channel for you.",
   "settingsStaffSection": "Managers and cashiers",
   "settingsSwitchAction": "Switch",
@@ -2307,23 +2389,45 @@
   "productMappingReviewHelp": "Unmapped products remain available for sales. Review the external product and unit codes when you have them.",
   "productMappingReviewEmpty": "All product mappings are reviewed.",
   "productMappingReviewLoadFailed": "Could not load products for review. Try again.",
-  "accountRecoveryTitle": "Recover your shop",
-  "accountRecoveryDescription": "Sign in with the owner email and PIN, then restore a portable cloud backup. Your backup passphrase is required and is never sent to the server.",
+  "accountRecoveryTitle": "Sign in to your shop",
+  "accountRecoveryDescription": "Sign in with the owner email and PIN. This device creates its local encryption key automatically. A backup passphrase is only needed to restore a portable backup you created. Leave it blank to connect the shop and download supported cloud-synced data. The full local sales history, device-only records, and anything not synced require a portable backup.",
   "accountRecoveryEmail": "Owner email",
   "accountRecoveryPin": "Owner PIN",
   "accountRecoveryForgotPin": "Forgot your owner PIN?",
-  "accountRecoveryPassphrase": "Backup passphrase",
-  "accountRecoveryPassphraseHelp": "Use the passphrase chosen when the portable backup was created (at least 8 characters).",
-  "accountRecoveryAction": "Sign in and restore shop",
-  "accountRecoveryWorking": "Signing in and restoringâ€¦",
+  "accountRecoveryPassphrase": "Portable backup passphrase (optional)",
+  "accountRecoveryPassphraseHelp": "Only used to decrypt a portable backup locally; it is never sent to the server. Leave blank if you did not create one.",
+  "accountRecoveryAction": "Sign in to shop",
+  "accountRecoveryWorking": "Signing inâ€¦",
   "accountRecoveryInvalidPin": "Enter the 6-digit owner PIN.",
-  "accountRecoveryInvalidPassphrase": "Enter the backup passphrase (at least 8 characters).",
+  "accountRecoveryInvalidPassphrase": "A backup passphrase must be at least 8 characters.",
   "accountRecoverySignInFailed": "Could not sign in. Check the owner email and PIN.",
   "accountRecoveryNoOwnedShop": "No owner shop is linked to this account.",
   "accountRecoveryAlreadyOnDevice": "This shop is already registered on this device. Use its local sign-in instead.",
   "accountRecoveryNoBackup": "No portable cloud backup was found. This shop was not restored; a device-bound backup cannot be opened on a replacement phone.",
-  "accountRecoveryFailed": "The shop could not be restored. Check your connection and backup passphrase, then try again.",
+  "accountRecoveryFailed": "Could not connect or restore the shop. Check your connection and try again; if restoring a backup, check its passphrase.",
   "accountRecoveryEnterEmail": "Enter the owner email first.",
-  "accountRecoveryChooseShop": "Choose the shop to restore",
-  "accountRecoveryCleanupFailed": "Recovery failed and this device could not return to its previous shop. Restart the app before trying again."
+  "accountRecoveryChooseShop": "Choose the shop to connect",
+  "accountRecoveryCleanupFailed": "Recovery failed and this device could not return to its previous shop. Restart the app before trying again.",
+  "planDetailsTitle": "Plan details",
+  "planDetailsCurrentPlan": "Current plan",
+  "planDetailsStatusLabel": "Status",
+  "planDetailsPriceLabel": "Plan price",
+  "planDetailsBillingPeriodLabel": "Billing period",
+  "planDetailsPeriodEndLabel": "Paid through",
+  "planDetailsNoPeriodEnd": "No end date recorded",
+  "planDetailsManageVoucher": "Manage vouchers",
+  "planDetailsBillingPeriod": "Billing period: {period}",
+  "@planDetailsBillingPeriod": {
+    "placeholders": {
+      "period": {
+        "type": "String"
+      }
+    }
+  },
+  "planDetailsStatusActive": "Active",
+  "planDetailsStatusGrace": "Grace period",
+  "planDetailsStatusExpired": "Expired",
+  "planDetailsStatusPending": "Payment required",
+  "paywallVoucherRedemptionFailed": "Voucher could not be redeemed. Check the code and try again.",
+  "paywallVoucherClaimFailed": "The issued voucher could not be claimed. Refresh and try again."
 }

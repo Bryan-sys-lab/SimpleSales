@@ -121,10 +121,13 @@ void main() {
         staffRequests.single.headers['x-tenant-id'],
         'main-shop-1234',
       );
-      expect(
-        staffRequests.single.data,
-        <String, String>{'username': 'amina', 'pin': '1234'},
+      final staffRequestData = Map<String, dynamic>.from(
+        staffRequests.single.data as Map,
       );
+      expect(staffRequestData, containsPair('username', 'amina'));
+      expect(staffRequestData, containsPair('pin', '1234'));
+      expect(staffRequestData['device_id'], isA<String>());
+      expect((staffRequestData['device_id'] as String).trim(), isNotEmpty);
       expect(find.text(l10n.loginWrongCredentials), findsOneWidget);
     },
   );

@@ -932,16 +932,21 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       // Run after the historical product rebuild migrations (v11/v12) so the
       // identity columns are added to the final table shape for every upgrade.
       await _ensureProductIdentityColumns(db);
-      await _addColumnIfMissing(db, 'stock_receipts', 'purchase_order_id', 'INTEGER');
-      await _addColumnIfMissing(db, 'stock_receipt_items', 'purchase_order_line_id', 'INTEGER');
+      await _addColumnIfMissing(
+          db, 'stock_receipts', 'purchase_order_id', 'INTEGER');
+      await _addColumnIfMissing(
+          db, 'stock_receipt_items', 'purchase_order_line_id', 'INTEGER');
       final receiptTables = await db.rawQuery(
           "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('stock_receipts','stock_receipt_items')");
-      final existingReceiptTables = receiptTables.map((row) => row['name']).toSet();
+      final existingReceiptTables =
+          receiptTables.map((row) => row['name']).toSet();
       if (existingReceiptTables.contains('stock_receipts')) {
-        await db.execute('CREATE INDEX IF NOT EXISTS idx_stock_receipts_purchase_order ON stock_receipts (purchase_order_id)');
+        await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_stock_receipts_purchase_order ON stock_receipts (purchase_order_id)');
       }
       if (existingReceiptTables.contains('stock_receipt_items')) {
-        await db.execute('CREATE INDEX IF NOT EXISTS idx_receipt_items_purchase_order_line ON stock_receipt_items (purchase_order_line_id)');
+        await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_receipt_items_purchase_order_line ON stock_receipt_items (purchase_order_line_id)');
       }
     }
     if (oldVersion < 92) {
@@ -2036,8 +2041,10 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     await db
         .execute('CREATE INDEX IF NOT EXISTS idx_stock_receipt_items_receipt '
             'ON stock_receipt_items (receipt_id)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_stock_receipts_purchase_order ON stock_receipts (purchase_order_id)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_receipt_items_purchase_order_line ON stock_receipt_items (purchase_order_line_id)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_stock_receipts_purchase_order ON stock_receipts (purchase_order_id)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_receipt_items_purchase_order_line ON stock_receipt_items (purchase_order_line_id)');
 
     await db.execute('''
       CREATE TABLE IF NOT EXISTS product_cost_history (
@@ -3069,13 +3076,20 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     for (final entry in columns.entries) {
       await _addColumnIfMissing(db, 'products', entry.key, entry.value);
     }
-    final missingUuids = await db.query('products', columns: ['id'], where: 'product_uuid IS NULL OR product_uuid = ? ', whereArgs: ['']);
+    final missingUuids = await db.query('products',
+        columns: ['id'],
+        where: 'product_uuid IS NULL OR product_uuid = ? ',
+        whereArgs: ['']);
     for (final row in missingUuids) {
-      await db.update('products', {'product_uuid': _newUuid()}, where: 'id = ?', whereArgs: [row['id']]);
+      await db.update('products', {'product_uuid': _newUuid()},
+          where: 'id = ?', whereArgs: [row['id']]);
     }
-    await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_products_product_uuid ON products (product_uuid)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_products_item_kind ON products (item_kind)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_products_gpc_status ON products (gpc_mapping_status)');
+    await db.execute(
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_products_product_uuid ON products (product_uuid)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_products_item_kind ON products (item_kind)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_products_gpc_status ON products (gpc_mapping_status)');
   }
 
   Future<void> _createShopProfileTable(Database db) async {
@@ -3124,10 +3138,10 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       created_at_utc TEXT NOT NULL,
       updated_at_utc TEXT NOT NULL
     )''');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_commercial_consent_status '
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_commercial_consent_status '
         'ON commercial_consent_grants(status, effective_at_utc)');
-    await db.execute('''CREATE TABLE IF NOT EXISTS commercial_contribution_queue (
+    await db
+        .execute('''CREATE TABLE IF NOT EXISTS commercial_contribution_queue (
       batch_uuid TEXT PRIMARY KEY,
       scope_codes_json TEXT NOT NULL,
       payload_json TEXT NOT NULL,
@@ -5095,7 +5109,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
 
   /// Valid supplier GTINs ready for the tenant catalogue sync. Shop-assigned
   /// and restricted-circulation codes remain local identifiers, never GTINs.
-  Future<Map<int, String>> getVerifiedGtinsForProducts(List<int> productIds) async {
+  Future<Map<int, String>> getVerifiedGtinsForProducts(
+      List<int> productIds) async {
     if (productIds.isEmpty) return const <int, String>{};
     final rows = await (await database).rawQuery(
       'SELECT product_id, barcode, kind FROM product_barcodes '
@@ -5107,10 +5122,12 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     for (final row in rows) {
       final code = Barcode.normalise(row['barcode'] as String? ?? '');
       final kind = row['kind'] as String? ?? BarcodeKind.supplier;
-      final restrictedCirculation = code.length >= 2 &&
-          code.substring(0, 2).startsWith('2');
-      if (kind == BarcodeKind.own || restrictedCirculation ||
-          !Barcode.isGtin(code) || !Barcode.hasValidCheckDigit(code)) {
+      final restrictedCirculation =
+          code.length >= 2 && code.substring(0, 2).startsWith('2');
+      if (kind == BarcodeKind.own ||
+          restrictedCirculation ||
+          !Barcode.isGtin(code) ||
+          !Barcode.hasValidCheckDigit(code)) {
         continue;
       }
       gtins.putIfAbsent((row['product_id'] as num).toInt(), () => code);
@@ -5923,9 +5940,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     final now = DateTime.now().toUtc().toIso8601String();
     await db.transaction((txn) async {
       final profileRows = await txn.query('shop_profile', limit: 1);
-      final currentProfile = ShopProfile.fromWire(profileRows.isEmpty
-          ? null
-          : profileRows.first['profile'] as String?);
+      final currentProfile = ShopProfile.fromWire(
+          profileRows.isEmpty ? null : profileRows.first['profile'] as String?);
       final provenance = {
         ...context.fieldProvenance,
         'app_profile': 'system_derived',
@@ -5941,8 +5957,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     });
   }
 
-  Future<void> saveCommercialConsentGrant(
-      CommercialConsentGrant grant) async {
+  Future<void> saveCommercialConsentGrant(CommercialConsentGrant grant) async {
     grant.validate();
     final db = await database;
     final now = DateTime.now().toUtc().toIso8601String();
@@ -5968,9 +5983,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       orderBy: 'effective_at_utc DESC',
       limit: 1,
     );
-    return rows.isEmpty
-        ? null
-        : CommercialConsentGrant.fromRow(rows.first);
+    return rows.isEmpty ? null : CommercialConsentGrant.fromRow(rows.first);
   }
 
   Future<void> withdrawCommercialConsentGrants() async {
@@ -7493,13 +7506,35 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   /// is drawing is out of date. The till and the inventory row pass this
   /// timestamp to the photo widget as its revision, so a row whose timestamp
   /// has not moved is a row whose photograph is known to be the old one.
+  Future<String> _nextPhotoRevision(
+      DatabaseExecutor db, String table, int rowId) async {
+    final rows = await db.query(
+      table,
+      columns: <String>['updated_at'],
+      where: 'id = ?',
+      whereArgs: <Object?>[rowId],
+      limit: 1,
+    );
+    var revision = DateTime.now();
+    if (rows.isNotEmpty) {
+      final storedValue = rows.first['updated_at'];
+      final storedRevision =
+          storedValue is String ? DateTime.tryParse(storedValue) : null;
+      if (storedRevision != null && !revision.isAfter(storedRevision)) {
+        revision = storedRevision.add(const Duration(microseconds: 1));
+      }
+    }
+    return revision.toIso8601String();
+  }
+
   Future<void> setProductImage(String? relativePath, int productId) async {
     final db = await database;
+    final updatedAt = await _nextPhotoRevision(db, 'products', productId);
     await db.update(
       'products',
       <String, Object?>{
         'image_path': relativePath,
-        'updated_at': DateTime.now().toIso8601String(),
+        'updated_at': updatedAt,
       },
       where: 'id = ?',
       whereArgs: <Object?>[productId],
@@ -7508,12 +7543,10 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
 
   Future<void> setServingImage(String? relativePath, int servingId) async {
     final db = await database;
+    final updatedAt = await _nextPhotoRevision(db, 'shot_cups', servingId);
     await db.update(
       'shot_cups',
-      {
-        'image_path': relativePath,
-        'updated_at': DateTime.now().toIso8601String()
-      },
+      {'image_path': relativePath, 'updated_at': updatedAt},
       where: 'id = ?',
       whereArgs: [servingId],
     );

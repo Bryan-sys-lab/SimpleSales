@@ -62,6 +62,7 @@ Future<void> openSheet(
   bool sellsAsVariants = false,
   List<ProductVariant> variants = const <ProductVariant>[],
   double height = 800,
+  ValueChanged<ServingChoice>? onChoose,
 }) async {
   tester.view.physicalSize = Size(400, height);
   tester.view.devicePixelRatio = 1.0;
@@ -75,6 +76,7 @@ Future<void> openSheet(
         sellsAsVariants: sellsAsVariants,
         shots: shots,
         remainingStock: item.stockQty,
+        onChoose: onChoose,
       ),
     ),
   );
@@ -126,21 +128,22 @@ void main() {
         tester,
         item: product(sellPriceMinor: 0),
         shots: <ShotCup>[
-            ShotCup(
-              id: 1,
-              productId: 1,
-              productName: 'Tusker',
-              capacity: 330,
-              unit: 'ml',
-              price: Money.fromMinor(10000),
-              updatedAt: '',
-            ),
+          ShotCup(
+            id: 1,
+            productId: 1,
+            productName: 'Tusker',
+            capacity: 330,
+            unit: 'ml',
+            price: Money.fromMinor(10000),
+            updatedAt: '',
+          ),
         ],
       );
 
       expect(find.textContaining('Full'), findsNothing);
       // The cup is still there: it is how the tank is sold.
-      expect(find.text('Small serving · 330 ml'), findsOneWidget);
+      expect(find.textContaining('Small serving'), findsOneWidget);
+      expect(find.textContaining('330'), findsOneWidget);
     });
   });
 
@@ -205,6 +208,7 @@ void main() {
     testWidgets('the quarter carries the price the owner set', (
       WidgetTester tester,
     ) async {
+      ServingChoice? selected;
       await openSheet(
         tester,
         item: product(
@@ -212,6 +216,7 @@ void main() {
           halfPriceMinor: 5000,
           quarterPriceMinor: 2500,
         ),
+        onChoose: (choice) => selected = choice,
       );
 
       // 250 — the owner's quarter price, not a quarter of a price nobody
@@ -226,6 +231,8 @@ void main() {
         ),
         findsOneWidget,
       );
+      await tester.tap(find.textContaining('Quarter'));
+      expect(selected, isA<ServingChoiceQuarter>());
     });
   });
 }

@@ -44,4 +44,11 @@ extension AppLocalizationsKeys on AppLocalizations {
   String roleLabel(bool isAdmin) =>
       isAdmin ? shellRoleOwner : settingsRoleCashier;
 
+  String billingIntervalLabel(String interval) => switch (interval) {
+        'monthly' => billingIntervalMonthly,
+        'quarterly' => billingIntervalQuarterly,
+        'semiannual' => billingIntervalSemiannual,
+        'annual' => billingIntervalAnnual,
+        _ => interval,
+      };
 }

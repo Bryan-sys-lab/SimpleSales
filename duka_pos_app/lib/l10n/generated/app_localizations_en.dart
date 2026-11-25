@@ -2294,7 +2294,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get paywallVoucherChooseText =>
-      'Choose a subscription or enter an administrator-issued voucher. Access is shared by the shop\'s owner and staff.';
+      'The price and billing period set for this shop are shown above. Enter an administrator-issued voucher to activate access.';
 
   @override
   String get paywallVoucherClaimText =>
@@ -2326,6 +2326,86 @@ class AppLocalizationsEn extends AppLocalizations {
   String paywallPaymentPrompt(String currency, String amount, int duration) {
     return 'Payment prompt: $currency $amount for $duration months';
   }
+
+  @override
+  String get paywallPaymentMethodTitle => 'Payment method';
+
+  @override
+  String get paywallPaymentMethodMpesa => 'M-Pesa prompt';
+
+  @override
+  String get paywallPaymentDestinationTitle => 'PayHero collection destination';
+
+  @override
+  String paywallPaymentTillDestination(String code) {
+    return 'Till: $code';
+  }
+
+  @override
+  String paywallPaymentPaybillDestination(String code) {
+    return 'Paybill: $code';
+  }
+
+  @override
+  String paywallPaymentBankDestination(String code, String account) {
+    return 'Bank code: $code · Account: $account';
+  }
+
+  @override
+  String get paywallPaymentUnavailable =>
+      'The administrator has not finished configuring payments. Please try again later.';
+
+  @override
+  String get paywallPaymentPhone => 'M-Pesa phone number';
+
+  @override
+  String get paywallPaymentPhoneInvalid =>
+      'Enter a valid phone number to receive the M-Pesa prompt.';
+
+  @override
+  String paywallPaymentReference(String reference) {
+    return 'Payment reference: $reference';
+  }
+
+  @override
+  String get paywallPaymentPending =>
+      'Payment is still pending. Approve the M-Pesa prompt, then check again.';
+
+  @override
+  String get paywallPaymentFailed =>
+      'Payment was not completed. You can try again.';
+
+  @override
+  String get paywallPaymentReceived =>
+      'Payment was received, but the subscription status could not be refreshed. Refresh and try again.';
+
+  @override
+  String paywallPaymentDuration(int months) {
+    return 'Every $months months';
+  }
+
+  @override
+  String get paywallCheckingPayment => 'Checking payment…';
+
+  @override
+  String get paywallCheckPaymentStatus => 'Check payment status';
+
+  @override
+  String paywallVoucherPeriodMismatch(int months) {
+    return 'Your $months-month discount voucher does not match the administrator-set billing period; it will remain available for a matching plan.';
+  }
+
+  @override
+  String get billingIntervalMonthly => 'Monthly';
+
+  @override
+  String get billingIntervalQuarterly => 'Quarterly (3 months)';
+
+  @override
+  String get billingIntervalSemiannual => 'Semiannual (6 months)';
+
+  @override
+  String get billingIntervalAnnual => 'Annual (12 months)';
 
   @override
   String get membershipTitle => 'Membership';
@@ -2884,8 +2964,68 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get settingsPayHeroGuideTitle => 'Set up M-Pesa and bank collections';
+
+  @override
+  String get settingsPayHeroGuideSummary =>
+      'Choose the destination where you want customer payments to arrive.';
+
+  @override
+  String get settingsPayHeroGuideIntro =>
+      'PayHero connects your shop\'s M-Pesa Till, Paybill or bank Paybill. The app registers the channel for you; do not enter PayHero API keys or your M-Pesa PIN here.';
+
+  @override
+  String get settingsPayHeroTillGuide =>
+      'M-Pesa Till: choose this for a Buy Goods Till and enter the Till number registered to your shop. Customers receive an M-Pesa STK prompt and the payment goes to this Till. No account number is needed.';
+
+  @override
+  String get settingsPayHeroPaybillGuide =>
+      'M-Pesa Paybill: enter your business Paybill number. If your Paybill needs an account number or reference to route payments, enter it in the optional account field; otherwise leave it blank.';
+
+  @override
+  String get settingsPayHeroBankGuide =>
+      'Bank: enter the bank\'s M-Pesa Paybill number and the destination bank account number. PayHero uses both to route the customer\'s STK payment to that bank account.';
+
+  @override
+  String get settingsPayHeroActivationGuide =>
+      'Save the channel to register it with PayHero and enable M-Pesa. Setup and STK prompts need an internet connection. Test with your own phone and confirm the payment reaches the selected destination.';
+
+  @override
+  String get settingsPayHeroSubscriptionNote =>
+      'This destination collects your shop\'s sales. Membership or subscription payments use a separate destination configured by the platform.';
+
+  @override
+  String get settingsPayHeroCollectionType => 'Collection destination';
+
+  @override
+  String get settingsPayHeroBankChannel => 'Bank account (via M-Pesa Paybill)';
+
+  @override
+  String get settingsPayHeroBankPaybillNumber => 'Bank M-Pesa Paybill number';
+
+  @override
+  String get settingsPayHeroBankAccountNumber =>
+      'Destination bank account number';
+
+  @override
+  String get settingsPayHeroPaybillAccountNumber =>
+      'Paybill account number (optional)';
+
+  @override
+  String get settingsPayHeroShortCodeHint =>
+      'Enter the Till or Paybill number registered to your business.';
+
+  @override
+  String get settingsPayHeroPaybillAccountHint =>
+      'Only enter an account number if your Paybill requires one; otherwise leave this blank.';
+
+  @override
+  String get settingsPayHeroBankAccountHint =>
+      'Enter the bank account that should receive payments through this Paybill.';
+
+  @override
   String get settingsConnectMpesaMessage =>
-      'The platform connects this shop to M-Pesa through PayHero. Enter only the shop Till or Paybill number; PayHero credentials stay on the backend. Staff continue using local PINs for the till.';
+      'The platform connects this shop\'s Till, Paybill or bank Paybill through PayHero. Enter destination details in the setup form; PayHero credentials stay on the backend. Staff continue using local PINs for the till.';
 
   @override
   String get settingsPaymentChannelHint =>
@@ -7837,11 +7977,11 @@ class AppLocalizationsEn extends AppLocalizations {
       'Could not load products for review. Try again.';
 
   @override
-  String get accountRecoveryTitle => 'Recover your shop';
+  String get accountRecoveryTitle => 'Sign in to your shop';
 
   @override
   String get accountRecoveryDescription =>
-      'Sign in with the owner email and PIN, then restore a portable cloud backup. Your backup passphrase is required and is never sent to the server.';
+      'Sign in with the owner email and PIN. This device creates its local encryption key automatically. A backup passphrase is only needed to restore a portable backup you created. Leave it blank to connect the shop and download supported cloud-synced data. The full local sales history, device-only records, and anything not synced require a portable backup.';
 
   @override
   String get accountRecoveryEmail => 'Owner email';
@@ -7853,24 +7993,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get accountRecoveryForgotPin => 'Forgot your owner PIN?';
 
   @override
-  String get accountRecoveryPassphrase => 'Backup passphrase';
+  String get accountRecoveryPassphrase =>
+      'Portable backup passphrase (optional)';
 
   @override
   String get accountRecoveryPassphraseHelp =>
-      'Use the passphrase chosen when the portable backup was created (at least 8 characters).';
+      'Only used to decrypt a portable backup locally; it is never sent to the server. Leave blank if you did not create one.';
 
   @override
-  String get accountRecoveryAction => 'Sign in and restore shop';
+  String get accountRecoveryAction => 'Sign in to shop';
 
   @override
-  String get accountRecoveryWorking => 'Signing in and restoringâ€¦';
+  String get accountRecoveryWorking => 'Signing inâ€¦';
 
   @override
   String get accountRecoveryInvalidPin => 'Enter the 6-digit owner PIN.';
 
   @override
   String get accountRecoveryInvalidPassphrase =>
-      'Enter the backup passphrase (at least 8 characters).';
+      'A backup passphrase must be at least 8 characters.';
 
   @override
   String get accountRecoverySignInFailed =>
@@ -7890,15 +8031,64 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get accountRecoveryFailed =>
-      'The shop could not be restored. Check your connection and backup passphrase, then try again.';
+      'Could not connect or restore the shop. Check your connection and try again; if restoring a backup, check its passphrase.';
 
   @override
   String get accountRecoveryEnterEmail => 'Enter the owner email first.';
 
   @override
-  String get accountRecoveryChooseShop => 'Choose the shop to restore';
+  String get accountRecoveryChooseShop => 'Choose the shop to connect';
 
   @override
   String get accountRecoveryCleanupFailed =>
       'Recovery failed and this device could not return to its previous shop. Restart the app before trying again.';
+
+  @override
+  String get planDetailsTitle => 'Plan details';
+
+  @override
+  String get planDetailsCurrentPlan => 'Current plan';
+
+  @override
+  String get planDetailsStatusLabel => 'Status';
+
+  @override
+  String get planDetailsPriceLabel => 'Plan price';
+
+  @override
+  String get planDetailsBillingPeriodLabel => 'Billing period';
+
+  @override
+  String get planDetailsPeriodEndLabel => 'Paid through';
+
+  @override
+  String get planDetailsNoPeriodEnd => 'No end date recorded';
+
+  @override
+  String get planDetailsManageVoucher => 'Manage vouchers';
+
+  @override
+  String planDetailsBillingPeriod(String period) {
+    return 'Billing period: $period';
+  }
+
+  @override
+  String get planDetailsStatusActive => 'Active';
+
+  @override
+  String get planDetailsStatusGrace => 'Grace period';
+
+  @override
+  String get planDetailsStatusExpired => 'Expired';
+
+  @override
+  String get planDetailsStatusPending => 'Payment required';
+
+  @override
+  String get paywallVoucherRedemptionFailed =>
+      'Voucher could not be redeemed. Check the code and try again.';
+
+  @override
+  String get paywallVoucherClaimFailed =>
+      'The issued voucher could not be claimed. Refresh and try again.';
 }

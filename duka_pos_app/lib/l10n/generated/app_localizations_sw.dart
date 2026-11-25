@@ -2294,7 +2294,7 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get paywallVoucherChooseText =>
-      'Chagua usajili au weka vocha iliyotolewa na msimamizi. Ufikiaji unashirikiwa na mmiliki na wafanyakazi wa duka.';
+      'Bei na kipindi cha malipo kilichowekwa kwa duka hili vimeonyeshwa hapo juu. Weka vocha iliyotolewa na msimamizi ili kuwezesha ufikiaji.';
 
   @override
   String get paywallVoucherClaimText =>
@@ -2326,6 +2326,87 @@ class AppLocalizationsSw extends AppLocalizations {
   String paywallPaymentPrompt(String currency, String amount, int duration) {
     return 'Ombi la malipo: $currency $amount kwa miezi $duration';
   }
+
+  @override
+  String get paywallPaymentMethodTitle => 'Njia ya malipo';
+
+  @override
+  String get paywallPaymentMethodMpesa => 'Ombi la M-Pesa';
+
+  @override
+  String get paywallPaymentDestinationTitle =>
+      'Mahali pa PayHero pa kupokea malipo';
+
+  @override
+  String paywallPaymentTillDestination(String code) {
+    return 'Till: $code';
+  }
+
+  @override
+  String paywallPaymentPaybillDestination(String code) {
+    return 'Paybill: $code';
+  }
+
+  @override
+  String paywallPaymentBankDestination(String code, String account) {
+    return 'Nambari ya benki: $code · Akaunti: $account';
+  }
+
+  @override
+  String get paywallPaymentUnavailable =>
+      'Msimamizi bado hajakamilisha mipangilio ya malipo. Tafadhali jaribu tena baadaye.';
+
+  @override
+  String get paywallPaymentPhone => 'Nambari ya simu ya M-Pesa';
+
+  @override
+  String get paywallPaymentPhoneInvalid =>
+      'Weka nambari sahihi ya simu ili kupokea ombi la M-Pesa.';
+
+  @override
+  String paywallPaymentReference(String reference) {
+    return 'Rejeleo la malipo: $reference';
+  }
+
+  @override
+  String get paywallPaymentPending =>
+      'Malipo bado yanasubiri. Kubali ombi la M-Pesa kisha uangalie tena.';
+
+  @override
+  String get paywallPaymentFailed =>
+      'Malipo hayakukamilika. Unaweza kujaribu tena.';
+
+  @override
+  String get paywallPaymentReceived =>
+      'Malipo yamepokelewa, lakini hali ya usajili haikuweza kusasishwa. Onyesha upya kisha ujaribu tena.';
+
+  @override
+  String paywallPaymentDuration(int months) {
+    return 'Kila miezi $months';
+  }
+
+  @override
+  String get paywallCheckingPayment => 'Inaangalia malipo…';
+
+  @override
+  String get paywallCheckPaymentStatus => 'Angalia hali ya malipo';
+
+  @override
+  String paywallVoucherPeriodMismatch(int months) {
+    return 'Vocha yako ya punguzo ya miezi $months hailingani na kipindi cha malipo kilichowekwa na msimamizi; itabaki tayari kwa mpango unaolingana.';
+  }
+
+  @override
+  String get billingIntervalMonthly => 'Kila mwezi';
+
+  @override
+  String get billingIntervalQuarterly => 'Kila robo mwaka (miezi 3)';
+
+  @override
+  String get billingIntervalSemiannual => 'Kila miezi 6';
+
+  @override
+  String get billingIntervalAnnual => 'Kila mwaka (miezi 12)';
 
   @override
   String get membershipTitle => 'Uanachama';
@@ -2885,8 +2966,71 @@ class AppLocalizationsSw extends AppLocalizations {
   }
 
   @override
+  String get settingsPayHeroGuideTitle =>
+      'Mwongozo wa kupokea malipo kwa PayHero';
+
+  @override
+  String get settingsPayHeroGuideSummary =>
+      'Chagua njia inayolingana na mahali unapotaka malipo ya wateja yafike.';
+
+  @override
+  String get settingsPayHeroGuideIntro =>
+      'PayHero huunganisha Till, Paybill au Paybill ya benki ya duka lako. Programu husajili njia uliyochagua; usiweke funguo za API za PayHero au PIN yako ya M-Pesa hapa.';
+
+  @override
+  String get settingsPayHeroTillGuide =>
+      'M-Pesa Till: chagua hii kwa Buy Goods Till na uweke namba ya Till ya biashara yako. Wateja hupokea ombi la M-Pesa STK na malipo huenda kwenye Till hiyo. Namba ya akaunti haihitajiki.';
+
+  @override
+  String get settingsPayHeroPaybillGuide =>
+      'M-Pesa Paybill: weka namba ya Paybill ya biashara yako. Ikiwa Paybill yako inahitaji namba ya akaunti au rejea ili kuelekeza malipo, iweke kwenye sehemu ya akaunti ya hiari; vinginevyo iache wazi.';
+
+  @override
+  String get settingsPayHeroBankGuide =>
+      'Benki: weka namba ya Paybill ya M-Pesa ya benki pamoja na namba ya akaunti ya benki inayopaswa kupokea malipo. PayHero hutumia zote mbili kuelekeza malipo ya STK kwenye akaunti hiyo.';
+
+  @override
+  String get settingsPayHeroActivationGuide =>
+      'Hifadhi njia ili isajiliwe kwa PayHero na kuwasha M-Pesa. Usanidi na maombi ya STK yanahitaji intaneti. Jaribu kwa simu yako na uthibitishe kuwa malipo yamefika kwenye sehemu uliyochagua.';
+
+  @override
+  String get settingsPayHeroSubscriptionNote =>
+      'Njia hii hupokea malipo ya mauzo ya duka lako. Malipo ya uanachama hutumia sehemu tofauti iliyowekwa na mfumo.';
+
+  @override
+  String get settingsPayHeroCollectionType => 'Sehemu ya kupokea malipo';
+
+  @override
+  String get settingsPayHeroBankChannel =>
+      'Akaunti ya benki (kupitia M-Pesa Paybill)';
+
+  @override
+  String get settingsPayHeroBankPaybillNumber =>
+      'Namba ya M-Pesa Paybill ya benki';
+
+  @override
+  String get settingsPayHeroBankAccountNumber =>
+      'Namba ya akaunti ya benki inayopokea fedha';
+
+  @override
+  String get settingsPayHeroPaybillAccountNumber =>
+      'Namba ya akaunti ya Paybill (si lazima)';
+
+  @override
+  String get settingsPayHeroShortCodeHint =>
+      'Weka namba ya Till au Paybill iliyosajiliwa kwa biashara yako.';
+
+  @override
+  String get settingsPayHeroPaybillAccountHint =>
+      'Weka namba ya akaunti tu ikiwa Paybill yako inaihitaji; vinginevyo iache wazi.';
+
+  @override
+  String get settingsPayHeroBankAccountHint =>
+      'Weka akaunti ya benki inayopaswa kupokea malipo kupitia Paybill hii.';
+
+  @override
   String get settingsConnectMpesaMessage =>
-      'The platform connects this shop to M-Pesa through PayHero. Enter only the shop Till or Paybill number; PayHero credentials stay on the backend. Staff continue using local PINs for the till.';
+      'Mfumo huunganisha Till, Paybill au Paybill ya benki ya duka hili kupitia PayHero. Weka maelezo ya sehemu ya kupokea malipo kwenye fomu ya usanidi; funguo za PayHero hubaki kwenye seva. Wafanyakazi wataendelea kutumia PIN zao za hapa kwenye kifaa.';
 
   @override
   String get settingsPaymentChannelHint =>
@@ -6967,17 +7111,16 @@ class AppLocalizationsSw extends AppLocalizations {
   String get settingsDiscountsPriceOverrides => 'Ubakaji na mabadiliko ya bei';
 
   @override
-  String get settingsSetupMpesaPayHero =>
-      'Inaweza kuwekwa na M-Pesa na PayHero';
+  String get settingsSetupMpesaPayHero => 'Sanidi M-Pesa kupitia PayHero';
 
   @override
-  String get settingsMpesaTill => 'M-Pesa Tilli';
+  String get settingsMpesaTill => 'Till ya M-Pesa';
 
   @override
-  String get settingsMpesaPaybill => 'M-Pesa Lipa Namba';
+  String get settingsMpesaPaybill => 'M-Pesa Paybill (Lipa na M-Pesa)';
 
   @override
-  String get settingsSaveChannel => 'Hifadhi salio';
+  String get settingsSaveChannel => 'Hifadhi njia';
 
   @override
   String get settingsCouldNotOpenDocument => 'Haikuweza kufungua hati';
@@ -7848,11 +7991,11 @@ class AppLocalizationsSw extends AppLocalizations {
       'Haikuwezekana kupakia bidhaa za kukaguliwa. Jaribu tena.';
 
   @override
-  String get accountRecoveryTitle => 'Rejesha duka lako';
+  String get accountRecoveryTitle => 'Ingia kwenye duka lako';
 
   @override
   String get accountRecoveryDescription =>
-      'Ingia kwa barua pepe ya mmiliki na PIN, kisha urejeshe nakala ya wingu inayoweza kuhamishwa. Nenosiri la nakala linahitajika na halitumwi kwa seva.';
+      'Ingia kwa barua pepe ya mmiliki na PIN. Kifaa hiki huunda ufunguo wake wa ndani wa usimbaji kiotomatiki. Kaulisiri ya nakala inahitajika tu kurejesha nakala inayoweza kuhamishwa uliyounda. Iache wazi ili kuunganisha duka na kupakua data inayoweza kusawazishwa kutoka wingu. Historia yote ya mauzo ya ndani, rekodi za kifaa pekee, na data ambayo haijasawazishwa vinahitaji nakala ya kuhamisha.';
 
   @override
   String get accountRecoveryEmail => 'Barua pepe ya mmiliki';
@@ -7864,14 +8007,15 @@ class AppLocalizationsSw extends AppLocalizations {
   String get accountRecoveryForgotPin => 'Umesahau PIN ya mmiliki?';
 
   @override
-  String get accountRecoveryPassphrase => 'Nenosiri la nakala rudufu';
+  String get accountRecoveryPassphrase =>
+      'Kaulisiri ya nakala ya kuhamisha (si lazima)';
 
   @override
   String get accountRecoveryPassphraseHelp =>
-      'Tumia nenosiri lililowekwa wakati wa kuunda nakala ya wingu (angalau herufi 8).';
+      'Hutumika tu kufungua nakala kwenye kifaa hiki na haitumwi kwa seva. Iache wazi ikiwa hukutengeneza nakala.';
 
   @override
-  String get accountRecoveryAction => 'Ingia na urejeshe duka';
+  String get accountRecoveryAction => 'Ingia kwenye duka';
 
   @override
   String get accountRecoveryWorking => 'Inaingia na kurejesha…';
@@ -7882,7 +8026,7 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get accountRecoveryInvalidPassphrase =>
-      'Weka nenosiri la nakala (angalau herufi 8).';
+      'Kaulisiri ya nakala lazima iwe na angalau herufi 8.';
 
   @override
   String get accountRecoverySignInFailed =>
@@ -7902,15 +8046,64 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get accountRecoveryFailed =>
-      'Duka halikuweza kurejeshwa. Kagua muunganisho na nenosiri la nakala kisha ujaribu tena.';
+      'Duka halikuweza kuunganishwa au kurejeshwa. Kagua muunganisho kisha ujaribu tena; ikiwa unarejesha nakala, hakikisha kaulisiri ni sahihi.';
 
   @override
   String get accountRecoveryEnterEmail => 'Weka barua pepe ya mmiliki kwanza.';
 
   @override
-  String get accountRecoveryChooseShop => 'Chagua duka la kurejesha';
+  String get accountRecoveryChooseShop => 'Chagua duka la kuunganisha';
 
   @override
   String get accountRecoveryCleanupFailed =>
       'Urejeshaji umeshindwa na kifaa hakikuweza kurudi kwenye duka lake la awali. Anzisha programu upya kabla ya kujaribu tena.';
+
+  @override
+  String get planDetailsTitle => 'Maelezo ya mpango';
+
+  @override
+  String get planDetailsCurrentPlan => 'Mpango wa sasa';
+
+  @override
+  String get planDetailsStatusLabel => 'Hali';
+
+  @override
+  String get planDetailsPriceLabel => 'Bei ya mpango';
+
+  @override
+  String get planDetailsBillingPeriodLabel => 'Kipindi cha malipo';
+
+  @override
+  String get planDetailsPeriodEndLabel => 'Imelipiwa hadi';
+
+  @override
+  String get planDetailsNoPeriodEnd => 'Hakuna tarehe ya mwisho iliyorekodiwa';
+
+  @override
+  String get planDetailsManageVoucher => 'Dhibiti vocha';
+
+  @override
+  String planDetailsBillingPeriod(String period) {
+    return 'Kipindi cha malipo: $period';
+  }
+
+  @override
+  String get planDetailsStatusActive => 'Inatumika';
+
+  @override
+  String get planDetailsStatusGrace => 'Kipindi cha nyongeza';
+
+  @override
+  String get planDetailsStatusExpired => 'Muda umeisha';
+
+  @override
+  String get planDetailsStatusPending => 'Malipo yanahitajika';
+
+  @override
+  String get paywallVoucherRedemptionFailed =>
+      'Vocha haikuweza kutumika. Kagua msimbo kisha ujaribu tena.';
+
+  @override
+  String get paywallVoucherClaimFailed =>
+      'Vocha iliyotolewa haikuweza kudaiwa. Onyesha upya kisha ujaribu tena.';
 }
