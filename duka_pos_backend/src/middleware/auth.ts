@@ -140,38 +140,10 @@ export const authMiddleware = async (req: express.Request, res: express.Response
   if (req.method === 'POST' && req.path === '/tenant/provision') return next();
   if (req.method === 'GET' && req.path === '/tenant/shops') return next();
 
-  // Device-tier restriction.
-  if (claims.token_use === 'device') {
-    const allowedPrefixes = [
-      '/tenant',
-      '/products',
-      '/reports',
-      '/sales',
-      '/backups',
-      '/payments',
-    ];
-    const ok = voucherBillingPath ||
-      allowedPrefixes.some((p) => normalizedOriginalPath === p || normalizedOriginalPath.startsWith(p + '/'));
-    if (!ok) {
-      return res.status(403).json({ error: 'Device token not allowed', code: 'DEVICE_TOKEN_NOT_ALLOWED', requestId: req.requestId });
-    }
-    const deviceDeniedTenantPaths = [
-      '/tenant/provision',
-      '/tenant/settings',
-      '/tenant/staff/sync',
-      '/tenant/staff/pin-reset-requests',
-      '/tenant/devices',
-      '/tenant/tax-entity',
-      '/tenant/portfolio',
-      '/tenant/activity',
-    ];
-    const deviceDenied = deviceDeniedTenantPaths.some(
-      (p) => normalizedOriginalPath === p || normalizedOriginalPath.startsWith(p + '/'),
-    );
-    if (deviceDenied && !(req.method === 'GET' && normalizedOriginalPath === '/tenant/settings')) {
-      return res.status(403).json({ error: 'Device token not allowed', code: 'DEVICE_TOKEN_NOT_ALLOWED', requestId: req.requestId });
-    }
-  }
+  // Device tokens (issued to verified tills, including the owner's own device
+  // during setup) retain full app access. Entitlement and role checks below
+  // still apply. Restricting them by prefix previously blocked owners from
+  // configuring their shop.
 
   try {
     const profiles = await prisma.profile.findMany({
