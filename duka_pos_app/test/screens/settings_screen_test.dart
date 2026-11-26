@@ -41,6 +41,7 @@ Widget _panel({
   int vatRatePercent = 16,
   String tin = '',
   String tillCode = 'TILL-1',
+  bool showDiagnostics = false,
   SubscriptionEntitlement? subscription,
   VoidCallback onOpenSubscription = _noop,
 }) =>
@@ -78,6 +79,7 @@ Widget _panel({
       identityVerified: identityVerified,
       subscription: subscription,
       onOpenSubscription: onOpenSubscription,
+      onOpenDiagnostics: showDiagnostics ? _noop : null,
       staff: staff,
       printer: printer,
       mpesaEnabled: mpesaEnabled,
@@ -98,6 +100,21 @@ void main() {
   });
 
   group('settings screen', () {
+    testWidgets('hides diagnostics for staff sessions', (tester) async {
+      tester.useDevice(Device.small);
+      await tester.pumpApp(home: _panel());
+
+      expect(find.text(l10n.diagnosticsTitle), findsNothing);
+    });
+
+    testWidgets('shows diagnostics when the owner session enables it',
+        (tester) async {
+      tester.useDevice(Device.small);
+      await tester.pumpApp(home: _panel(showDiagnostics: true));
+
+      expect(find.text(l10n.diagnosticsTitle), findsOneWidget);
+    });
+
     testWidgets('every section renders and nothing overflows', (tester) async {
       tester.useDevice(Device.small);
       await tester.pumpApp(home: _panel());

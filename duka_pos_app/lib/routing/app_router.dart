@@ -113,6 +113,7 @@ GoRouter buildAppRouter({
     redirect: (BuildContext context, GoRouterState routerState) => appRedirect(
       snapshot: stage.snapshot,
       location: routerState.matchedLocation,
+      isOwnerSession: appState.isOwnerSession,
     ),
     errorBuilder: (BuildContext context, GoRouterState routerState) =>
         NotFoundScreen(location: routerState.matchedLocation),

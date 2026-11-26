@@ -28,6 +28,7 @@ import 'app_stage_controller.dart';
 String? appRedirect({
   required AppStageSnapshot snapshot,
   required String location,
+  bool isOwnerSession = false,
 }) {
   // 1. The boot gate. Nothing else is evaluated until the local store is
   //    readable, because every later answer depends on it.
@@ -133,6 +134,10 @@ String? appRedirect({
   // The all-shops view is the owner's: it reads across every shop on the
   // device, which is nobody's business but the owner's.
   if (location == Routes.portfolio && !snapshot.isAdmin) {
+    return Routes.dashboard;
+  }
+
+  if (location == Routes.diagnostics && !isOwnerSession) {
     return Routes.dashboard;
   }
 

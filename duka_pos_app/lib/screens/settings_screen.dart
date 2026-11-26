@@ -16,6 +16,7 @@ import '../profile/shop_profile.dart';
 import '../profile/business_context_editor.dart';
 import '../profile/commercial_consent.dart';
 import '../services/backend_service.dart';
+import '../services/identity_service.dart';
 import '../profile/profile_navigation.dart';
 import '../profile/profile_terminology.dart';
 import '../l10n/generated/app_localizations.dart';
@@ -1093,26 +1094,31 @@ class _SettingsScreenState extends State<SettingsScreen>
         entityId: name,
         detail: role,
       );
+      var staffSyncDeferred = false;
       if (await BackendService.isBackendLinked) {
         try {
-          await BackendService.syncStaffToBackend();
+          if (await IdentityService.isAuthenticated) {
+            await BackendService.syncStaffToBackend();
+          } else {
+            staffSyncDeferred = true;
+          }
         } catch (e) {
-          // Surface the underlying error so a sync failure is diagnosable
-          // instead of a generic "could not sync" message.
-          // ignore: avoid_print
-          print('Staff sync failed: $e');
-          // Roll back the local row so a failed sync does not leave a staff
-          // member that exists only on this till.
-          final db = await DatabaseHelper.instance.database;
-          await db.delete('staff', where: 'id = ?', whereArgs: [staffId]);
-          if (!mounted) return;
-          showOperationFailure(
-            context,
-            title: l10n.settingsStaffSaveFailedTitle,
-            message: '${l10n.settingsStaffSyncFailed}\n$e',
-            icon: Icons.cloud_off_outlined,
-          );
-          return;
+          if (BackendService.isDeferrableStaffSyncError(e)) {
+            staffSyncDeferred = true;
+            debugPrint('Staff sync deferred: $e');
+          } else {
+            // Surface non-transient server errors and roll back the local row.
+            final db = await DatabaseHelper.instance.database;
+            await db.delete('staff', where: 'id = ?', whereArgs: [staffId]);
+            if (!mounted) return;
+            showOperationFailure(
+              context,
+              title: l10n.settingsStaffSaveFailedTitle,
+              message: '${l10n.settingsStaffSyncFailed}\n$e',
+              icon: Icons.cloud_off_outlined,
+            );
+            return;
+          }
         }
       }
       await _load();
@@ -1120,8 +1126,10 @@ class _SettingsScreenState extends State<SettingsScreen>
       showOperationSuccess(
         context,
         title: l10n.settingsStaffSavedTitle(_staffRoleLabel(l10n, role)),
-        message: name,
-        detailIcon: Icons.person_add_outlined,
+        message: staffSyncDeferred ? l10n.settingsStaffSavedOffline : name,
+        detailIcon: staffSyncDeferred
+            ? Icons.cloud_off_outlined
+            : Icons.person_add_outlined,
       );
     } catch (e) {
       if (!mounted) return;
@@ -1692,6 +1700,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       _syncing = false;
       _syncStatus = statusLabel;
     });
+    final syncSucceeded =
+        identityVerified && report != null && report.succeeded;
     // A sync that reports success is a claim about the backend, so the claim is
     // logged with its outcome rather than left as a snackbar that vanishes.
     await recordActionAudit(
@@ -1704,12 +1714,22 @@ class _SettingsScreenState extends State<SettingsScreen>
     // And the owner is told, on a screen. A sync that pushed nothing and one
     // that pushed everything are very different facts, and the owner pressed
     // the button to find out which.
-    showOperationSuccess(
-      context,
-      title: l10n.settingsSyncDoneTitle,
-      message: statusLabel,
-      detailIcon: Icons.cloud_sync_outlined,
-    );
+    if (syncSucceeded) {
+      showOperationSuccess(
+        context,
+        title: l10n.settingsSyncDoneTitle,
+        message: statusLabel,
+        detailIcon: Icons.cloud_sync_outlined,
+      );
+    } else {
+      showOperationFailure(
+        context,
+        title: l10n.settingsSyncFailedTitle,
+        message: statusLabel,
+        icon: Icons.cloud_off_outlined,
+        onRetry: identityVerified ? _syncNow : null,
+      );
+    }
   }
 
   Future<void> _setAutoSync(bool value) async {
@@ -2655,6 +2675,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       subscriptionLoading: _subscriptionLoading,
       subscriptionUnavailable: _subscriptionUnavailable,
       onOpenSubscription: () => context.push(Routes.planDetails),
+      onOpenDiagnostics:
+          ownerSession ? () => context.push(Routes.diagnostics) : null,
       verifyingIdentity: _verifyingIdentity,
       onVerifyIdentity: ownerSession ? _verifyIdentityOnline : null,
       staff: _staff,
@@ -2860,6 +2882,7 @@ class SettingsPanel extends StatelessWidget {
     this.subscriptionLoading = false,
     this.subscriptionUnavailable = false,
     required this.onOpenSubscription,
+    this.onOpenDiagnostics,
     required this.staff,
     required this.onAddStaff,
     required this.onRemoveStaff,
@@ -2949,6 +2972,7 @@ class SettingsPanel extends StatelessWidget {
   final bool subscriptionLoading;
   final bool subscriptionUnavailable;
   final VoidCallback onOpenSubscription;
+  final VoidCallback? onOpenDiagnostics;
 
   final List<Staff> staff;
   final Future<void> Function() onAddStaff;
@@ -3155,7 +3179,7 @@ class SettingsPanel extends StatelessWidget {
           onOpenSyncCenter: onOpenSyncCenter,
         ),
         _BackupPanel(
-          onOpenDiagnostics: () => context.push(Routes.diagnostics),
+          onOpenDiagnostics: onOpenDiagnostics,
           onExportEncrypted: onExportEncrypted,
           onRestoreEncrypted: onRestoreEncrypted,
           onExportFullBackup: onExportFullBackup,
@@ -3215,16 +3239,51 @@ class SettingsPanel extends StatelessWidget {
     );
     final int discountPercent =
         checkout?.discountPercent ?? current.discountPercent;
-    if (discountPercent <= 0) return price;
+    final lines = <String>[price];
+    if (checkout != null && discountPercent > 0) {
+      lines.add(l10n.settingsSubscriptionAmountDue(
+        current.currency,
+        amount(checkout.amountMinor),
+        interval,
+        discountPercent,
+      ));
+    } else if (checkout != null) {
+      lines.add(
+        '${l10n.paywallAmountDue}: ${current.currency} '
+        '${amount(checkout.amountMinor)} / $interval',
+      );
+    } else if (discountPercent > 0) {
+      final int amountDueMinor =
+          (baseAmountMinor * (100 - discountPercent.clamp(0, 100)) / 100)
+              .round();
+      lines.add(l10n.settingsSubscriptionAmountDue(
+        current.currency,
+        amount(amountDueMinor),
+        interval,
+        discountPercent,
+      ));
+    }
 
-    final int amountDueMinor = checkout?.amountMinor ??
-        (baseAmountMinor * (100 - discountPercent.clamp(0, 100)) / 100).round();
-    return '$price\n${l10n.settingsSubscriptionAmountDue(
-      current.currency,
-      amount(amountDueMinor),
-      interval,
-      discountPercent,
-    )}';
+    final paymentMethod = current.paymentMethod;
+    if (paymentMethod != null) {
+      final methodLabel = paymentMethod.method == 'mpesa_stk'
+          ? l10n.paywallPaymentMethodMpesa
+          : paymentMethod.method;
+      final destination = switch (paymentMethod.channelType) {
+        'till' => l10n.paywallPaymentTillDestination(paymentMethod.shortCode),
+        'paybill' =>
+          l10n.paywallPaymentPaybillDestination(paymentMethod.shortCode),
+        'bank' => l10n.paywallPaymentBankDestination(
+            paymentMethod.shortCode,
+            paymentMethod.accountNumber ?? '',
+          ),
+        _ => paymentMethod.shortCode,
+      };
+      lines
+        ..add('${l10n.paywallPaymentMethodTitle}: $methodLabel')
+        ..add('${l10n.paywallPaymentDestinationTitle}: $destination');
+    }
+    return lines.join('\n');
   }
 }
 
@@ -5006,7 +5065,7 @@ class _BackupPanel extends StatelessWidget {
     required this.onImport,
     this.onSeedBlackbee,
     required this.onErase,
-    required this.onOpenDiagnostics,
+    this.onOpenDiagnostics,
     required this.importing,
     required this.importProgress,
   });
@@ -5028,7 +5087,7 @@ class _BackupPanel extends StatelessWidget {
   final VoidCallback? onSeedBlackbee;
   final Future<void> Function() onErase;
 
-  final Future<void> Function() onOpenDiagnostics;
+  final VoidCallback? onOpenDiagnostics;
 
   @override
   Widget build(BuildContext context) {
@@ -5129,14 +5188,12 @@ class _BackupPanel extends StatelessWidget {
             label: Text(l10n.settingsEraseLocalBackupsAction),
           ),
           SizedBox(height: spacing.md),
-          // Diagnostics sits with the backups rather than with the analytics:
-          // it answers "what broke", which is the same question a backup
-          // exists to answer forward.
-          SettingsNavRow(
-            icon: Icons.health_and_safety_outlined,
-            title: l10n.diagnosticsTitle,
-            onTap: onOpenDiagnostics,
-          ),
+          if (onOpenDiagnostics != null)
+            SettingsNavRow(
+              icon: Icons.health_and_safety_outlined,
+              title: l10n.diagnosticsTitle,
+              onTap: onOpenDiagnostics,
+            ),
         ],
       ),
     );

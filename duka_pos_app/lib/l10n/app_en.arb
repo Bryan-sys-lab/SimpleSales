@@ -470,6 +470,7 @@
   "settingsMpesaUpdateFailedTitle": "The setting was not saved",
   "settingsIdentityVerifiedTitle": "Identity verified",
   "settingsSyncDoneTitle": "Sync finished",
+  "settingsSyncFailedTitle": "Sync did not complete",
   "settingsStaffSavedTitle": "{role} saved",
   "@settingsStaffSavedTitle": {
     "placeholders": {
@@ -671,6 +672,13 @@
       }
     }
   },
+  "paywallAccessTitle": "Unlock more with SimpleSales",
+  "paywallAccessMessage": "Get greater access and more features.",
+  "paywallViewPlan": "View plan",
+  "paywallApplyVoucher": "Apply",
+  "paywallEnterVoucherTitle": "Enter voucher code",
+  "paywallOr": "or",
+  "paywallContinue": "Continue",
   "paywallAmountDue": "Amount due",
   "paywallAdminPriceTitle": "Subscription price set by your administrator",
   "paywallAssignedPrice": "{currency} {amount} / {interval}",
@@ -927,7 +935,7 @@
   "settingsSignInBeforeAddingShop": "Sign in as the shop admin before adding another shop.",
   "settingsStaffNameLabel": "Name",
   "settingsStaffRemovedOffline": "Cashier removed locally. Backend access will be updated on the next successful sync.",
-  "settingsStaffSavedOffline": "Cashier saved offline. It will be linked to the backend on the next successful sync.",
+  "settingsStaffSavedOffline": "Staff member saved on this till. It will sync to the backend once the online owner session is available.",
   "settingsStaffEmpty": "No managers or cashiers yet.",
   "settingsStaffActionsTooltip": "Actions for {name}",
   "settingsStaffNameTaken": "A staff member named \"{name}\" already exists",
@@ -2409,7 +2417,12 @@
   "accountRecoveryChooseShop": "Choose the shop to connect",
   "accountRecoveryCleanupFailed": "Recovery failed and this device could not return to its previous shop. Restart the app before trying again.",
   "planDetailsTitle": "Plan details",
+  "planDetailsDashboardTitle": "My plan",
   "planDetailsCurrentPlan": "Current plan",
+  "planDetailsIncludedTitle": "Included",
+  "planDetailsFullAccess": "Full access",
+  "planDetailsNeedAnotherVoucher": "Need to use another voucher?",
+  "planDetailsClaimVoucher": "Claim",
   "planDetailsStatusLabel": "Status",
   "planDetailsPriceLabel": "Plan price",
   "planDetailsBillingPeriodLabel": "Billing period",

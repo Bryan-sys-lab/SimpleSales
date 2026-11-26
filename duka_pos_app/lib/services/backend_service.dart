@@ -716,6 +716,11 @@ class BackendService {
         (status == 502 || status == 503 || status == 504 || status >= 500);
   }
 
+  static bool isDeferrableStaffSyncError(Object error) {
+    if (error is! DioException) return false;
+    return error.response?.statusCode == 401 || _isRetryable(error);
+  }
+
   static SharedPreferences? _prefs;
 
   /// Marks a request that has already had one chance to renew its session.

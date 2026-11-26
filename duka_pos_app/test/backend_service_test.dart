@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:duka_pos/services/backend_service.dart';
 import 'package:duka_pos/models/models.dart';
@@ -42,6 +43,46 @@ void main() {
         BackendService.isAuthoritativeStaffAuthenticationRejection(
           <String, dynamic>{'session_token': 'token'},
         ),
+        isFalse,
+      );
+    });
+
+    test('staff sync defers authorization and transient failures', () {
+      final requestOptions = RequestOptions(path: '/api/tenant/staff/sync');
+      final unauthorized = DioException(
+        requestOptions: requestOptions,
+        response: Response(
+          requestOptions: requestOptions,
+          statusCode: 401,
+        ),
+      );
+      final connectionFailure = DioException(
+        requestOptions: requestOptions,
+        type: DioExceptionType.connectionError,
+      );
+
+      expect(
+        BackendService.isDeferrableStaffSyncError(unauthorized),
+        isTrue,
+      );
+      expect(
+        BackendService.isDeferrableStaffSyncError(connectionFailure),
+        isTrue,
+      );
+    });
+
+    test('staff sync does not defer server-side conflicts', () {
+      final requestOptions = RequestOptions(path: '/api/tenant/staff/sync');
+      final conflict = DioException(
+        requestOptions: requestOptions,
+        response: Response(
+          requestOptions: requestOptions,
+          statusCode: 409,
+        ),
+      );
+
+      expect(
+        BackendService.isDeferrableStaffSyncError(conflict),
         isFalse,
       );
     });

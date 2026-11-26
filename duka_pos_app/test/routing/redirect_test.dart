@@ -34,7 +34,8 @@ String? guard(AppStage stage, String location,
         bool? canViewReports,
         bool isAdmin = true,
         ShopProfile shopProfile = ShopProfile.duka,
-        bool subscriptionRequired = false}) =>
+        bool subscriptionRequired = false,
+        bool isOwnerSession = false}) =>
     appRedirect(
       snapshot: snapshot(
         stage: stage,
@@ -45,6 +46,7 @@ String? guard(AppStage stage, String location,
         subscriptionRequired: subscriptionRequired,
       ),
       location: location,
+      isOwnerSession: isOwnerSession,
     );
 
 void main() {
@@ -226,6 +228,18 @@ void main() {
       expect(
         guard(AppStage.ready, Routes.taxSettings, isAdmin: false),
         Routes.dashboard,
+      );
+    });
+
+    test('staff cannot open diagnostics, even with the Admin role', () {
+      expect(
+        guard(AppStage.ready, Routes.diagnostics, isAdmin: true),
+        Routes.dashboard,
+      );
+      expect(
+        guard(AppStage.ready, Routes.diagnostics,
+            isAdmin: true, isOwnerSession: true),
+        isNull,
       );
     });
 

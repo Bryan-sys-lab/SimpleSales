@@ -1700,6 +1700,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsSyncDoneTitle => 'Sync finished';
 
   @override
+  String get settingsSyncFailedTitle => 'Sync did not complete';
+
+  @override
   String settingsStaffSavedTitle(Object role) {
     return '$role saved';
   }
@@ -2276,6 +2279,27 @@ class AppLocalizationsEn extends AppLocalizations {
   String paywallDiscount(int percent) {
     return 'Administrator discount ($percent%)';
   }
+
+  @override
+  String get paywallAccessTitle => 'Unlock more with SimpleSales';
+
+  @override
+  String get paywallAccessMessage => 'Get greater access and more features.';
+
+  @override
+  String get paywallViewPlan => 'View plan';
+
+  @override
+  String get paywallApplyVoucher => 'Apply';
+
+  @override
+  String get paywallEnterVoucherTitle => 'Enter voucher code';
+
+  @override
+  String get paywallOr => 'or';
+
+  @override
+  String get paywallContinue => 'Continue';
 
   @override
   String get paywallAmountDue => 'Amount due';
@@ -2933,7 +2957,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsStaffSavedOffline =>
-      'Cashier saved offline. It will be linked to the backend on the next successful sync.';
+      'Staff member saved on this till. It will sync to the backend once the online owner session is available.';
 
   @override
   String get settingsStaffEmpty => 'No managers or cashiers yet.';
@@ -8047,7 +8071,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get planDetailsTitle => 'Plan details';
 
   @override
+  String get planDetailsDashboardTitle => 'My plan';
+
+  @override
   String get planDetailsCurrentPlan => 'Current plan';
+
+  @override
+  String get planDetailsIncludedTitle => 'Included';
+
+  @override
+  String get planDetailsFullAccess => 'Full access';
+
+  @override
+  String get planDetailsNeedAnotherVoucher => 'Need to use another voucher?';
+
+  @override
+  String get planDetailsClaimVoucher => 'Claim';
 
   @override
   String get planDetailsStatusLabel => 'Status';

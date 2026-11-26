@@ -1700,6 +1700,9 @@ class AppLocalizationsSw extends AppLocalizations {
   String get settingsSyncDoneTitle => 'Sync finished';
 
   @override
+  String get settingsSyncFailedTitle => 'Usawazishaji haujakamilika';
+
+  @override
   String settingsStaffSavedTitle(Object role) {
     return '$role ameongezwa';
   }
@@ -2276,6 +2279,27 @@ class AppLocalizationsSw extends AppLocalizations {
   String paywallDiscount(int percent) {
     return 'Punguzo la msimamizi ($percent%)';
   }
+
+  @override
+  String get paywallAccessTitle => 'Fungua zaidi ukitumia SimpleSales';
+
+  @override
+  String get paywallAccessMessage => 'Pata ufikiaji mpana na vipengele zaidi.';
+
+  @override
+  String get paywallViewPlan => 'Angalia mpango';
+
+  @override
+  String get paywallApplyVoucher => 'Tumia';
+
+  @override
+  String get paywallEnterVoucherTitle => 'Weka msimbo wa vocha';
+
+  @override
+  String get paywallOr => 'au';
+
+  @override
+  String get paywallContinue => 'Endelea';
 
   @override
   String get paywallAmountDue => 'Kiasi cha kulipa';
@@ -2935,7 +2959,7 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get settingsStaffSavedOffline =>
-      'Cashier saved offline. It will be linked to the backend on the next successful sync.';
+      'Staff member saved on this till. It will sync to the backend once the online owner session is available.';
 
   @override
   String get settingsStaffEmpty => 'No managers or cashiers yet.';
@@ -8062,7 +8086,23 @@ class AppLocalizationsSw extends AppLocalizations {
   String get planDetailsTitle => 'Maelezo ya mpango';
 
   @override
+  String get planDetailsDashboardTitle => 'Mpango wangu';
+
+  @override
   String get planDetailsCurrentPlan => 'Mpango wa sasa';
+
+  @override
+  String get planDetailsIncludedTitle => 'Vilivyomo';
+
+  @override
+  String get planDetailsFullAccess => 'Ufikiaji kamili';
+
+  @override
+  String get planDetailsNeedAnotherVoucher =>
+      'Unahitaji kutumia vocha nyingine?';
+
+  @override
+  String get planDetailsClaimVoucher => 'Dai';
 
   @override
   String get planDetailsStatusLabel => 'Hali';

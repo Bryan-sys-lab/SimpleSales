@@ -194,16 +194,46 @@ void main() {
 
     final l10n =
         AppLocalizations.of(tester.element(find.byType(PaywallScreen)));
-    expect(
-        find.text(l10n.paywallAvailableDiscountVoucher(25, 3)), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('KES 300.00'),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('KES 300.00'), findsOneWidget);
     expect(find.text('KES 270.00'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text(l10n.paywallPaymentPaybillDestination('123456')),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.text(l10n.paywallPaymentPaybillDestination('123456')),
+      findsOneWidget,
+    );
+    await tester.scrollUntilVisible(
+      find.text(l10n.paywallAvailableDiscountVoucher(25, 3)),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(
+        find.text(l10n.paywallAvailableDiscountVoucher(25, 3)), findsOneWidget);
     await tester.tap(find.text(l10n.paywallClaimVoucher));
     await tester.pumpAndSettle();
 
     expect(adapter.requestedPaths, contains(endsWith('/auth/voucher/claim')));
+    await tester.scrollUntilVisible(
+      find.text('KES 225.00'),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('KES 225.00'), findsOneWidget);
     expect(find.text('KES 300.00'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text(l10n.paywallDiscountVoucherClaimed(25, 3)).first,
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text(l10n.paywallDiscountVoucherClaimed(25, 3)), findsWidgets);
     expect(
         find.text(l10n.paywallAvailableDiscountVoucher(25, 3)), findsNothing);
@@ -238,10 +268,12 @@ void main() {
     );
   });
 
-  testWidgets('plan details shows status, price, period, and voucher access',
+  testWidgets('plan details shows status, price, payment, and voucher access',
       (WidgetTester tester) async {
     tester.useDevice(Device.compact);
-    BackendService.setHttpClientAdapterForTesting(_VoucherAdapter());
+    BackendService.setHttpClientAdapterForTesting(
+      _VoucherAdapter()..configuredPayment = true,
+    );
     addTearDown(() => BackendService.setHttpClientAdapterForTesting(null));
 
     await tester.pumpApp(home: const PlanDetailsScreen());
@@ -249,12 +281,22 @@ void main() {
 
     final l10n =
         AppLocalizations.of(tester.element(find.byType(PlanDetailsScreen)));
-    expect(find.text(l10n.planDetailsTitle), findsOneWidget);
+    expect(find.text(l10n.planDetailsDashboardTitle), findsOneWidget);
     expect(find.text(l10n.planDetailsStatusActive), findsNothing);
     expect(find.text(l10n.planDetailsStatusPending), findsOneWidget);
-    expect(find.text('KES 1000.00'), findsOneWidget);
-    expect(find.text(l10n.billingIntervalMonthly), findsOneWidget);
-    expect(find.text(l10n.planDetailsManageVoucher), findsOneWidget);
+    expect(find.text('KES 300.00'), findsOneWidget);
+    expect(find.text('KES 270.00'), findsOneWidget);
+    expect(find.text(l10n.billingIntervalQuarterly), findsOneWidget);
+    expect(
+      find.text(l10n.paywallPaymentPaybillDestination('123456')),
+      findsOneWidget,
+    );
+    await tester.scrollUntilVisible(
+      find.text(l10n.planDetailsClaimVoucher),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text(l10n.planDetailsClaimVoucher), findsOneWidget);
     tester.expectNoOverflow('plan details screen');
   });
 
@@ -291,11 +333,21 @@ void main() {
 
     final l10n =
         AppLocalizations.of(tester.element(find.byType(PaywallScreen)));
+    await tester.scrollUntilVisible(
+      find.text(l10n.paywallAmountDue),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text(l10n.paywallAmountDue), findsOneWidget);
     expect(find.text('KES 270.00'), findsOneWidget);
     expect(
       find.text(l10n.planDetailsBillingPeriod(l10n.billingIntervalQuarterly)),
       findsNWidgets(2),
+    );
+    await tester.scrollUntilVisible(
+      find.text(l10n.paywallPaymentPaybillDestination('123456')),
+      240,
+      scrollable: find.byType(Scrollable).first,
     );
     expect(find.text(l10n.paywallPaymentPaybillDestination('123456')),
         findsOneWidget);
@@ -369,11 +421,11 @@ void main() {
       'SS-DISCOUNT-MANUAL',
     );
     await tester.scrollUntilVisible(
-      find.text(l10n.paywallRedeemVoucher),
+      find.text(l10n.paywallApplyVoucher),
       240,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.tap(find.text(l10n.paywallRedeemVoucher));
+    await tester.tap(find.text(l10n.paywallApplyVoucher));
     await tester.pumpAndSettle();
 
     expect(adapter.requestedPaths, contains(endsWith('/auth/voucher/redeem')));
@@ -407,7 +459,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(PaywallScreen), findsOneWidget);
-    await tester.tap(find.byTooltip('Back'));
+    await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     expect(find.byType(PaywallScreen), findsOneWidget);
     expect(find.text('Settings'), findsNothing);
@@ -437,7 +489,9 @@ void main() {
     await tester
         .tap(find.byKey(const ValueKey<String>('open-optional-subscription')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Back'));
+    final l10n =
+        AppLocalizations.of(tester.element(find.byType(PaywallScreen)));
+    await tester.tap(find.byTooltip(l10n.planDetailsTitle));
     await tester.pumpAndSettle();
 
     expect(find.byType(PaywallScreen), findsNothing);

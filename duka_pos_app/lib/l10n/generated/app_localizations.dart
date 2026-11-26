@@ -2920,6 +2920,12 @@ abstract class AppLocalizations {
   /// **'Sync finished'**
   String get settingsSyncDoneTitle;
 
+  /// No description provided for @settingsSyncFailedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync did not complete'**
+  String get settingsSyncFailedTitle;
+
   /// No description provided for @settingsStaffSavedTitle.
   ///
   /// In en, this message translates to:
@@ -3861,6 +3867,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Administrator discount ({percent}%)'**
   String paywallDiscount(int percent);
+
+  /// No description provided for @paywallAccessTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock more with SimpleSales'**
+  String get paywallAccessTitle;
+
+  /// No description provided for @paywallAccessMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Get greater access and more features.'**
+  String get paywallAccessMessage;
+
+  /// No description provided for @paywallViewPlan.
+  ///
+  /// In en, this message translates to:
+  /// **'View plan'**
+  String get paywallViewPlan;
+
+  /// No description provided for @paywallApplyVoucher.
+  ///
+  /// In en, this message translates to:
+  /// **'Apply'**
+  String get paywallApplyVoucher;
+
+  /// No description provided for @paywallEnterVoucherTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter voucher code'**
+  String get paywallEnterVoucherTitle;
+
+  /// No description provided for @paywallOr.
+  ///
+  /// In en, this message translates to:
+  /// **'or'**
+  String get paywallOr;
+
+  /// No description provided for @paywallContinue.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get paywallContinue;
 
   /// No description provided for @paywallAmountDue.
   ///
@@ -4970,7 +5018,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsStaffSavedOffline.
   ///
   /// In en, this message translates to:
-  /// **'Cashier saved offline. It will be linked to the backend on the next successful sync.'**
+  /// **'Staff member saved on this till. It will sync to the backend once the online owner session is available.'**
   String get settingsStaffSavedOffline;
 
   /// No description provided for @settingsStaffEmpty.
@@ -13706,11 +13754,41 @@ abstract class AppLocalizations {
   /// **'Plan details'**
   String get planDetailsTitle;
 
+  /// No description provided for @planDetailsDashboardTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'My plan'**
+  String get planDetailsDashboardTitle;
+
   /// No description provided for @planDetailsCurrentPlan.
   ///
   /// In en, this message translates to:
   /// **'Current plan'**
   String get planDetailsCurrentPlan;
+
+  /// No description provided for @planDetailsIncludedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Included'**
+  String get planDetailsIncludedTitle;
+
+  /// No description provided for @planDetailsFullAccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Full access'**
+  String get planDetailsFullAccess;
+
+  /// No description provided for @planDetailsNeedAnotherVoucher.
+  ///
+  /// In en, this message translates to:
+  /// **'Need to use another voucher?'**
+  String get planDetailsNeedAnotherVoucher;
+
+  /// No description provided for @planDetailsClaimVoucher.
+  ///
+  /// In en, this message translates to:
+  /// **'Claim'**
+  String get planDetailsClaimVoucher;
 
   /// No description provided for @planDetailsStatusLabel.
   ///

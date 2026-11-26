@@ -13,10 +13,9 @@ import '../ui/components/controls.dart';
 /// meant to be nagged into oblivion, just to catch the case where a backup
 /// has genuinely been forgotten for days.
 ///
-/// Colours come from the warning slots as a matched PAIR: a container to read
-/// on and an on-container tone for the ink inside it. Reusing one value for
-/// both is how a warning banner ends up at 3:1 in dark mode without anybody
-/// measuring it.
+/// The reminder is intentionally neutral rather than an alert: it should be
+/// noticeable without making the whole banner, including its copy, read as an
+/// error.
 class BackupReminderBanner extends StatefulWidget {
   const BackupReminderBanner({
     super.key,
@@ -56,29 +55,28 @@ class _BackupReminderBannerState extends State<BackupReminderBanner> {
       container: true,
       liveRegion: true,
       child: MaterialBanner(
-        backgroundColor: colors.warningContainer,
+        backgroundColor: colors.surface,
         leading: ExcludeSemantics(
-          child: Icon(Icons.backup_outlined, color: colors.warning),
+          child: Icon(Icons.backup_outlined, color: colors.accent),
         ),
         content: Text(
           "It's been a while since the last backup. Worth doing one now?",
           style: Theme.of(context)
               .textTheme
               .bodyMedium
-              ?.copyWith(color: colors.onWarningContainer),
+              ?.copyWith(color: colors.onSurfaceVariant),
         ),
         actions: <Widget>[
           TextButton(
             onPressed: () => setState(() => _dismissed = true),
-            style: TextButton.styleFrom(
-                foregroundColor: colors.onWarningContainer),
+            style: TextButton.styleFrom(foregroundColor: colors.accent),
             child: Text(AppLocalizations.of(context).backupLaterAction),
           ),
           FilledButton(
             onPressed: _backUpNow,
             style: FilledButton.styleFrom(
-              backgroundColor: colors.warning,
-              foregroundColor: colors.onWarningContainer,
+              backgroundColor: colors.primaryButton,
+              foregroundColor: colors.onPrimaryButton,
             ),
             child: Text(AppLocalizations.of(context).backupNowAction),
           ),
