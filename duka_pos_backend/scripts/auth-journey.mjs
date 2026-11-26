@@ -120,12 +120,11 @@ if (!Array.isArray(shopBody.shops) || shopBody.shops.length !== 1) {
 const restrictedPortfolio = await request('/api/tenant/portfolio', {
   headers: deviceTenantHeaders,
 });
-if (restrictedPortfolio.status !== 403) {
-  throw new Error(`device session portfolio access returned ${restrictedPortfolio.status}, expected 403`);
-}
-const restrictedPortfolioBody = await restrictedPortfolio.json();
-if (restrictedPortfolioBody.code !== 'DEVICE_TOKEN_NOT_ALLOWED') {
-  throw new Error('device session portfolio access did not return DEVICE_TOKEN_NOT_ALLOWED');
+if (restrictedPortfolio.status === 403) {
+  const body = await restrictedPortfolio.json().catch(() => ({}));
+  if (body.code === 'DEVICE_TOKEN_NOT_ALLOWED') {
+    throw new Error('device session should now have full app access, but portfolio was blocked');
+  }
 }
 
 const ownerLogin = await request('/api/auth/login', {
