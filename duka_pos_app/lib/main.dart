@@ -28,6 +28,8 @@ import 'routing/routes.dart';
 import 'services/diagnostics_upload_service.dart';
 import 'services/identity_service.dart';
 import 'services/workspace_service.dart';
+import 'theme/app_colors.dart';
+import 'ui/components/shop_screen_background.dart';
 
 /// Sentry DSN for crash reporting - get from https://sentry.io
 const String sentryDsn = String.fromEnvironment(
@@ -153,10 +155,18 @@ Future<void> _initializeSentry() async {
 /// boot gate, the router, and the appearance preference. A screen reaches
 /// downward for its dependencies and never sideways for someone else's.
 class DukaPosApp extends StatelessWidget {
-  const DukaPosApp({required this.appearance, super.key});
+  const DukaPosApp({
+    required this.appearance,
+    this.bootOnStart = true,
+    super.key,
+  });
 
   /// The persisted appearance preference (system / light / dark).
   final AppearanceController appearance;
+
+  /// Allows widget tests to inspect the synchronous app shell without starting
+  /// local database I/O under the test binding's fake clock.
+  final bool bootOnStart;
 
   @override
   Widget build(BuildContext context) {
@@ -170,8 +180,12 @@ class DukaPosApp extends StatelessWidget {
           // the gate and a provider below the router could not be seen by the
           // guard.
           ChangeNotifierProvider<AppStageController>(
-            create: (BuildContext context) =>
-                AppStageController(context.read<AppState>())..boot(),
+            create: (BuildContext context) {
+              final AppStageController controller =
+                  AppStageController(context.read<AppState>());
+              if (bootOnStart) unawaited(controller.boot());
+              return controller;
+            },
           ),
           // The live change stream. Created after the session and before the
           // router so a screen can watch it from any branch, and torn down with
@@ -233,6 +247,15 @@ class _ThemedApp extends StatelessWidget {
       // the router was proved inert anyway.
       builder: (BuildContext inner, Widget? child) {
         final AppLocalizations l10n = AppLocalizations.of(inner);
+        final Brightness brightness = switch (appearance.themeMode) {
+          ThemeMode.dark => Brightness.dark,
+          ThemeMode.light => Brightness.light,
+          ThemeMode.system => MediaQuery.platformBrightnessOf(inner),
+        };
+        final AppColors colors = appearance.colorsFor(
+          brightness: brightness,
+          highContrast: MediaQuery.highContrastOf(inner),
+        );
         setSystemBackHint(() {
           final ScaffoldMessengerState? messenger =
               ScaffoldMessenger.maybeOf(inner);
@@ -244,7 +267,15 @@ class _ThemedApp extends StatelessWidget {
               duration: const Duration(seconds: 2),
             ));
         });
-        return child ?? const SizedBox.shrink();
+        return Consumer<AppState>(
+          builder: (BuildContext context, AppState state, _) =>
+              ShopScreenBackground(
+            brightness: brightness,
+            colors: colors,
+            isShopScreen: state.isSignedIn,
+            child: child ?? const SizedBox.shrink(),
+          ),
+        );
       },
       routerConfig: context.read<GoRouter>(),
       theme: themes.light,

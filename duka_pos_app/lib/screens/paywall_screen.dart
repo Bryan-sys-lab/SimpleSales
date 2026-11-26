@@ -11,7 +11,8 @@ import '../routing/app_stage_controller.dart';
 import '../routing/routes.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_shapes.dart';
-import '../ui/components/membership_style.dart';
+import '../theme/app_spacing.dart';
+import '../ui/components/surface.dart';
 
 class PaywallScreen extends StatefulWidget {
   const PaywallScreen({
@@ -339,6 +340,21 @@ class _PaywallScreenState extends State<PaywallScreen> {
     final checkout = entitlement?.checkout;
     final acceptedAgreement = checkout?.agreementId != null;
     final bool configured = priceMinor != null && priceMinor > 0;
+    final hasClaimedDiscountVoucher =
+        entitlement?.claimedVoucherType == 'discount' ||
+            entitlement?.discountVoucherDurationMonths != null;
+    final appliedDiscountPercent = checkout != null
+        ? checkout.discountPercent
+        : hasClaimedDiscountVoucher
+            ? entitlement?.claimedVoucherDiscountPercent ??
+                entitlement?.discountPercent ??
+                0
+            : 0;
+    final appliedDiscountMinor = checkout?.discountAmountMinor ??
+        (priceMinor == null
+            ? null
+            : (priceMinor * appliedDiscountPercent.clamp(0, 100) / 100)
+                .round());
     final String price = acceptedAgreement
         ? _formatPrice(entitlement!, checkout!.amountMinor)
         : checkout != null
@@ -352,17 +368,18 @@ class _PaywallScreenState extends State<PaywallScreen> {
             : l10n.billingIntervalLabel(entitlement.billingInterval)
         : _paymentPeriodLabel(l10n, checkout.durationMonths);
 
-    final colors = AppColors.of(context);
-    return MembershipCard(
+    final AppColors colors = AppColors.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+    return SurfaceCard(
       key: const ValueKey<String>('subscription-price-period'),
-      highlighted: true,
+      accentEdge: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Icon(Icons.bolt_rounded, color: colors.accent),
-              const SizedBox(width: 8),
+              SizedBox(width: spacing.xs),
               Expanded(
                 child: Text(
                   acceptedAgreement
@@ -373,9 +390,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: spacing.sm),
           Text(price, style: theme.textTheme.headlineSmall),
-          const SizedBox(height: 4),
+          SizedBox(height: spacing.xxs),
           Text(
             entitlement == null
                 ? period
@@ -385,7 +402,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
             ),
           ),
           if (checkout != null) ...[
-            const Divider(height: 24),
+            Divider(height: spacing.lg),
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -404,15 +421,40 @@ class _PaywallScreenState extends State<PaywallScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 4),
+            SizedBox(height: spacing.xxs),
             Text(
               l10n.planDetailsBillingPeriod(
                   _paymentPeriodLabel(l10n, checkout.durationMonths)),
               style: theme.textTheme.bodyMedium,
             ),
           ],
-          if (entitlement != null && entitlement.discountPercent > 0) ...[
-            const SizedBox(height: 12),
+          if (appliedDiscountPercent > 0) ...[
+            SizedBox(height: spacing.xs),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    l10n.paywallDiscount(appliedDiscountPercent),
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                ),
+                SizedBox(width: spacing.sm),
+                Text(
+                  appliedDiscountMinor == null
+                      ? '-'
+                      : _formatPrice(entitlement!, appliedDiscountMinor),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: colors.success,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  textAlign: TextAlign.end,
+                ),
+              ],
+            ),
+          ],
+          if (hasClaimedDiscountVoucher && appliedDiscountPercent == 0) ...[
+            SizedBox(height: spacing.sm),
             Text(
               l10n.paywallDiscountVoucherHelp,
               style: theme.textTheme.bodyMedium,
@@ -422,7 +464,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
               checkout != null &&
               entitlement!.discountVoucherDurationMonths !=
                   checkout.durationMonths) ...[
-            const SizedBox(height: 8),
+            SizedBox(height: spacing.xs),
             Text(
               l10n.paywallVoucherPeriodMismatch(
                   entitlement.discountVoucherDurationMonths!),
@@ -435,7 +477,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
   }
 
   Widget _buildBrandHero(AppLocalizations l10n, ThemeData theme) {
-    final colors = AppColors.of(context);
+    final AppColors colors = AppColors.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppShapes shapes = AppShapes.of(context);
     final heading = l10n.paywallAccessTitle;
     final brandIndex = heading.indexOf('SimpleSales');
     final headingSpans = brandIndex < 0
@@ -451,55 +495,39 @@ class _PaywallScreenState extends State<PaywallScreen> {
           ];
     return Column(
       children: [
-        Container(
-          width: 82,
-          height: 82,
-          padding: const EdgeInsets.all(5),
-          decoration: BoxDecoration(
-            color: colors.surface,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: colors.accent, width: 1.5),
-            boxShadow: [
-              BoxShadow(
-                color: colors.accent.withValues(alpha: 0.26),
-                blurRadius: 22,
-                spreadRadius: 1,
-              ),
-            ],
-          ),
+        SurfaceCard(
+          accentEdge: true,
+          padding: EdgeInsets.all(spacing.xs),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(19),
+            borderRadius: shapes.cardRadius,
             child: Image.asset(
               'assets/branding/simple_sales_s_mark.png',
+              width: spacing.spacious,
+              height: spacing.spacious,
               fit: BoxFit.cover,
             ),
           ),
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: spacing.xs),
         Text.rich(
           TextSpan(
             children: [
-              TextSpan(text: 'simple'),
+              const TextSpan(text: 'simple'),
               TextSpan(
                 text: 'Sales',
                 style: TextStyle(color: colors.accent),
               ),
             ],
           ),
-          style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w800,
-          ),
+          style: theme.textTheme.titleLarge,
         ),
-        const SizedBox(height: 18),
+        SizedBox(height: spacing.lg),
         Text.rich(
           TextSpan(children: headingSpans),
           textAlign: TextAlign.center,
-          style: theme.textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.w800,
-            height: 1.12,
-          ),
+          style: theme.textTheme.displaySmall,
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: spacing.sm),
         Text(
           l10n.paywallAccessMessage,
           textAlign: TextAlign.center,
@@ -512,37 +540,24 @@ class _PaywallScreenState extends State<PaywallScreen> {
   }
 
   Widget _buildPlanLink(AppLocalizations l10n, ThemeData theme) {
-    final colors = AppColors.of(context);
-    final shapes = AppShapes.of(context);
-    return MembershipCard(
-      highlighted: true,
-      padding: EdgeInsets.zero,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: shapes.cardRadius,
-          onTap: () => context.push(Routes.planDetails),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.workspace_premium_outlined,
-                  color: colors.accent,
-                  size: 30,
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Text(
-                    l10n.paywallViewPlan,
-                    style: theme.textTheme.titleMedium,
-                  ),
-                ),
-                Icon(Icons.chevron_right, color: colors.accent, size: 30),
-              ],
+    final AppColors colors = AppColors.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+    return SurfaceCard(
+      accentEdge: true,
+      semanticLabel: l10n.paywallViewPlan,
+      onTap: () => context.push(Routes.planDetails),
+      child: Row(
+        children: [
+          Icon(Icons.workspace_premium_rounded, color: colors.accent),
+          SizedBox(width: spacing.md),
+          Expanded(
+            child: Text(
+              l10n.paywallViewPlan,
+              style: theme.textTheme.titleMedium,
             ),
           ),
-        ),
+          Icon(Icons.chevron_right_rounded, color: colors.onSurfaceVariant),
+        ],
       ),
     );
   }
@@ -557,7 +572,8 @@ class _PaywallScreenState extends State<PaywallScreen> {
     final checkout = entitlement?.checkout;
     final payment = _payment;
     final colors = AppColors.of(context);
-    return MembershipCard(
+    final AppSpacing spacing = AppSpacing.of(context);
+    return SurfaceCard(
       key: const ValueKey<String>('subscription-payment'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -565,7 +581,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
           Row(
             children: [
               Icon(Icons.account_balance_wallet_outlined, color: colors.accent),
-              const SizedBox(width: 8),
+              SizedBox(width: spacing.xs),
               Expanded(
                 child: Text(
                   l10n.paywallPaymentMethodTitle,
@@ -574,7 +590,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: spacing.sm),
           if (method == null) ...[
             Text(l10n.paywallPaymentUnavailable,
                 style: theme.textTheme.bodyMedium),
@@ -585,7 +601,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                   : method.method,
               style: theme.textTheme.titleSmall,
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: spacing.xs),
             Text(l10n.paywallPaymentDestinationTitle,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: colors.onSurfaceMuted,
@@ -605,7 +621,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
             ),
           ],
           if (isOwner && checkout == null) ...[
-            const SizedBox(height: 8),
+            SizedBox(height: spacing.xs),
             Text(l10n.settingsSubscriptionNotConfigured,
                 style: theme.textTheme.bodyMedium),
           ],
@@ -613,7 +629,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
               checkout != null &&
               method != null &&
               (payment == null || _paymentFailed)) ...[
-            const SizedBox(height: 16),
+            SizedBox(height: spacing.md),
             TextField(
               key: const ValueKey<String>('subscription-payment-phone'),
               controller: _phone,
@@ -623,7 +639,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                 border: const OutlineInputBorder(),
               ),
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: spacing.sm),
             FilledButton.icon(
               key: const ValueKey<String>('subscription-payment-start'),
               onPressed: _loading || _paymentBusy ? null : _startPayment,
@@ -634,7 +650,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
             ),
           ],
           if (payment != null) ...[
-            const Divider(height: 24),
+            Divider(height: spacing.lg),
             Text(
               l10n.paywallPaymentPrompt(
                 entitlement?.currency ?? 'KES',
@@ -643,14 +659,14 @@ class _PaywallScreenState extends State<PaywallScreen> {
               ),
               style: theme.textTheme.bodyMedium,
             ),
-            const SizedBox(height: 4),
+            SizedBox(height: spacing.xxs),
             Text(l10n.paywallPaymentReference(payment.reference),
                 style: theme.textTheme.bodySmall),
             if (_paymentStatus != null) ...[
-              const SizedBox(height: 8),
+              SizedBox(height: spacing.xs),
               Text(_paymentStatus!, style: theme.textTheme.bodyMedium),
             ],
-            const SizedBox(height: 8),
+            SizedBox(height: spacing.xs),
             OutlinedButton(
               key: const ValueKey<String>('subscription-payment-check'),
               onPressed: _checkingPayment ? null : _checkPaymentStatus,
@@ -668,6 +684,8 @@ class _PaywallScreenState extends State<PaywallScreen> {
       '${entitlement.currency} ${(priceMinor / 100).toStringAsFixed(2)}';
 
   Widget _buildAvailableVoucher(AppLocalizations l10n, ThemeData theme) {
+    final AppColors colors = AppColors.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
     final entitlement = _entitlement;
     final duration = entitlement?.availableVoucherDurationMonths;
     if (duration == null) return const SizedBox.shrink();
@@ -678,19 +696,55 @@ class _PaywallScreenState extends State<PaywallScreen> {
           )
         : l10n.paywallVoucherReady(duration);
 
-    return MembershipCard(
-      highlighted: true,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(title, style: theme.textTheme.titleMedium),
-          const SizedBox(height: 10),
-          FilledButton.icon(
-            onPressed: _loading ? null : _claimAvailableVoucher,
-            icon: const Icon(Icons.bolt_rounded),
-            label: Text(l10n.paywallClaimVoucher),
-          ),
-        ],
+    final claimButton = FilledButton(
+      onPressed: _loading ? null : _claimAvailableVoucher,
+      child: Text(
+        l10n.planDetailsClaimVoucher,
+      ),
+    );
+
+    return SurfaceCard(
+      key: const ValueKey<String>('available-voucher-claim'),
+      accentEdge: true,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final titleWidget = Text(
+            title,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          );
+          final icon = Icon(
+            Icons.bolt_rounded,
+            color: colors.success,
+            size: 30,
+          );
+          if (constraints.maxWidth < 300) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    icon,
+                    SizedBox(width: spacing.sm),
+                    Expanded(child: titleWidget),
+                  ],
+                ),
+                SizedBox(height: spacing.sm),
+                SizedBox(width: double.infinity, child: claimButton),
+              ],
+            );
+          }
+          return Row(
+            children: [
+              icon,
+              SizedBox(width: spacing.sm),
+              Expanded(child: titleWidget),
+              SizedBox(width: spacing.xs),
+              claimButton,
+            ],
+          );
+        },
       ),
     );
   }
@@ -709,11 +763,13 @@ class _PaywallScreenState extends State<PaywallScreen> {
             duration,
           )
         : l10n.paywallVoucherReady(duration);
-    return MembershipCard(
+    final AppColors colors = AppColors.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+    return SurfaceCard(
       child: Row(
         children: [
-          const Icon(Icons.check_circle_outline),
-          const SizedBox(width: 12),
+          Icon(Icons.check_circle_outline, color: colors.success),
+          SizedBox(width: spacing.sm),
           Expanded(child: Text(text, style: theme.textTheme.bodyMedium)),
         ],
       ),
@@ -721,8 +777,8 @@ class _PaywallScreenState extends State<PaywallScreen> {
   }
 
   Widget _buildVoucherEntry(AppLocalizations l10n, ThemeData theme) {
-    final colors = AppColors.of(context);
-    final shapes = AppShapes.of(context);
+    final AppColors colors = AppColors.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
     final voucherField = TextField(
       key: const ValueKey<String>('membership-voucher-code'),
       controller: _voucher,
@@ -731,29 +787,25 @@ class _PaywallScreenState extends State<PaywallScreen> {
       decoration: InputDecoration(
         labelText: l10n.paywallVoucherPlaceholder,
         hintText: l10n.paywallVoucherPlaceholder,
-        border: OutlineInputBorder(borderRadius: shapes.controlRadius),
       ),
     );
     final applyButton = FilledButton(
       onPressed: _loading ? null : _redeem,
-      style: FilledButton.styleFrom(
-        backgroundColor: colors.warning,
-        foregroundColor: Theme.of(context).brightness == Brightness.dark
-            ? colors.onAccent
-            : colors.onPrimaryButton,
-        shape: RoundedRectangleBorder(borderRadius: shapes.controlRadius),
-      ),
       child: Text(l10n.paywallApplyVoucher),
     );
 
-    return MembershipCard(
+    return SurfaceCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              Icon(Icons.confirmation_number_outlined, color: colors.warning),
-              const SizedBox(width: 10),
+              Icon(
+                Icons.confirmation_number_outlined,
+                color: colors.accent,
+                size: 28,
+              ),
+              SizedBox(width: spacing.xs),
               Expanded(
                 child: Text(
                   l10n.paywallEnterVoucherTitle,
@@ -762,22 +814,15 @@ class _PaywallScreenState extends State<PaywallScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Text(
-            l10n.paywallVoucherManualHelp,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: colors.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 12),
+          SizedBox(height: spacing.sm),
           LayoutBuilder(
             builder: (context, constraints) {
-              if (constraints.maxWidth < 340) {
+              if (constraints.maxWidth < 320) {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     voucherField,
-                    const SizedBox(height: 8),
+                    SizedBox(height: spacing.xs),
                     applyButton,
                   ],
                 );
@@ -785,7 +830,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
               return Row(
                 children: [
                   Expanded(child: voucherField),
-                  const SizedBox(width: 8),
+                  SizedBox(width: spacing.xs),
                   applyButton,
                 ],
               );
@@ -796,16 +841,19 @@ class _PaywallScreenState extends State<PaywallScreen> {
     );
   }
 
-  Widget _buildOrDivider(AppLocalizations l10n, ThemeData theme) => Row(
-        children: [
-          const Expanded(child: Divider()),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: Text(l10n.paywallOr, style: theme.textTheme.bodyMedium),
-          ),
-          const Expanded(child: Divider()),
-        ],
-      );
+  Widget _buildOrDivider(AppLocalizations l10n, ThemeData theme) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    return Row(
+      children: [
+        const Expanded(child: Divider()),
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: spacing.sm),
+          child: Text(l10n.paywallOr, style: theme.textTheme.bodyMedium),
+        ),
+        const Expanded(child: Divider()),
+      ],
+    );
+  }
 
   @override
   void dispose() {
@@ -819,98 +867,112 @@ class _PaywallScreenState extends State<PaywallScreen> {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final isOwner = context.watch<AppState>().isOwnerSession;
+    final AppSpacing spacing = AppSpacing.of(context);
 
     return PopScope<Object?>(
       canPop: !widget.subscriptionRequired,
       child: Scaffold(
-        body: MembershipBackdrop(
-          child: SafeArea(
+          body: SafeArea(
             child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-                  child: Row(
-                    children: [
-                      if (widget.subscriptionRequired)
-                        const SizedBox(width: 48)
-                      else
+                children: [
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      spacing.md,
+                      spacing.xxs,
+                      spacing.md,
+                      0,
+                    ),
+                    child: Row(
+                      children: [
+                        if (widget.subscriptionRequired)
+                          SizedBox(
+                            width: spacing.spacious - spacing.md,
+                          )
+                        else
+                          IconButton(
+                            tooltip: l10n.planDetailsTitle,
+                            onPressed: () {
+                              Navigator.of(context).maybePop();
+                            },
+                            icon: const Icon(Icons.arrow_back_rounded),
+                          ),
+                        const Spacer(),
                         IconButton(
-                          tooltip: l10n.planDetailsTitle,
-                          onPressed: () {
-                            Navigator.of(context).maybePop();
-                          },
-                          icon: const Icon(Icons.arrow_back),
+                          tooltip: l10n.paywallCheckVoucher,
+                          onPressed: _loading ? null : _refreshEntitlement,
+                          icon: const Icon(Icons.refresh_rounded),
                         ),
-                      const Spacer(),
-                      IconButton(
-                        tooltip: l10n.paywallCheckVoucher,
-                        onPressed: _loading ? null : _refreshEntitlement,
-                        icon: const Icon(Icons.refresh),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                if (_loading) const LinearProgressIndicator(),
-                Expanded(
-                  child: ListView(
-                    key: const ValueKey<String>('membership-vouchers'),
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
-                    children: [
-                      _buildBrandHero(l10n, theme),
-                      const SizedBox(height: 24),
-                      _buildPlanLink(l10n, theme),
-                      const SizedBox(height: 12),
-                      _buildPricingCard(l10n, theme),
-                      const SizedBox(height: 12),
-                      _buildPaymentCard(l10n, theme, isOwner: isOwner),
-                      const SizedBox(height: 12),
-                      if (_error != null) ...[
-                        MembershipCard(
-                          child: Text(
-                            _error!,
-                            style: TextStyle(
-                              color: AppColors.of(context).danger,
+                  if (_loading)
+                    const LinearProgressIndicator(),
+                  Expanded(
+                    child: ListView(
+                      key: const ValueKey<String>('membership-vouchers'),
+                      padding: EdgeInsets.fromLTRB(
+                        spacing.mobilePageGutter,
+                        spacing.sm,
+                        spacing.mobilePageGutter,
+                        spacing.xl,
+                      ),
+                      children: [
+                        _buildBrandHero(l10n, theme),
+                        SizedBox(height: spacing.lg),
+                        _buildPlanLink(l10n, theme),
+                        if (_entitlement?.availableVoucherDurationMonths !=
+                            null) ...[
+                          SizedBox(height: spacing.md),
+                          _buildAvailableVoucher(l10n, theme),
+                          SizedBox(height: spacing.md),
+                          _buildOrDivider(l10n, theme),
+                          SizedBox(height: spacing.md),
+                        ] else
+                          SizedBox(height: spacing.sm),
+                        _buildVoucherEntry(l10n, theme),
+                        SizedBox(height: spacing.sm),
+                        _buildClaimedVoucher(l10n, theme),
+                        if (_error != null) ...[
+                          SizedBox(height: spacing.sm),
+                          SurfaceCard(
+                            child: Text(
+                              _error!,
+                              style: TextStyle(
+                                color: AppColors.of(context).danger,
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                      ],
-                      _buildVoucherEntry(l10n, theme),
-                      if (_entitlement?.availableVoucherDurationMonths !=
-                          null) ...[
-                        const SizedBox(height: 16),
-                        _buildOrDivider(l10n, theme),
-                        const SizedBox(height: 16),
-                        _buildAvailableVoucher(l10n, theme),
-                      ],
-                      _buildClaimedVoucher(l10n, theme),
-                      if (widget.subscriptionRequired)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 16),
-                          child: Text(
-                            l10n.paywallVoucherChooseText,
-                            style: theme.textTheme.bodySmall,
+                        ],
+                        SizedBox(height: spacing.md),
+                        _buildPricingCard(l10n, theme),
+                        SizedBox(height: spacing.sm),
+                        _buildPaymentCard(l10n, theme, isOwner: isOwner),
+                        if (widget.subscriptionRequired)
+                          Padding(
+                            padding: EdgeInsets.only(top: spacing.md),
+                            child: Text(
+                              l10n.paywallVoucherChooseText,
+                              style: theme.textTheme.bodySmall,
+                            ),
                           ),
-                        ),
-                      if (_entitlement?.allowed == true) ...[
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton.icon(
-                            onPressed: _unlockAndReturn,
-                            icon: const Icon(Icons.arrow_forward),
-                            label: Text(l10n.paywallContinue),
+                        if (_entitlement?.allowed == true) ...[
+                          SizedBox(height: spacing.md),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: _unlockAndReturn,
+                              icon: const Icon(Icons.arrow_forward),
+                              label: Text(l10n.paywallContinue),
+                            ),
                           ),
-                        ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
-      ),
     );
   }
 }

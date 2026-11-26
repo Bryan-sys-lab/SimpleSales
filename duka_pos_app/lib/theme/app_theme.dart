@@ -80,7 +80,7 @@ ThemeData _buildTheme({
   );
 
   return base.copyWith(
-    scaffoldBackgroundColor: colors.canvas,
+    scaffoldBackgroundColor: Colors.transparent,
     canvasColor: colors.canvas,
     cardColor: colors.surface,
     dividerColor: colors.outline,
@@ -108,7 +108,7 @@ ThemeData _buildTheme({
     // looking for the action. The title sits on the canvas at the same size as
     // the rest of the type, and the screen's own content starts underneath it.
     appBarTheme: AppBarTheme(
-      backgroundColor: colors.canvas,
+      backgroundColor: Colors.transparent,
       foregroundColor: colors.onSurface,
       surfaceTintColor: Colors.transparent,
       elevation: 0,

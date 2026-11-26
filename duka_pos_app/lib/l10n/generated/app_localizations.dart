@@ -9000,6 +9000,90 @@ abstract class AppLocalizations {
   String portfolioShopRowSpoken(
       num count, Object profit, Object revenue, Object share, Object shop);
 
+  /// No description provided for @portfolioShopDetails.
+  ///
+  /// In en, this message translates to:
+  /// **'Shop details'**
+  String get portfolioShopDetails;
+
+  /// No description provided for @portfolioRevenueShare.
+  ///
+  /// In en, this message translates to:
+  /// **'{share} of total takings'**
+  String portfolioRevenueShare(Object share);
+
+  /// No description provided for @portfolioRevenueShareLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Revenue share'**
+  String get portfolioRevenueShareLabel;
+
+  /// No description provided for @portfolioShiftsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Shifts'**
+  String get portfolioShiftsTitle;
+
+  /// No description provided for @portfolioTopPaymentMethod.
+  ///
+  /// In en, this message translates to:
+  /// **'Top payment method'**
+  String get portfolioTopPaymentMethod;
+
+  /// No description provided for @portfolioFinancialDetails.
+  ///
+  /// In en, this message translates to:
+  /// **'Financial details'**
+  String get portfolioFinancialDetails;
+
+  /// No description provided for @portfolioOperatingExpenses.
+  ///
+  /// In en, this message translates to:
+  /// **'Operating expenses'**
+  String get portfolioOperatingExpenses;
+
+  /// No description provided for @portfolioNetProfit.
+  ///
+  /// In en, this message translates to:
+  /// **'Net profit'**
+  String get portfolioNetProfit;
+
+  /// No description provided for @portfolioNetCashFlow.
+  ///
+  /// In en, this message translates to:
+  /// **'Net cash flow'**
+  String get portfolioNetCashFlow;
+
+  /// No description provided for @portfolioReceivablesChange.
+  ///
+  /// In en, this message translates to:
+  /// **'Receivables change'**
+  String get portfolioReceivablesChange;
+
+  /// No description provided for @portfolioPayablesChange.
+  ///
+  /// In en, this message translates to:
+  /// **'Payables change'**
+  String get portfolioPayablesChange;
+
+  /// No description provided for @portfolioStockValue.
+  ///
+  /// In en, this message translates to:
+  /// **'Stock value'**
+  String get portfolioStockValue;
+
+  /// No description provided for @portfolioFinancialDataIncomplete.
+  ///
+  /// In en, this message translates to:
+  /// **'Financial details incomplete for one or more shops'**
+  String get portfolioFinancialDataIncomplete;
+
+  /// No description provided for @portfolioRank.
+  ///
+  /// In en, this message translates to:
+  /// **'Rank {rank}'**
+  String portfolioRank(Object rank);
+
   /// No description provided for @productSizeLabelKilogram.
   ///
   /// In en, this message translates to:
@@ -10157,6 +10241,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Product detail'**
   String get inventoryProductDetail;
+
+  /// No description provided for @inventoryProductInformation.
+  ///
+  /// In en, this message translates to:
+  /// **'Product information'**
+  String get inventoryProductInformation;
+
+  /// No description provided for @inventoryProductLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load product details. Try again.'**
+  String get inventoryProductLoadFailed;
+
+  /// No description provided for @inventoryAvailableStock.
+  ///
+  /// In en, this message translates to:
+  /// **'Available stock'**
+  String get inventoryAvailableStock;
+
+  /// No description provided for @inventoryReservedStock.
+  ///
+  /// In en, this message translates to:
+  /// **'Reserved stock'**
+  String get inventoryReservedStock;
+
+  /// No description provided for @inventoryStockNotTracked.
+  ///
+  /// In en, this message translates to:
+  /// **'Stock not tracked'**
+  String get inventoryStockNotTracked;
+
+  /// No description provided for @inventoryTracked.
+  ///
+  /// In en, this message translates to:
+  /// **'Tracked'**
+  String get inventoryTracked;
 
   /// No description provided for @inventoryCostPrice.
   ///
@@ -13760,11 +13880,53 @@ abstract class AppLocalizations {
   /// **'My plan'**
   String get planDetailsDashboardTitle;
 
+  /// No description provided for @planDetailsStatusAccessActive.
+  ///
+  /// In en, this message translates to:
+  /// **'Access Active'**
+  String get planDetailsStatusAccessActive;
+
+  /// No description provided for @planDetailsUntilDate.
+  ///
+  /// In en, this message translates to:
+  /// **'Until {date}'**
+  String planDetailsUntilDate(String date);
+
   /// No description provided for @planDetailsCurrentPlan.
   ///
   /// In en, this message translates to:
   /// **'Current plan'**
   String get planDetailsCurrentPlan;
+
+  /// No description provided for @planDetailsAccessTypeLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Access type'**
+  String get planDetailsAccessTypeLabel;
+
+  /// No description provided for @planDetailsVoucherAccessType.
+  ///
+  /// In en, this message translates to:
+  /// **'Voucher'**
+  String get planDetailsVoucherAccessType;
+
+  /// No description provided for @planDetailsExpiryDateLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Expiry date'**
+  String get planDetailsExpiryDateLabel;
+
+  /// No description provided for @planDetailsPaymentDetailsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment details'**
+  String get planDetailsPaymentDetailsTitle;
+
+  /// No description provided for @planDetailsNoExpiryDate.
+  ///
+  /// In en, this message translates to:
+  /// **'No expiry date'**
+  String get planDetailsNoExpiryDate;
 
   /// No description provided for @planDetailsIncludedTitle.
   ///

@@ -199,6 +199,12 @@
   "productUnitCarton": "Pekee karton",
   "inventoryCostPrice": "Gharama za kuunga",
   "inventorySellingPrice": "Gharama ya kuuza",
+  "inventoryProductInformation": "Taarifa za bidhaa",
+  "inventoryProductLoadFailed": "Maelezo ya bidhaa hayakuweza kupakiwa. Jaribu tena.",
+  "inventoryAvailableStock": "Bidhaa zilizopo",
+  "inventoryReservedStock": "Bidhaa zilizohifadhiwa",
+  "inventoryStockNotTracked": "Hisa haifuatiliwi",
+  "inventoryTracked": "Inafuatiliwa",
   "inventoryReorderLevel": "Kiwango cha kuongeza",
   "inventoryStockValue": "Thamani ya hisa",
   "inventoryStockMovement": "Unganisho wa hisa",
@@ -1041,7 +1047,21 @@
   "accountRecoveryCleanupFailed": "Urejeshaji umeshindwa na kifaa hakikuweza kurudi kwenye duka lake la awali. Anzisha programu upya kabla ya kujaribu tena.",
   "planDetailsTitle": "Maelezo ya mpango",
   "planDetailsDashboardTitle": "Mpango wangu",
+  "planDetailsStatusAccessActive": "Ufikiaji unatumika",
+  "planDetailsUntilDate": "Hadi {date}",
+  "@planDetailsUntilDate": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
   "planDetailsCurrentPlan": "Mpango wa sasa",
+  "planDetailsAccessTypeLabel": "Aina ya ufikiaji",
+  "planDetailsVoucherAccessType": "Vocha",
+  "planDetailsExpiryDateLabel": "Tarehe ya mwisho",
+  "planDetailsPaymentDetailsTitle": "Maelezo ya malipo",
+  "planDetailsNoExpiryDate": "Hakuna tarehe ya mwisho",
   "planDetailsIncludedTitle": "Vilivyomo",
   "planDetailsFullAccess": "Ufikiaji kamili",
   "planDetailsNeedAnotherVoucher": "Unahitaji kutumia vocha nyingine?",
@@ -1065,5 +1085,19 @@
   "planDetailsStatusExpired": "Muda umeisha",
   "planDetailsStatusPending": "Malipo yanahitajika",
   "paywallVoucherRedemptionFailed": "Vocha haikuweza kutumika. Kagua msimbo kisha ujaribu tena.",
-  "paywallVoucherClaimFailed": "Vocha iliyotolewa haikuweza kudaiwa. Onyesha upya kisha ujaribu tena."
+  "paywallVoucherClaimFailed": "Vocha iliyotolewa haikuweza kudaiwa. Onyesha upya kisha ujaribu tena.",
+  "portfolioShopDetails": "Maelezo ya duka",
+  "portfolioRevenueShare": "{share} ya mapato yote",
+  "portfolioRevenueShareLabel": "Sehemu ya mapato",
+  "portfolioShiftsTitle": "Zamu",
+  "portfolioTopPaymentMethod": "Njia kuu ya malipo",
+  "portfolioFinancialDetails": "Maelezo ya kifedha",
+  "portfolioOperatingExpenses": "Gharama za uendeshaji",
+  "portfolioNetProfit": "Faida halisi",
+  "portfolioNetCashFlow": "Mtiririko halisi wa pesa",
+  "portfolioReceivablesChange": "Mabadiliko ya madeni ya wateja",
+  "portfolioPayablesChange": "Mabadiliko ya madeni kwa wasambazaji",
+  "portfolioStockValue": "Thamani ya hisa",
+  "portfolioFinancialDataIncomplete": "Maelezo ya kifedha hayajakamilika kwa baadhi ya maduka",
+  "portfolioRank": "Nafasi {rank}"
 }

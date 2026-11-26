@@ -21,17 +21,14 @@ import '../theme/typography.dart';
 import '../ui/components/surface.dart';
 import '../ui/components/product_photo.dart';
 import '../ui/components/status.dart';
+import '../ui/components/states.dart';
 import '../ui/layout/page.dart';
 import '../utils/money.dart';
 import 'inventory_screen.dart' show ProductEditor;
 import 'tank_form_sheet.dart';
 
-/// Product detail: everything an owner or cashier needs to know about one
-/// product, on a single scrollable page.
-///
-/// Redesigned to match the SimpleSales duka profile mockup: centered product
-/// art badge, name + category subtitle, stock/selling/buying/stock-value
-/// stats grid, stock activity list, and receive/adjust action buttons.
+/// Product detail: identity, stock and pricing metrics, inventory metadata,
+/// recent movement, and role-aware stock actions on one scrollable page.
 class ProductDetailScreen extends StatefulWidget {
   const ProductDetailScreen({this.product, this.productId, super.key});
 
@@ -46,6 +43,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   Product? _product;
   List<StockMovement> _stockActivity = const <StockMovement>[];
   bool _loading = true;
+  bool _loadError = false;
 
   @override
   void initState() {
@@ -61,8 +59,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   Future<void> _load() async {
     final int? productId = widget.productId ?? _product?.id;
     if (productId == null) return;
+    if (!mounted) return;
+    setState(() {
+      _loading = true;
+      _loadError = false;
+    });
     try {
       final p = await DatabaseHelper.instance.getProductById(productId);
+      if (!mounted) return;
+      setState(() => _product = p);
       final movements = p == null
           ? const <StockMovement>[]
           : await DatabaseHelper.instance
@@ -72,22 +77,43 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         _product = p;
         _stockActivity = movements;
         _loading = false;
+        _loadError = false;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       setState(() {
         _loading = false;
+        _loadError = true;
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(
+        appBar: AppBar(title: Text(l10n.inventoryProductDetail)),
+        body: const Center(child: CircularProgressIndicator()),
+      );
     }
     final product = _product;
     if (product == null) {
+      if (_loadError) {
+        return Scaffold(
+          appBar: AppBar(title: Text(l10n.inventoryProductDetail)),
+          body: Center(
+            child: ErrorStateView(
+              message: l10n.inventoryProductLoadFailed,
+              retryLabel: l10n.retry,
+              onRetry: () {
+                _load();
+              },
+              icon: Icons.inventory_2_outlined,
+            ),
+          ),
+        );
+      }
       return NotFoundScreen(
         location: Routes.productDetail(widget.productId ?? 0),
       );
@@ -95,14 +121,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     final AppSpacing spacing = AppSpacing.of(context);
     final AppColors colors = AppColors.of(context);
     final TextTheme type = AppTypography.of(context);
-    final l10n = AppLocalizations.of(context);
     final appState = context.watch<AppState>();
     final Widget productPhoto = Semantics(
       image: true,
       label: product.name,
       child: ProductPhoto(
         imagePath: product.imagePath,
-        size: 128,
+        size: 80,
         revision: product.updatedAt,
       ),
     );
@@ -122,24 +147,29 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       (product.stockQty * product.costPrice.minorUnits).round(),
     );
 
+    final bool tracksStock = product.trackStock &&
+        product.itemKind != 'service' &&
+        product.itemKind != 'fee';
     final bool isOut = product.isOutOfStock;
     final bool isLow = !isOut && product.isLow;
 
-    final StatusTone tone = isOut
-        ? StatusTone.danger
-        : isLow
-            ? StatusTone.warning
-            : StatusTone.success;
+    final StatusTone tone = !tracksStock
+        ? StatusTone.neutral
+        : isOut
+            ? StatusTone.danger
+            : isLow
+                ? StatusTone.warning
+                : StatusTone.success;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.inventoryProductDetail),
         actions: <Widget>[
           if (canEdit)
-            TextButton.icon(
+            IconButton(
+              tooltip: l10n.edit,
               onPressed: () => _openEditor(context),
               icon: const Icon(Icons.edit_outlined),
-              label: Text(AppLocalizations.of(context).edit),
             ),
         ],
       ),
@@ -155,15 +185,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            SizedBox(height: spacing.sm),
-
-            // Centered product identity: large circular art badge, name bold,
-            // muted category subtitle. Mirrors the mockup's product header.
             SurfaceCard(
-              padding: EdgeInsets.all(spacing.lg),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
+              accentEdge: true,
+              child: Row(
                 children: <Widget>[
                   product.id == null
                       ? productPhoto
@@ -171,128 +195,158 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                           tag: 'product-photo-${product.id}',
                           child: productPhoto,
                         ),
-                  SizedBox(height: spacing.md),
-                  Text(
-                    product.name,
-                    style: type.headlineSmall,
-                    textAlign: TextAlign.center,
-                  ),
-                  SizedBox(height: spacing.xs),
-                  Text(
-                    product.category.isNotEmpty
-                        ? product.category
-                        : 'All products',
-                    style: type.bodySmall?.copyWith(
-                      color: colors.onSurfaceMuted,
+                  SizedBox(width: spacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          product.name,
+                          style: type.headlineSmall,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        SizedBox(height: spacing.xs),
+                        Text(
+                          product.category.isNotEmpty
+                              ? product.category
+                              : l10n.inventoryDefaultCategory,
+                          style: type.bodySmall?.copyWith(
+                            color: colors.onSurfaceMuted,
+                          ),
+                        ),
+                        SizedBox(height: spacing.sm),
+                        StatusChip(
+                          tone: tone,
+                          text: !tracksStock
+                              ? l10n.inventoryStockNotTracked
+                              : isOut
+                                  ? l10n.inventoryOutOfStock
+                                  : isLow
+                                      ? l10n.inventoryLowStock
+                                      : l10n.inventoryInStock,
+                          dense: true,
+                        ),
+                      ],
                     ),
-                    textAlign: TextAlign.center,
-                  ),
-                  SizedBox(height: spacing.sm),
-                  StatusChip(
-                    tone: tone,
-                    text: isOut
-                        ? l10n.inventoryOutOfStock
-                        : isLow
-                            ? l10n.inventoryLowStock
-                            : l10n.inventoryInStock,
-                    dense: true,
                   ),
                 ],
               ),
             ),
             SizedBox(height: spacing.lg),
-
-            // Four stats in a 2x2 grid: available stock, selling price, buying
-            // cost, stock value.
-            SurfaceCard(
-              padding: EdgeInsets.all(spacing.lg),
-              child: LayoutBuilder(
-                builder: (BuildContext context, BoxConstraints constraints) {
-                  final bool row = constraints.maxWidth >= 640;
-                  final List<Widget> tiles = <Widget>[
-                    _DukaStatCard(
-                      label: 'Available stock',
-                      value: _stockCountLabel(product.stockQty),
-                      unit: product.unit.suffix,
-                      icon: Icons.warehouse_outlined,
-                    ),
-                    _DukaStatCard(
-                      label: l10n.inventorySellingPrice,
-                      value: formatMoney(product.sellPrice),
-                      icon: Icons.sell_outlined,
-                    ),
-                    _DukaStatCard(
-                      label: l10n.inventoryCostPrice,
-                      value: formatMoney(product.costPrice),
-                      icon: Icons.shopping_cart_outlined,
-                    ),
-                    _DukaStatCard(
-                      label: l10n.inventoryStockValue,
-                      value: formatMoney(stockValue),
-                      icon: Icons.account_balance_wallet_outlined,
-                    ),
-                  ];
-                  if (row) {
-                    return IntrinsicHeight(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: <Widget>[
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: <Widget>[
-                              for (int i = 0; i < 2; i++) ...<Widget>[
-                                if (i > 0) SizedBox(width: spacing.lg),
-                                Expanded(child: tiles[i]),
-                              ],
-                            ],
-                          ),
-                          SizedBox(height: spacing.lg),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: <Widget>[
-                              for (int i = 2; i < 4; i++) ...<Widget>[
-                                if (i > 2) SizedBox(width: spacing.lg),
-                                Expanded(child: tiles[i]),
-                              ],
-                            ],
-                          ),
-                        ],
+            LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints constraints) {
+                final int columns = constraints.maxWidth >= 740 ? 4 : 2;
+                final double gap = spacing.sm;
+                final double tileWidth =
+                    (constraints.maxWidth - (gap * (columns - 1))) / columns;
+                return Wrap(
+                  spacing: gap,
+                  runSpacing: gap,
+                  children: <Widget>[
+                    SizedBox(
+                      width: tileWidth,
+                      child: _DukaStatCard(
+                        label: l10n.inventoryAvailableStock,
+                        value: tracksStock
+                            ? _stockCountLabel(product.availableStockQty)
+                            : l10n.inventoryStockNotTracked,
+                        unit: tracksStock ? product.unit.suffix : null,
+                        icon: Icons.warehouse_outlined,
                       ),
-                    );
-                  }
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: <Widget>[
-                      for (int i = 0; i < tiles.length; i++) ...<Widget>[
-                        if (i > 0) SizedBox(height: spacing.lg),
-                        tiles[i],
-                      ],
-                    ],
-                  );
-                },
-              ),
+                    ),
+                    SizedBox(
+                      width: tileWidth,
+                      child: _DukaStatCard(
+                        label: l10n.inventorySellingPrice,
+                        value: formatMoney(product.sellPrice),
+                        icon: Icons.sell_outlined,
+                      ),
+                    ),
+                    SizedBox(
+                      width: tileWidth,
+                      child: _DukaStatCard(
+                        label: l10n.inventoryCostPrice,
+                        value: formatMoney(product.costPrice),
+                        icon: Icons.shopping_cart_outlined,
+                      ),
+                    ),
+                    SizedBox(
+                      width: tileWidth,
+                      child: _DukaStatCard(
+                        label: l10n.inventoryStockValue,
+                        value: formatMoney(stockValue),
+                        icon: Icons.account_balance_wallet_outlined,
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
             SizedBox(height: spacing.lg),
-
-            // Stock activity section.
+            SectionHeader(label: l10n.inventoryProductInformation),
             SurfaceCard(
-              padding: EdgeInsetsDirectional.only(
-                start: spacing.lg,
-                end: spacing.lg,
-                top: spacing.lg,
-                bottom: spacing.md,
-              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                  Text(
-                    'Stock activity',
-                    style: type.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                  KeyValueRow(
+                    label: l10n.inventoryFieldCategory,
+                    value: product.category.isNotEmpty
+                        ? product.category
+                        : l10n.inventoryDefaultCategory,
                   ),
-                  SizedBox(height: spacing.sm),
-                  if (_stockActivity.isEmpty)
+                  if (product.merchantSku?.trim().isNotEmpty == true)
+                    KeyValueRow(
+                      label: l10n.productMerchantSku,
+                      value: product.merchantSku!,
+                    ),
+                  if (product.brandLabelLocal?.trim().isNotEmpty == true)
+                    KeyValueRow(
+                      label: l10n.productBrandLabel,
+                      value: product.brandLabelLocal!,
+                    ),
+                  if (tracksStock) ...<Widget>[
+                    KeyValueRow(
+                      label: l10n.inventoryReorderLevel,
+                      value: '${product.reorderLevel} ${product.unit.suffix}',
+                    ),
+                    if (product.reservedQty > 0)
+                      KeyValueRow(
+                        label: l10n.inventoryReservedStock,
+                        value:
+                            '${_stockCountLabel(product.reservedQty)} ${product.unit.suffix}',
+                      ),
+                  ],
+                  KeyValueRow(
+                    label: l10n.productUnitPickerLabel,
+                    value: product.unit.suffix,
+                    showDivider: !product.trackExpiry,
+                  ),
+                  if (product.trackExpiry)
+                    KeyValueRow(
+                      label: l10n.trackExpiryDates,
+                      value: l10n.inventoryTracked,
+                      showDivider: false,
+                    ),
+                ],
+              ),
+            ),
+            SizedBox(height: spacing.lg),
+            SectionHeader(label: l10n.inventoryStockMovement),
+            SurfaceCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  if (_loadError)
+                    ErrorStateView(
+                      message: l10n.inventoryProductLoadFailed,
+                      retryLabel: l10n.retry,
+                      onRetry: () {
+                        _load();
+                      },
+                      icon: Icons.inventory_2_outlined,
+                    )
+                  else if (_stockActivity.isEmpty)
                     Text(
                       l10n.inventoryNoMovement,
                       style: type.bodySmall?.copyWith(
@@ -312,44 +366,33 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               ),
             ),
             SizedBox(height: spacing.lg),
-
-            // Quick actions are pills, not full-width form rows: they are
-            // adjacent choices around the product and wrap naturally on a
-            // compact phone while keeping a clear primary receive action.
-            Wrap(
-              spacing: spacing.sm,
-              runSpacing: spacing.sm,
-              children: <Widget>[
-                if (canReceive)
-                  FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      shape: const StadiumBorder(),
-                      padding: EdgeInsets.symmetric(horizontal: spacing.md),
+            SectionHeader(label: l10n.inventoryActionsTooltip),
+            SurfaceCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  if (canReceive)
+                    FilledButton.icon(
+                      onPressed: () => _receiveStock(context),
+                      icon: const Icon(Icons.local_shipping_outlined),
+                      label: Text(l10n.receiveStock),
                     ),
-                    onPressed: () => _receiveStock(context),
-                    icon: const Icon(Icons.local_shipping_outlined, size: 18),
-                    label: Text(AppLocalizations.of(context).receiveStock),
-                  ),
-                if (canAdjust)
+                  if (canAdjust) ...<Widget>[
+                    if (canReceive) SizedBox(height: spacing.sm),
+                    OutlinedButton.icon(
+                      onPressed: () => _adjustStock(context),
+                      icon: const Icon(Icons.tune_outlined),
+                      label: Text(l10n.adjustStock),
+                    ),
+                  ],
+                  if (canReceive || canAdjust) SizedBox(height: spacing.sm),
                   OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      shape: const StadiumBorder(),
-                      padding: EdgeInsets.symmetric(horizontal: spacing.md),
-                    ),
-                    onPressed: () => _adjustStock(context),
-                    icon: const Icon(Icons.tune_outlined, size: 18),
-                    label: Text(AppLocalizations.of(context).adjustStock),
+                    onPressed: () => _viewSales(context),
+                    icon: const Icon(Icons.receipt_long_outlined),
+                    label: Text(l10n.viewSales),
                   ),
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    shape: const StadiumBorder(),
-                    padding: EdgeInsets.symmetric(horizontal: spacing.md),
-                  ),
-                  onPressed: () => _viewSales(context),
-                  icon: const Icon(Icons.receipt_long_outlined, size: 18),
-                  label: Text(AppLocalizations.of(context).viewSales),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),
@@ -558,56 +601,49 @@ class _DukaStatCard extends StatelessWidget {
     final AppColors colors = AppColors.of(context);
     final TextTheme type = AppTypography.of(context);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        Row(
-          children: <Widget>[
-            Container(
-              padding: EdgeInsets.all(spacing.xs),
-              decoration: BoxDecoration(
-                color: colors.surfaceSunken,
-                borderRadius: AppShapes.of(context).controlRadius,
-              ),
-              child: Icon(
-                icon,
-                size: 18,
-                color: colors.onSurfaceVariant,
-              ),
+    return SurfaceCard(
+      padding: EdgeInsets.all(spacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Container(
+            padding: EdgeInsets.all(spacing.xs),
+            decoration: BoxDecoration(
+              color: colors.surfaceSunken,
+              borderRadius: AppShapes.of(context).controlRadius,
             ),
-          ],
-        ),
-        SizedBox(height: spacing.lg),
-        Text(
-          label,
-          style: type.labelMedium?.copyWith(color: colors.onSurfaceMuted),
-        ),
-        SizedBox(height: spacing.xs),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
-          children: <Widget>[
+            child: Icon(
+              icon,
+              size: 18,
+              color: colors.onSurfaceVariant,
+            ),
+          ),
+          SizedBox(height: spacing.sm),
+          Text(
+            label,
+            style: type.labelMedium?.copyWith(color: colors.onSurfaceMuted),
+          ),
+          SizedBox(height: spacing.xs),
+          Text(
+            value,
+            style: AppTypography.money(
+              context,
+              size: 18,
+              weight: FontWeight.w800,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          if (unit != null) ...<Widget>[
+            SizedBox(height: spacing.xs),
             Text(
-              value,
-              style: AppTypography.money(
-                context,
-                size: 20,
-                weight: FontWeight.w800,
-              ),
+              unit!,
+              style: type.labelSmall?.copyWith(color: colors.onSurfaceMuted),
             ),
-            if (unit != null) ...<Widget>[
-              SizedBox(width: spacing.xs),
-              Text(
-                unit!,
-                style: type.labelSmall?.copyWith(
-                  color: colors.onSurfaceMuted,
-                ),
-              ),
-            ],
           ],
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -635,40 +671,41 @@ class _DukaActivityRow extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.only(bottom: spacing.sm),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: EdgeInsets.all(spacing.xs),
             decoration: BoxDecoration(
               color: colors.surfaceSunken,
               shape: BoxShape.circle,
             ),
-            child: Icon(
-              icon,
-              size: 20,
-              color: colors.onSurfaceVariant,
-            ),
+            child: Icon(icon, size: 20, color: colors.onSurfaceVariant),
           ),
           SizedBox(width: spacing.md),
           Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
                 Text(label, style: type.bodyMedium),
-                SizedBox(height: 2),
+                SizedBox(height: spacing.xs),
                 Text(
                   detail,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: type.bodySmall?.copyWith(
                     color: colors.onSurfaceMuted,
                   ),
                 ),
+                SizedBox(height: spacing.xs),
+                Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: Text(
+                    value,
+                    style: AppTypography.money(context, size: 14),
+                  ),
+                ),
               ],
             ),
-          ),
-          SizedBox(width: spacing.sm),
-          Text(
-            value,
-            style: AppTypography.money(context, size: 14),
           ),
         ],
       ),

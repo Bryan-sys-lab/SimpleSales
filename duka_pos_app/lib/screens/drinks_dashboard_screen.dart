@@ -18,7 +18,6 @@ import '../theme/app_colors.dart';
 import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
-import '../theme/dashboard_profile_palette.dart';
 import '../ui/components/status.dart';
 import '../ui/components/surface.dart';
 import '../ui/layout/page.dart';
@@ -260,9 +259,7 @@ class DrinksDashboardScreen extends StatelessWidget {
         BackupReminderBanner(onBackupNow: onBackupNow),
         DashboardPanel(
           title: l10n.dashboardHeldCarts,
-          topAccent: DashboardProfilePalette.forProfile(ShopProfile.drinks,
-                  brightness: Theme.of(context).brightness)
-              .accent,
+          topAccent: AppColors.of(context).accent,
           child: Padding(
             padding: EdgeInsets.all(spacing.md),
             child: Text(

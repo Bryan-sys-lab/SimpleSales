@@ -22,7 +22,6 @@ import '../ui/components/surface.dart';
 import '../ui/layout/page.dart';
 import '../utils/money.dart';
 import 'dashboard_sections.dart';
-import '../theme/dashboard_profile_palette.dart';
 
 sealed class DashboardState {
   const DashboardState();
@@ -711,9 +710,7 @@ class DashboardBusinessHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
     final AppLocalizations l10n = AppLocalizations.of(context);
-    final DashboardProfilePalette palette = DashboardProfilePalette.forProfile(
-        profile,
-        brightness: Theme.of(context).brightness);
+    final AppColors colors = AppColors.of(context);
     final String formatted = _headerDate(l10n);
 
     return Column(
@@ -763,18 +760,24 @@ class DashboardBusinessHeader extends StatelessWidget {
               padding: EdgeInsets.symmetric(
                   horizontal: spacing.sm, vertical: spacing.xs),
               decoration: BoxDecoration(
-                color: palette.tint,
+                color: colors.accentContainer,
                 borderRadius: BorderRadius.circular(999),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  Icon(Icons.storefront_outlined, size: 14, color: palette.ink),
+                  Icon(
+                    Icons.storefront_outlined,
+                    size: 14,
+                    color: colors.onAccentContainer,
+                  ),
                   SizedBox(width: spacing.xs),
                   Text(
                     profile.displayName.toUpperCase(),
                     style: AppTypography.of(context).labelSmall?.copyWith(
-                        color: palette.ink, fontWeight: FontWeight.w700),
+                        color: colors.onAccentContainer,
+                        fontWeight: FontWeight.w700,
+                      ),
                   ),
                 ],
               ),

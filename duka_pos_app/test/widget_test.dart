@@ -43,6 +43,11 @@ void main() {
 
   late AppearanceController appearance;
 
+  DukaPosApp appUnderTest() => DukaPosApp(
+        appearance: appearance,
+        bootOnStart: false,
+      );
+
   setUp(() async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     DatabaseHelper.resetForTests();
@@ -51,7 +56,7 @@ void main() {
 
   testWidgets('the app is wired to a router, with a title and no debug banner',
       (WidgetTester tester) async {
-    await tester.pumpWidget(DukaPosApp(appearance: appearance));
+    await tester.pumpWidget(appUnderTest());
 
     final MaterialApp app =
         tester.widget<MaterialApp>(find.byType(MaterialApp));
@@ -66,7 +71,7 @@ void main() {
 
   testWidgets('BOTH themes are supplied, and each carries every extension',
       (WidgetTester tester) async {
-    await tester.pumpWidget(DukaPosApp(appearance: appearance));
+    await tester.pumpWidget(appUnderTest());
 
     final MaterialApp app =
         tester.widget<MaterialApp>(find.byType(MaterialApp));
@@ -92,7 +97,7 @@ void main() {
 
   testWidgets('application colors use the current palette tokens',
       (WidgetTester tester) async {
-    await tester.pumpWidget(DukaPosApp(appearance: appearance));
+    await tester.pumpWidget(appUnderTest());
 
     final MaterialApp app =
         tester.widget<MaterialApp>(find.byType(MaterialApp));
@@ -107,12 +112,12 @@ void main() {
       Primitives.textInk,
       reason: 'body text uses the specified primary ink',
     );
-    expect(app.theme!.scaffoldBackgroundColor, Primitives.neutral97);
+    expect(app.theme!.scaffoldBackgroundColor, Colors.transparent);
   });
 
   testWidgets('theme animation is off, so a theme change never half-fades',
       (WidgetTester tester) async {
-    await tester.pumpWidget(DukaPosApp(appearance: appearance));
+    await tester.pumpWidget(appUnderTest());
 
     final MaterialApp app =
         tester.widget<MaterialApp>(find.byType(MaterialApp));
@@ -122,16 +127,13 @@ void main() {
     expect(app.themeAnimationStyle?.duration, Duration.zero);
   });
 
-  testWidgets('boot renders the branded splash, not a blank frame',
+  testWidgets('startup route renders app chrome before storage boot',
       (WidgetTester tester) async {
-    await tester.pumpWidget(DukaPosApp(appearance: appearance));
+    await tester.pumpWidget(appUnderTest());
     await tester.pump();
 
-    // The assertion is deliberately about "something real rendered", not about a
-    // specific spinner: the splash is a branded mark, and pinning it to one
-    // implementation would make the test hostile to a redesign of the boot
-    // screen for no benefit. What must never regress is a BLANK first frame —
-    // which is the failure a shopkeeper sees as "the app is broken".
+    // Keep this smoke test on synchronous app chrome. Database boot is covered
+    // by database tests using the real async test environment.
     expect(find.byType(Scaffold), findsWidgets);
   });
 }

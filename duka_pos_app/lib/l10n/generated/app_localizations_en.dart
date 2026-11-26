@@ -5527,6 +5527,53 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get portfolioShopDetails => 'Shop details';
+
+  @override
+  String portfolioRevenueShare(Object share) {
+    return '$share of total takings';
+  }
+
+  @override
+  String get portfolioRevenueShareLabel => 'Revenue share';
+
+  @override
+  String get portfolioShiftsTitle => 'Shifts';
+
+  @override
+  String get portfolioTopPaymentMethod => 'Top payment method';
+
+  @override
+  String get portfolioFinancialDetails => 'Financial details';
+
+  @override
+  String get portfolioOperatingExpenses => 'Operating expenses';
+
+  @override
+  String get portfolioNetProfit => 'Net profit';
+
+  @override
+  String get portfolioNetCashFlow => 'Net cash flow';
+
+  @override
+  String get portfolioReceivablesChange => 'Receivables change';
+
+  @override
+  String get portfolioPayablesChange => 'Payables change';
+
+  @override
+  String get portfolioStockValue => 'Stock value';
+
+  @override
+  String get portfolioFinancialDataIncomplete =>
+      'Financial details incomplete for one or more shops';
+
+  @override
+  String portfolioRank(Object rank) {
+    return 'Rank $rank';
+  }
+
+  @override
   String get productSizeLabelKilogram => 'How many litres the tank holds (ml)';
 
   @override
@@ -6190,6 +6237,25 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get inventoryProductDetail => 'Product detail';
+
+  @override
+  String get inventoryProductInformation => 'Product information';
+
+  @override
+  String get inventoryProductLoadFailed =>
+      'Could not load product details. Try again.';
+
+  @override
+  String get inventoryAvailableStock => 'Available stock';
+
+  @override
+  String get inventoryReservedStock => 'Reserved stock';
+
+  @override
+  String get inventoryStockNotTracked => 'Stock not tracked';
+
+  @override
+  String get inventoryTracked => 'Tracked';
 
   @override
   String get inventoryCostPrice => 'Cost price';
@@ -8074,7 +8140,30 @@ class AppLocalizationsEn extends AppLocalizations {
   String get planDetailsDashboardTitle => 'My plan';
 
   @override
+  String get planDetailsStatusAccessActive => 'Access Active';
+
+  @override
+  String planDetailsUntilDate(String date) {
+    return 'Until $date';
+  }
+
+  @override
   String get planDetailsCurrentPlan => 'Current plan';
+
+  @override
+  String get planDetailsAccessTypeLabel => 'Access type';
+
+  @override
+  String get planDetailsVoucherAccessType => 'Voucher';
+
+  @override
+  String get planDetailsExpiryDateLabel => 'Expiry date';
+
+  @override
+  String get planDetailsPaymentDetailsTitle => 'Payment details';
+
+  @override
+  String get planDetailsNoExpiryDate => 'No expiry date';
 
   @override
   String get planDetailsIncludedTitle => 'Included';

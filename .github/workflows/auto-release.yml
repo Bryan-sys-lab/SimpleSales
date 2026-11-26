@@ -46,7 +46,7 @@ jobs:
       github.event.workflow_run.conclusion == 'success'
       && github.event.workflow_run.event == 'push'
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 60
 
     # Deliberately no job-level `defaults.run.working-directory`, even though
     # pubspec.yaml lives in duka_pos_app/ rather than at the root.
@@ -421,9 +421,13 @@ jobs:
             run_id=$(gh run list --workflow release.yml --branch "$tag" \
                        --limit 1 --json databaseId --jq '.[0].databaseId' 2>/dev/null || true)
             if [ -n "$run_id" ]; then
-              echo "release.yml is running for ${tag} (run ${run_id})."
-              echo "It appears as a DRAFT until the signed APK has built and verified."
-              exit 0
+              echo "Waiting for release.yml for ${tag} (run ${run_id}) to finish."
+              if gh run watch "$run_id" --exit-status; then
+                echo "The signed release for ${tag} built and published successfully."
+                exit 0
+              fi
+              echo "::error::The signed release for ${tag} failed. See ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${run_id}."
+              exit 1
             fi
             echo "Waiting for the ${tag} release run to appear (attempt ${attempt}/6)."
           done

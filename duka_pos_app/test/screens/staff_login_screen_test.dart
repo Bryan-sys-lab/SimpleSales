@@ -129,6 +129,9 @@ void main() {
       expect(staffRequestData['device_id'], isA<String>());
       expect((staffRequestData['device_id'] as String).trim(), isNotEmpty);
       expect(find.text(l10n.loginWrongCredentials), findsOneWidget);
+      expect(find.text('Staff login diagnostics'), findsNothing);
+      expect(find.textContaining('Invalid staff credentials'), findsNothing);
+      expect(find.textContaining('HTTP 401'), findsNothing);
     },
   );
 }

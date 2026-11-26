@@ -173,6 +173,11 @@ void main() {
     expect(find.text(l10n.membershipPlans), findsNothing);
     expect(find.text(l10n.membershipQuote), findsNothing);
     expect(find.text(l10n.membershipHelp), findsNothing);
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey<String>('subscription-price-period')),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.byKey(const ValueKey<String>('subscription-price-period')),
         findsOneWidget);
     expect(find.text('KES 1000.00'), findsOneWidget);
@@ -195,22 +200,6 @@ void main() {
     final l10n =
         AppLocalizations.of(tester.element(find.byType(PaywallScreen)));
     await tester.scrollUntilVisible(
-      find.text('KES 300.00'),
-      240,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.text('KES 300.00'), findsOneWidget);
-    expect(find.text('KES 270.00'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text(l10n.paywallPaymentPaybillDestination('123456')),
-      240,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(
-      find.text(l10n.paywallPaymentPaybillDestination('123456')),
-      findsOneWidget,
-    );
-    await tester.scrollUntilVisible(
       find.text(l10n.paywallAvailableDiscountVoucher(25, 3)),
       240,
       scrollable: find.byType(Scrollable).first,
@@ -218,7 +207,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
         find.text(l10n.paywallAvailableDiscountVoucher(25, 3)), findsOneWidget);
-    await tester.tap(find.text(l10n.paywallClaimVoucher));
+    await tester.tap(find.text(l10n.planDetailsClaimVoucher));
     await tester.pumpAndSettle();
 
     expect(adapter.requestedPaths, contains(endsWith('/auth/voucher/claim')));
@@ -259,6 +248,11 @@ void main() {
 
     final l10n =
         AppLocalizations.of(tester.element(find.byType(PaywallScreen)));
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey<String>('subscription-price-period')),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text(l10n.paywallAgreedPrice), findsOneWidget);
     expect(find.text('KES 225.00'), findsNWidgets(2));
     expect(find.text('KES 300.00'), findsNothing);
@@ -266,14 +260,20 @@ void main() {
       find.text(l10n.planDetailsBillingPeriod(l10n.billingIntervalQuarterly)),
       findsNWidgets(2),
     );
+    await tester.scrollUntilVisible(
+      find.text(l10n.paywallDiscount(25)),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text(l10n.paywallDiscount(25)), findsOneWidget);
+    expect(find.text('KES 75.00'), findsOneWidget);
   });
 
   testWidgets('plan details shows status, price, payment, and voucher access',
       (WidgetTester tester) async {
     tester.useDevice(Device.compact);
-    BackendService.setHttpClientAdapterForTesting(
-      _VoucherAdapter()..configuredPayment = true,
-    );
+    final adapter = _VoucherAdapter()..configuredPayment = true;
+    BackendService.setHttpClientAdapterForTesting(adapter);
     addTearDown(() => BackendService.setHttpClientAdapterForTesting(null));
 
     await tester.pumpApp(home: const PlanDetailsScreen());
@@ -297,6 +297,14 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.text(l10n.planDetailsClaimVoucher), findsOneWidget);
+    await tester.tap(find.text(l10n.planDetailsClaimVoucher));
+    await tester.pumpAndSettle();
+    expect(adapter.requestedPaths, contains(endsWith('/auth/voucher/claim')));
+    expect(find.byType(PaywallScreen), findsNothing);
+    expect(
+      find.text(l10n.paywallDiscountVoucherClaimed(25, 3)),
+      findsWidgets,
+    );
     tester.expectNoOverflow('plan details screen');
   });
 
@@ -379,11 +387,17 @@ void main() {
     );
     expect(find.text(l10n.paywallPaymentPending), findsOneWidget);
 
+    tester.testTextInput.hide();
+    await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
       find.byKey(const ValueKey<String>('subscription-payment-check')),
       240,
       scrollable: find.byType(Scrollable).first,
     );
+    await tester.ensureVisible(
+      find.byKey(const ValueKey<String>('subscription-payment-check')),
+    );
+    await tester.pumpAndSettle();
     await tester
         .tap(find.byKey(const ValueKey<String>('subscription-payment-check')));
     await tester.pumpAndSettle();

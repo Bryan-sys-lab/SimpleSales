@@ -5533,6 +5533,53 @@ class AppLocalizationsSw extends AppLocalizations {
   }
 
   @override
+  String get portfolioShopDetails => 'Maelezo ya duka';
+
+  @override
+  String portfolioRevenueShare(Object share) {
+    return '$share ya mapato yote';
+  }
+
+  @override
+  String get portfolioRevenueShareLabel => 'Sehemu ya mapato';
+
+  @override
+  String get portfolioShiftsTitle => 'Zamu';
+
+  @override
+  String get portfolioTopPaymentMethod => 'Njia kuu ya malipo';
+
+  @override
+  String get portfolioFinancialDetails => 'Maelezo ya kifedha';
+
+  @override
+  String get portfolioOperatingExpenses => 'Gharama za uendeshaji';
+
+  @override
+  String get portfolioNetProfit => 'Faida halisi';
+
+  @override
+  String get portfolioNetCashFlow => 'Mtiririko halisi wa pesa';
+
+  @override
+  String get portfolioReceivablesChange => 'Mabadiliko ya madeni ya wateja';
+
+  @override
+  String get portfolioPayablesChange => 'Mabadiliko ya madeni kwa wasambazaji';
+
+  @override
+  String get portfolioStockValue => 'Thamani ya hisa';
+
+  @override
+  String get portfolioFinancialDataIncomplete =>
+      'Maelezo ya kifedha hayajakamilika kwa baadhi ya maduka';
+
+  @override
+  String portfolioRank(Object rank) {
+    return 'Nafasi $rank';
+  }
+
+  @override
   String get productSizeLabelKilogram => 'How many litres the tank holds (ml)';
 
   @override
@@ -6197,6 +6244,25 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get inventoryProductDetail => 'Product detail';
+
+  @override
+  String get inventoryProductInformation => 'Taarifa za bidhaa';
+
+  @override
+  String get inventoryProductLoadFailed =>
+      'Maelezo ya bidhaa hayakuweza kupakiwa. Jaribu tena.';
+
+  @override
+  String get inventoryAvailableStock => 'Bidhaa zilizopo';
+
+  @override
+  String get inventoryReservedStock => 'Bidhaa zilizohifadhiwa';
+
+  @override
+  String get inventoryStockNotTracked => 'Hisa haifuatiliwi';
+
+  @override
+  String get inventoryTracked => 'Inafuatiliwa';
 
   @override
   String get inventoryCostPrice => 'Gharama za kuunga';
@@ -8089,7 +8155,30 @@ class AppLocalizationsSw extends AppLocalizations {
   String get planDetailsDashboardTitle => 'Mpango wangu';
 
   @override
+  String get planDetailsStatusAccessActive => 'Ufikiaji unatumika';
+
+  @override
+  String planDetailsUntilDate(String date) {
+    return 'Hadi $date';
+  }
+
+  @override
   String get planDetailsCurrentPlan => 'Mpango wa sasa';
+
+  @override
+  String get planDetailsAccessTypeLabel => 'Aina ya ufikiaji';
+
+  @override
+  String get planDetailsVoucherAccessType => 'Vocha';
+
+  @override
+  String get planDetailsExpiryDateLabel => 'Tarehe ya mwisho';
+
+  @override
+  String get planDetailsPaymentDetailsTitle => 'Maelezo ya malipo';
+
+  @override
+  String get planDetailsNoExpiryDate => 'Hakuna tarehe ya mwisho';
 
   @override
   String get planDetailsIncludedTitle => 'Vilivyomo';

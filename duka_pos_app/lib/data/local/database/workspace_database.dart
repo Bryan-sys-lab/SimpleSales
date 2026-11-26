@@ -41,8 +41,13 @@ class _AsyncGate {
       } catch (error, stack) {
         result.completeError(error, stack);
       }
-    });
-    return result.future;
+    }).catchError((_) {});
+    return result.future.timeout(
+      const Duration(seconds: 30),
+      onTimeout: () {
+        throw TimeoutException('Workspace operation timed out');
+      },
+    );
   }
 }
 
@@ -151,10 +156,14 @@ class WorkspaceDatabase {
   /// Generates a random 256-bit key, stores it keyed by workspace, and returns it.
   static Future<String> _ensureWorkspaceKey(String workspaceKey) async {
     final storageKey = '$_dbKeyPrefix$workspaceKey';
-    final existing = await _secureStorage.read(key: storageKey);
+    final String? existing = await _secureStorage
+        .read(key: storageKey)
+        .timeout(const Duration(seconds: 5));
     if (existing != null && existing.isNotEmpty) return existing;
     final key = _generateKey();
-    await _secureStorage.write(key: storageKey, value: key);
+    await _secureStorage
+        .write(key: storageKey, value: key)
+        .timeout(const Duration(seconds: 5));
     return key;
   }
 
@@ -202,7 +211,6 @@ class WorkspaceDatabase {
     final databasePath =
         path.join(dbPath, DatabaseConfig.databaseFileName(_workspaceKey));
 
-    final key = await _ensureWorkspaceKey(_workspaceKey);
     final onCreate = _onCreate;
     final onUpgrade = _onUpgrade;
     if (onCreate == null || onUpgrade == null) {
@@ -211,23 +219,27 @@ class WorkspaceDatabase {
           'configureMigrations before opening the database.');
     }
 
-    try {
-      final isTest = kDebugMode;
-      return await (isTest ? databaseFactory : sqlcipher_pkg.databaseFactory)
-          .openDatabase(
+    if (kDebugMode) {
+      return databaseFactory.openDatabase(
         databasePath,
-        options: isTest
-            ? OpenDatabaseOptions(
-                version: SchemaVersion.current,
-                onCreate: onCreate,
-                onUpgrade: onUpgrade,
-              )
-            : sqlcipher_pkg.SqlCipherOpenDatabaseOptions(
-                version: SchemaVersion.current,
-                onCreate: onCreate,
-                onUpgrade: onUpgrade,
-                password: key,
-              ),
+        options: OpenDatabaseOptions(
+          version: SchemaVersion.current,
+          onCreate: onCreate,
+          onUpgrade: onUpgrade,
+        ),
+      );
+    }
+
+    final key = await _ensureWorkspaceKey(_workspaceKey);
+    try {
+      return await sqlcipher_pkg.databaseFactory.openDatabase(
+        databasePath,
+        options: sqlcipher_pkg.SqlCipherOpenDatabaseOptions(
+          version: SchemaVersion.current,
+          onCreate: onCreate,
+          onUpgrade: onUpgrade,
+          password: key,
+        ),
       );
     } on Object catch (_) {
       final file = File(databasePath);

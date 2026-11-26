@@ -77,6 +77,7 @@ String? appRedirect({
     Routes.login,
     Routes.accountRecovery,
     Routes.setup,
+    Routes.staffLogin,
   };
   if (doors.contains(location)) return Routes.dashboard;
 

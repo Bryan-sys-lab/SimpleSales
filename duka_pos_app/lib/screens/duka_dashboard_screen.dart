@@ -19,7 +19,6 @@ import '../theme/app_colors.dart';
 import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
-import '../theme/dashboard_profile_palette.dart';
 import '../ui/components/operation_result.dart';
 import '../ui/components/surface.dart';
 import '../ui/components/status.dart';
@@ -106,11 +105,10 @@ class DukaDashboardScreen extends StatelessWidget {
         ? DashboardHourlySales(buckets: data.hours)
         : DashboardNoSalesCard(hasEverSold: data.hasEverSold);
 
-    final paletteDuka = DashboardProfilePalette.forProfile(ShopProfile.duka,
-        brightness: Theme.of(context).brightness);
+    final Color topAccent = AppColors.of(context).accent;
     final Widget? topProducts = hasSales
         ? DashboardTopProducts(
-            rows: data.topProducts, topAccent: paletteDuka.accent)
+            rows: data.topProducts, topAccent: topAccent)
         : null;
 
     final Widget reorder = DashboardLowStockList(
@@ -119,7 +117,7 @@ class DukaDashboardScreen extends StatelessWidget {
       canOpen: canManageStock,
       onOpenProduct: onOpenProduct,
       onViewAll: onOpenInventory,
-      topAccent: paletteDuka.accent,
+      topAccent: topAccent,
     );
 
     final Widget? credit = canManageCredit

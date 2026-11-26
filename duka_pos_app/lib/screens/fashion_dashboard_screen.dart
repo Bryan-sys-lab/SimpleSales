@@ -19,7 +19,6 @@ import '../theme/app_colors.dart';
 import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
-import '../theme/dashboard_profile_palette.dart';
 import '../ui/components/surface.dart';
 import '../ui/components/status.dart';
 import '../ui/dialogs/manager_approval_sheet.dart';
@@ -358,11 +357,10 @@ class _FashionLowStockVariants extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
 
-    final palette = DashboardProfilePalette.forProfile(ShopProfile.fashion,
-        brightness: Theme.of(context).brightness);
+    final Color topAccent = AppColors.of(context).accent;
     return DashboardPanel(
       title: l10n.fashionDashboardLowStockVariants,
-      topAccent: palette.accent,
+      topAccent: topAccent,
       trailing: ActionChip(
         avatar: const Icon(Icons.arrow_outward, size: 16),
         onPressed: onViewAll,
@@ -566,11 +564,10 @@ class _FashionReservesOverviewState extends State<_FashionReservesOverview>
     final AppSpacing spacing = AppSpacing.of(context);
     final AppLocalizations l10n = AppLocalizations.of(context);
 
-    final palette = DashboardProfilePalette.forProfile(ShopProfile.fashion,
-        brightness: Theme.of(context).brightness);
+    final Color topAccent = AppColors.of(context).accent;
     return DashboardPanel(
       title: l10n.fashionDashboardReserves,
-      topAccent: palette.accent,
+      topAccent: topAccent,
       trailing: ActionChip(
         avatar: const Icon(Icons.arrow_outward, size: 16),
         onPressed: widget.onOpenReserves,

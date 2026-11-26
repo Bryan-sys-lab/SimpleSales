@@ -29,6 +29,7 @@ import '../services/live_refresh_mixin.dart';
 import '../services/live_channel_service.dart';
 import '../services/session_refresh_mixin.dart';
 import '../theme/app_colors.dart';
+import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_haptics.dart';
 import '../theme/typography.dart';
@@ -402,7 +403,6 @@ class PortfolioPanel extends StatelessWidget {
                   ? 0
                   : kpis.shopsByRevenue[i].revenue.minorUnits /
                       kpis.totalRevenue.minorUnits,
-              showDivider: i != kpis.shops.length - 1,
             ),
         ],
       ),
@@ -468,34 +468,34 @@ class _PortfolioTotalsCard extends StatelessWidget {
           ),
           if (kpis.financialDataComplete) ...<Widget>[
             KeyValueRow(
-              label: 'Operating expenses',
+              label: l10n.portfolioOperatingExpenses,
               value: formatMoney(kpis.totalOperatingExpenses),
             ),
             KeyValueRow(
-              label: 'Net profit',
+              label: l10n.portfolioNetProfit,
               value: formatMoney(kpis.totalNetProfit),
             ),
             KeyValueRow(
-              label: 'Net cash flow',
+              label: l10n.portfolioNetCashFlow,
               value: formatMoney(kpis.totalNetCashFlow),
             ),
             KeyValueRow(
-              label: 'Receivables change',
+              label: l10n.portfolioReceivablesChange,
               value: formatMoney(kpis.totalReceivableDelta),
             ),
             KeyValueRow(
-              label: 'Payables change',
+              label: l10n.portfolioPayablesChange,
               value: formatMoney(kpis.totalPayableDelta),
             ),
             KeyValueRow(
-              label: 'Stock value',
+              label: l10n.portfolioStockValue,
               value: formatMoney(kpis.totalStockValue),
             ),
           ] else
             Padding(
               padding: EdgeInsets.only(top: spacing.xs),
               child: Text(
-                'Financial details incomplete for one or more shops',
+                l10n.portfolioFinancialDataIncomplete,
                 style: AppTypography.of(context).bodySmall?.copyWith(
                       color: AppColors.of(context).warning,
                     ),
@@ -544,13 +544,11 @@ class _ShopKpiRow extends StatelessWidget {
     required this.kpi,
     required this.rank,
     required this.share,
-    required this.showDivider,
   });
 
   final ShopKpi kpi;
   final int rank;
   final double share;
-  final bool showDivider;
 
   /// What the shop's shifts did, in one line.
   String _shiftLine(AppLocalizations l10n) {
@@ -567,6 +565,22 @@ class _ShopKpiRow extends StatelessWidget {
     return parts.isEmpty ? l10n.portfolioShiftsNone : parts.join(' · ');
   }
 
+  void _openDetails(BuildContext context, String shiftLine) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: AppColors.of(context).surface,
+      shape: AppShapes.of(context).surface(AppColors.of(context)),
+      builder: (BuildContext context) => _PortfolioShopDetailsSheet(
+        kpi: kpi,
+        rank: rank,
+        share: share,
+        shiftLine: shiftLine,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
@@ -579,111 +593,301 @@ class _ShopKpiRow extends StatelessWidget {
       Localizations.localeOf(context).toString(),
     );
 
-    final Widget row = Padding(
-      padding: EdgeInsetsDirectional.only(
-        top: spacing.md,
-        bottom: spacing.md,
-      ),
-      child: Row(
-        children: <Widget>[
-          // A round tonal badge on the leading edge: a marker, the way every
-          // other row in this app is marked. The rank beside it is the fact —
-          // 1st is the number, not a medal, and a screen reader can use it.
-          const IconBadge(icon: Icons.storefront_outlined),
-          SizedBox(width: spacing.sm),
-          ExcludeSemantics(
-            child: SizedBox(
-              width: 24,
-              child: Text(
-                '#$rank',
-                style: AppTypography.of(context)
-                    .titleSmall
-                    ?.copyWith(color: colors.onSurfaceMuted),
-                textAlign: TextAlign.end,
-              ),
-            ),
-          ),
-          SizedBox(width: spacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(kpi.shopName, style: AppTypography.of(context).bodyLarge),
-                SizedBox(height: 2),
-                Text(
-                  '${kpi.businessProfile.displayName} · '
-                  '${formatMoney(kpi.revenue)} · ${percent.format(share)}',
-                  style: AppTypography.of(context)
-                      .bodySmall
-                      ?.copyWith(color: colors.onSurfaceMuted),
-                ),
-                SizedBox(height: 2),
-                // The drawer, under the takings.
-                //
-                // Takings alone cannot answer "how is this shop doing": a busy
-                // shop and a shop whose drawer has been short all week look the
-                // same on revenue. A shift is where cash is reconciled, so the
-                // count and any shortfall sit with the money they qualify.
-                Text(
-                  _shiftLine(l10n),
-                  style: AppTypography.of(context).bodySmall?.copyWith(
-                        color: kpi.cashVariance.isNegative
-                            ? colors.danger
-                            : colors.onSurfaceMuted,
-                      ),
-                ),
-                SizedBox(height: 2),
-                Text(
-                  kpi.financialDataComplete
-                      ? 'Expenses ${formatMoney(kpi.operatingExpenses)} · '
-                          'net ${formatMoney(kpi.netProfit)} · '
-                          'cash ${formatMoney(kpi.netCashFlow)}'
-                      : 'Financial details incomplete',
-                  style: AppTypography.of(context).bodySmall?.copyWith(
-                        color: kpi.financialDataComplete
-                            ? colors.onSurfaceMuted
-                            : colors.warning,
-                      ),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(width: spacing.sm),
-          MoneyText(amount: formatMoney(kpi.profit), size: 13),
-        ],
-      ),
-    );
+    final String shiftLine = _shiftLine(l10n);
 
-    return Semantics(
-      container: true,
-      // Alphabetical, as gen-l10n orders the generated parameters: count,
-      // profit, revenue, share, shop. l10n.dart documents that these getters
-      // are positional by design.
-      // The shift line is appended rather than folded into the generated
-      // sentence: both halves are complete sentences in the owner's language,
-      // and a second positional string here would be one more place for the
-      // argument order to drift.
-      label: '${l10n.portfolioShopRowSpoken(
+    return SurfaceCard(
+      margin: EdgeInsets.only(bottom: spacing.sm),
+      onTap: () => _openDetails(context, shiftLine),
+      semanticLabel: '${l10n.portfolioShopRowSpoken(
         kpi.transactions,
         formatMoney(kpi.profit),
         formatMoney(kpi.revenue),
         percent.format(share),
         kpi.shopName,
-      )}. ${_shiftLine(l10n)}',
-      excludeSemantics: true,
-      child: ExcludeSemantics(
-        child: showDivider
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  row,
-                  Divider(height: 1, color: colors.outline),
-                ],
-              )
-            : row,
+      )}. $shiftLine. ${l10n.portfolioShopDetails}',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              const IconBadge(icon: Icons.storefront_outlined),
+              SizedBox(width: spacing.sm),
+              Text(
+                '#$rank',
+                style: AppTypography.of(context)
+                    .titleSmall
+                    ?.copyWith(color: colors.onSurfaceMuted),
+              ),
+              SizedBox(width: spacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      kpi.shopName,
+                      style: AppTypography.of(context).bodyLarge,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      kpi.businessProfile.displayName,
+                      style: AppTypography.of(context)
+                          .bodySmall
+                          ?.copyWith(color: colors.onSurfaceMuted),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(width: spacing.xs),
+              Icon(
+                Icons.chevron_right,
+                color: colors.onSurfaceMuted,
+              ),
+            ],
+          ),
+          SizedBox(height: spacing.md),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _PortfolioShopMetric(
+                  label: l10n.portfolioTotalRevenue,
+                  amount: kpi.revenue,
+                ),
+              ),
+              SizedBox(width: spacing.md),
+              Expanded(
+                child: _PortfolioShopMetric(
+                  label: l10n.portfolioProfit,
+                  amount: kpi.profit,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: spacing.sm),
+          Text(
+            '${l10n.portfolioRevenueShare(percent.format(share))} · '
+            '$shiftLine',
+            style: AppTypography.of(context).bodySmall?.copyWith(
+                  color: kpi.cashVariance.isNegative
+                      ? colors.danger
+                      : colors.onSurfaceMuted,
+                ),
+          ),
+        ],
       ),
     );
   }
+}
+
+class _PortfolioShopMetric extends StatelessWidget {
+  const _PortfolioShopMetric({
+    required this.label,
+    required this.amount,
+  });
+
+  final String label;
+  final Money amount;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            label,
+            style: AppTypography.of(context).bodySmall?.copyWith(
+                  color: AppColors.of(context).onSurfaceMuted,
+                ),
+          ),
+          MoneyText(amount: formatMoney(amount), size: 17),
+        ],
+      );
+}
+
+class _PortfolioShopDetailsSheet extends StatelessWidget {
+  const _PortfolioShopDetailsSheet({
+    required this.kpi,
+    required this.rank,
+    required this.share,
+    required this.shiftLine,
+  });
+
+  final ShopKpi kpi;
+  final int rank;
+  final double share;
+  final String shiftLine;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
+    final NumberFormat percent = NumberFormat.percentPattern(
+      Localizations.localeOf(context).toString(),
+    );
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.88,
+      ),
+      child: SingleChildScrollView(
+        padding: EdgeInsets.all(spacing.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        l10n.portfolioShopDetails,
+                        style: AppTypography.of(context).labelMedium?.copyWith(
+                              color: colors.onSurfaceMuted,
+                            ),
+                      ),
+                      SizedBox(height: spacing.xs),
+                      Text(kpi.shopName,
+                          style: AppTypography.of(context).headlineSmall),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+            SizedBox(height: spacing.md),
+            SurfaceCard(
+              accentEdge: true,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Text(
+                    l10n.portfolioTotalRevenue,
+                    style: AppTypography.of(context).bodySmall?.copyWith(
+                          color: colors.onSurfaceMuted,
+                        ),
+                  ),
+                  SizedBox(height: spacing.xs),
+                  MoneyText(
+                    amount: formatMoney(kpi.revenue),
+                    size: 28,
+                    weight: FontWeight.w700,
+                  ),
+                  SizedBox(height: spacing.sm),
+                  KeyValueRow(
+                    label: l10n.portfolioProfit,
+                    value: formatMoney(kpi.profit),
+                  ),
+                  KeyValueRow(
+                    label: l10n.portfolioTransactions,
+                    value: kpi.transactions.toString(),
+                  ),
+                  KeyValueRow(
+                    label: l10n.portfolioAvgBasket,
+                    value: formatMoney(kpi.averageBasket),
+                  ),
+                  KeyValueRow(
+                    label: l10n.portfolioRevenueShareLabel,
+                    value: percent.format(share),
+                    showDivider: false,
+                  ),
+                ],
+              ),
+            ),
+            SectionHeader(label: l10n.portfolioShiftsTitle),
+            SurfaceCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Text(
+                    shiftLine,
+                    style: AppTypography.of(context).bodyMedium?.copyWith(
+                          color: kpi.cashVariance.isNegative
+                              ? colors.danger
+                              : colors.onSurface,
+                        ),
+                  ),
+                  if (kpi.topPaymentMethod != null) ...<Widget>[
+                    SizedBox(height: spacing.sm),
+                    KeyValueRow(
+                      label: l10n.portfolioTopPaymentMethod,
+                      value: _paymentMethodLabel(
+                        kpi.topPaymentMethod!,
+                        l10n,
+                      ),
+                      showDivider: false,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            SectionHeader(label: l10n.portfolioFinancialDetails),
+            if (kpi.financialDataComplete)
+              SurfaceCard(
+                child: Column(
+                  children: <Widget>[
+                    KeyValueRow(
+                      label: l10n.portfolioOperatingExpenses,
+                      value: formatMoney(kpi.operatingExpenses),
+                    ),
+                    KeyValueRow(
+                      label: l10n.portfolioNetProfit,
+                      value: formatMoney(kpi.netProfit),
+                    ),
+                    KeyValueRow(
+                      label: l10n.portfolioNetCashFlow,
+                      value: formatMoney(kpi.netCashFlow),
+                    ),
+                    KeyValueRow(
+                      label: l10n.portfolioReceivablesChange,
+                      value: formatMoney(kpi.receivableDelta),
+                    ),
+                    KeyValueRow(
+                      label: l10n.portfolioPayablesChange,
+                      value: formatMoney(kpi.payableDelta),
+                    ),
+                    KeyValueRow(
+                      label: l10n.portfolioStockValue,
+                      value: formatMoney(kpi.stockValue),
+                      showDivider: false,
+                    ),
+                  ],
+                ),
+              )
+            else
+              Text(
+                l10n.portfolioFinancialDataIncomplete,
+                style: AppTypography.of(context).bodySmall?.copyWith(
+                      color: colors.warning,
+                    ),
+              ),
+            SizedBox(height: spacing.md),
+            Text(
+              l10n.portfolioRank(rank),
+              textAlign: TextAlign.center,
+              style: AppTypography.of(context).bodySmall?.copyWith(
+                    color: colors.onSurfaceMuted,
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _paymentMethodLabel(String method, AppLocalizations l10n) =>
+      switch (method.toLowerCase()) {
+        'cash' => l10n.analyticsPaymentMethodCash,
+        'mpesa' || 'm-pesa' => l10n.analyticsPaymentMethodMpesa,
+        'mobile_money' => l10n.analyticsPaymentMethodMobileMoney,
+        'card' => l10n.analyticsPaymentMethodCard,
+        'bank_transfer' => l10n.analyticsPaymentMethodBankTransfer,
+        _ => method,
+      };
 }
 
 class _PortfolioEmptyView extends StatelessWidget {

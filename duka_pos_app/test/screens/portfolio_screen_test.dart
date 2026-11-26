@@ -17,6 +17,7 @@
 import 'package:duka_pos/l10n/generated/app_localizations.dart';
 import 'package:duka_pos/screens/portfolio_screen.dart';
 import 'package:duka_pos/services/portfolio_kpis.dart';
+import 'package:duka_pos/ui/components/surface.dart';
 import 'package:duka_pos/utils/money.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -152,6 +153,31 @@ void main() {
         ),
         findsOneWidget,
       );
+    });
+
+    testWidgets('tapping a shop card opens its detailed performance',
+        (tester) async {
+      tester.useDevice(Device.small);
+      await tester.pumpApp(
+        home: const Scaffold(body: _PortfolioHarness()),
+      );
+
+      final Finder shopRank = find.text('#1');
+      await tester.ensureVisible(shopRank);
+      await tester.pumpAndSettle();
+      final Finder shopCard =
+          find.ancestor(of: shopRank, matching: find.byType(SurfaceCard));
+      await tester.tap(shopCard);
+      await tester.pumpAndSettle();
+
+      expect(find.text(l10n.portfolioShopDetails), findsOneWidget);
+      expect(find.text(l10n.portfolioShiftsTitle), findsOneWidget);
+      expect(find.text(l10n.portfolioFinancialDetails), findsOneWidget);
+      expect(
+        find.text(l10n.portfolioFinancialDataIncomplete),
+        findsWidgets,
+      );
+      expect(find.text(l10n.portfolioTransactions), findsWidgets);
     });
 
     for (final Device device in <Device>[Device.compact, Device.small]) {

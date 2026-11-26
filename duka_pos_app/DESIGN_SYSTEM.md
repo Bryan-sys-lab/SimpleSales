@@ -53,55 +53,59 @@ Every color maps to a role. Use only these values. Place every literal in `lib/t
 
 | Role | Hex | Usage |
 |---|---|---|
-| Canvas | `#F6F8F6` | App/page background; lightly green-neutral, not cream |
+| Canvas | `#F7F8F5` | App/page background; lightly green-neutral, not cream |
 | Surface | `#FFFFFF` | Cards, sheets, standard content surfaces |
-| Sunken surface | `#EDF2EE` | Inputs, selected control tracks, recessed wells |
+| Sunken surface | `#F1F4F0` | Inputs, selected control tracks, recessed wells |
 | Raised surface | `#FFFFFF` | Dialog/menu surface |
-| Primary text | `#14251A` | Main headings, money, product names, primary icons |
-| Secondary text | `#4E5F54` | Supporting labels, explanatory text |
-| Muted text | `#607067` | Timestamps, secondary metadata only — remains AA on canvas |
-| Decorative outline | `#E2E9E3` | Quiet divider/card edge where spacing establishes grouping |
-| Meaningful outline | `#64766A` | Input edges, focus/selected boundaries, controls that must be found |
-| Brand/action accent | `#087A45` | Primary CTA, active navigation, action emphasis |
+| Primary text | `#17231B` | Main headings, money, product names, primary icons |
+| Secondary text | `#667269` | Supporting labels, explanatory text |
+| Muted text | `#667269` | Timestamps, secondary metadata only - remains AA on canvas |
+| Decorative outline | `#E8ECE7` | Quiet divider/card edge where spacing establishes grouping |
+| Meaningful outline | `#69766D` | Input edges, focus/selected boundaries, controls that must be found |
+| Brand/action accent | `#174B35` | Brand and inline action emphasis |
+| Primary button | `#174B35` | Primary CTA fill |
 | On accent | `#FFFFFF` | Text/icons on solid light accent |
-| Accent container | `#E6F4EA` | Selected/brand-tinted low-emphasis surface |
-| On accent container | `#0D3D1E` | Text/icons on accent container |
-| Success | `#1A7A3A` | Verified successful/completed/healthy state |
-| Success container | `#DCEFE1` | Success background — visibly distinct from accent selection |
-| On success container | `#0D4D1E` | Text/icons on success container |
-| Warning | `#8A6508` | Warnings and attention state |
-| Warning container | `#FFF3E0` | Warning background |
+| Accent container | `#EAF5E9` | Selected/brand-tinted low-emphasis surface |
+| On accent container | `#174B35` | Text/icons on accent container |
+| Success | `#286447` | Verified successful/completed/healthy state |
+| Success container | `#E9F8D9` | Success background - visibly distinct from accent selection |
+| On success container | `#17231B` | Text/icons on success container |
+| Warning | `#8A2E24` | Warnings and attention state |
+| Warning container | `#FFF0EC` | Warning background |
 | Danger | `#C0392B` | Errors, destructive actions, rejected/failed state |
 | Danger container | `#FDEDEA` | Error/destructive background |
 | Info | `#1A6BAA` | Neutral informational state only |
 | Info container | `#E5F2FC` | Informational background |
+| On info container | `#0C3B5E` | Text/icons on info container |
 
 #### Dark appearance
 
 | Role | Hex | Usage |
 |---|---|---|
-| Canvas | `#0D1510` | App/page background; charcoal with subtle green undertone |
-| Surface | `#17231B` | Primary card/list/dialog base |
-| Sunken surface | `#111B14` | Recessed inputs and control tracks |
-| Raised surface | `#202D25` | Menus, dropdowns, elevated sheets, nested overlays |
-| Primary text | `#F1F7F2` | Main headings, money, product names, primary icons |
-| Secondary text | `#D0DBD2` | Supporting labels, explanatory text |
-| Muted text | `#B1C0B5` | Secondary metadata only |
-| Decorative outline | `#314137` | Quiet divider/card edge |
-| Meaningful outline | `#77877D` | Inputs, selected boundaries, focus indicators |
-| Brand/action accent | `#30C879` | Primary CTA, active brand/action emphasis |
-| On accent | `#062516` | Text/icons on the brighter dark-theme accent |
-| Accent container | `#193C29` | Low-emphasis selected/brand surface |
-| On accent container | `#B9F0D0` | Text/icons on accent container |
-| Success | `#5CE68A` | Verified successful/completed/healthy state |
-| Success container | `#123520` | Success background — distinct from accent container |
-| On success container | `#8DE8AE` | Text/icons on success container |
-| Warning | `#FFB84D` | Warnings and attention state |
-| Warning container | `#3A2A0C` | Warning background |
+| Canvas | `#0C130E` | App/page background; charcoal with subtle green undertone |
+| Surface | `#172019` | Primary card/list/dialog base |
+| Sunken surface | `#111812` | Recessed inputs and control tracks |
+| Raised surface | `#202A22` | Menus, dropdowns, elevated sheets, nested overlays |
+| Primary text | `#F4F6F2` | Main headings, money, product names, primary icons |
+| Secondary text | `#C4CEC5` | Supporting labels, explanatory text |
+| Muted text | `#A0ADA3` | Secondary metadata only |
+| Decorative outline | `#334438` | Quiet divider/card edge |
+| Meaningful outline | `#738576` | Inputs, selected boundaries, focus indicators |
+| Brand/action accent | `#B7F34A` | Selected state and inline action emphasis |
+| Primary button | `#3B7755` | Primary CTA fill |
+| On accent | `#17231B` | Text/icons on the brighter dark-theme accent |
+| Accent container | `#183323` | Low-emphasis selected/brand surface |
+| On accent container | `#234A2C` | Text/icons on accent container |
+| Success | `#B7F34A` | Verified successful/completed/healthy state |
+| Success container | `#1D3826` | Success background - distinct from accent container |
+| On success container | `#234A2C` | Text/icons on success container |
+| Warning | `#FF806F` | Warnings and attention state |
+| Warning container | `#42231F` | Warning background |
 | Danger | `#FF6B5B` | Errors, destructive actions, rejected/failed state |
 | Danger container | `#3A1814` | Error/destructive background |
 | Info | `#6AB0F5` | Neutral informational state only |
 | Info container | `#123047` | Informational background |
+| On info container | `#B7DEFF` | Text/icons on info container |
 
 #### High-contrast variants
 
@@ -122,7 +126,7 @@ High-contrast light/dark palettes are declared as `AppColors.highContrastLight()
 | Disabled | Unavailable control | Disabled button/text/input state |
 | Focus | Keyboard/switch-access focus | Focus ring and active control indication |
 
-**Never reuse the same color treatment for two different meanings where users need to tell them apart.** Selection and success both use green-family tones — distinguish them with background tone, border, label, icon, and component structure. AccentContainer (selection) ≠ SuccessContainer (confirmation).
+**Never make color the only way to distinguish states.** The selected profile uses the selection token (the coral family) with a checkmark and selected surface; warnings use a warning label and icon. Success uses its own semantic token and confirmation copy. The text, icon, and component structure carry the meaning even where tokens share a hue family.
 
 ### 3.3 Provider identity colors
 
@@ -189,7 +193,7 @@ M-Pesa, Airtel Money, Equitel, and cash identity colors live in provider-specifi
 
 ## 6. Component system
 
-**Component base:** Flutter Material + custom ThemeExtension tokens (AppColors, AppSpacing, AppShapes, AppTypography, AppMotion). One base per project, re-themed to tokens — never library default look.
+**Component base:** Flutter Material + custom ThemeExtension tokens (AppColors, AppSpacing, AppShapes, AppTypography, AppMotion). One base per project, re-themed to tokens - never library default look. Dashboards, shop screens, access, and plan screens use these same tokens and shared components. Feature screens must not define private palettes, forced ThemeData overrides, or duplicate card styles.
 
 **Buttons:** Filled (accent fill, white text, 48dp height, 16dp horizontal padding), Outlined (surface fill, accent border), Text (text only, secondary actions). All states: default / hover / focus-visible / active-pressed (scale 0.96) / disabled.
 

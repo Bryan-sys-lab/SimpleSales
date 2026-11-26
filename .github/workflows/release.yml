@@ -325,7 +325,44 @@ jobs:
           add_define WHATSAPP_SECONDARY_CONTACT_NUMBER "$WHATSAPP_SECONDARY_CONTACT_NUMBER"
 
           echo "dart-defines injected: ${#defines[@]}"
-          flutter build apk --release ${defines[@]+"${defines[@]}"}
+          max_attempts=5
+          attempt=1
+          while (( attempt <= max_attempts )); do
+            log_file="$RUNNER_TEMP/release-build-attempt-${attempt}.log"
+            echo "Building signed APK (attempt ${attempt}/${max_attempts})."
+
+            set +e
+            flutter build apk --release ${defines[@]+"${defines[@]}"} 2>&1 | tee "$log_file"
+            pipeline_status=("${PIPESTATUS[@]}")
+            set -e
+
+            build_status=${pipeline_status[0]}
+            tee_status=${pipeline_status[1]}
+            if (( tee_status != 0 )); then
+              echo "::error::Could not capture release build output."
+              exit "$tee_status"
+            fi
+            if (( build_status == 0 )); then
+              break
+            fi
+
+            if ! grep -Eiq \
+              'Received status code (429|5[0-9][0-9])|Too Many Requests|HTTP (429|5[0-9][0-9])|SocketTimeoutException|ConnectException|Connection reset|Connection timed out|Read timed out|UnknownHostException|Temporary failure in name resolution' \
+              "$log_file"; then
+              echo "::error::Release build failed without a recognized transient network error; not retrying."
+              exit "$build_status"
+            fi
+
+            if (( attempt == max_attempts )); then
+              echo "::error::Release build still failed after ${max_attempts} attempts."
+              exit "$build_status"
+            fi
+
+            wait_seconds=$((15 * (2 ** (attempt - 1))))
+            echo "::warning::Transient dependency/network failure. Retrying in ${wait_seconds}s."
+            sleep "$wait_seconds"
+            attempt=$((attempt + 1))
+          done
 
           test -f "$apk" || { echo "::error::Expected APK not found at $apk"; exit 1; }
 

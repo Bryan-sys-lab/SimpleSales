@@ -145,6 +145,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
       appBar: AppBar(
         title: Text(l10n.profileTitle),
       ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Padding(
+          padding: EdgeInsetsDirectional.fromSTEB(
+            AppSpacing.of(context).lg,
+            AppSpacing.of(context).sm,
+            AppSpacing.of(context).lg,
+            AppSpacing.of(context).md,
+          ),
+          child: OutlinedButton.icon(
+            onPressed: () {
+              if (context.canPop()) {
+                context.pop();
+              } else {
+                context.go(Routes.settings);
+              }
+            },
+            icon: const Icon(Icons.arrow_back),
+            label: Text(l10n.profileBackToSettings),
+          ),
+        ),
+      ),
       body: Consumer<AppState>(
         builder: (BuildContext context, AppState state, __) {
           if (_failed) {
@@ -215,17 +237,17 @@ class _ProfileBodyState extends State<_ProfileBody> {
     return ListView(
       padding: EdgeInsets.all(spacing.lg),
       children: <Widget>[
-        // The identity, and the photograph that goes with it.
         SurfaceCard(
+          accentEdge: true,
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: <Widget>[
               _AvatarRing(
-                size: 96,
+                size: 80,
                 name: owner.name,
                 revision: _avatarRevision,
               ),
-              SizedBox(width: spacing.lg),
+              SizedBox(width: spacing.md),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -244,13 +266,7 @@ class _ProfileBodyState extends State<_ProfileBody> {
                             color: colors.onSurfaceMuted,
                           ),
                     ),
-                    SizedBox(height: spacing.sm),
-                    // The one action on this screen that CHANGES something.
-                    //
-                    // A profile that cannot be edited is a photograph of the
-                    // past: an owner whose name changed, or whose shop was
-                    // renamed, had no way to correct it. The PIN is not here —
-                    // it has its own flow, with its own confirmation.
+                    SizedBox(height: spacing.xs),
                     OutlinedButton.icon(
                       onPressed: _edit,
                       icon: const Icon(Icons.edit_outlined, size: 18),
@@ -262,89 +278,115 @@ class _ProfileBodyState extends State<_ProfileBody> {
             ],
           ),
         ),
-        SizedBox(height: spacing.lg),
-
-        // The facts, grouped, each led by its own marker.
+        SizedBox(height: spacing.md),
         SurfaceCard(
-          padding: EdgeInsets.zero,
-          clipContent: true,
+          color: colors.surfaceRaised,
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              _ProfileRow(
-                icon: Icons.photo_camera_outlined,
-                label: l10n.profilePhotoLabel,
-                value: l10n.profilePhotoHelp,
-                trailing: ActionChip(
-                  avatar: const Icon(Icons.add_a_photo_outlined, size: 16),
+              Row(
+                children: <Widget>[
+                  IconBadge(icon: Icons.photo_camera_outlined),
+                  SizedBox(width: spacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          l10n.profilePhotoLabel,
+                          style: AppTypography.of(context).titleSmall,
+                        ),
+                        SizedBox(height: spacing.xs),
+                        Text(
+                          l10n.profilePhotoHelp,
+                          style: AppTypography.of(context).bodySmall?.copyWith(
+                                color: colors.onSurfaceMuted,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: spacing.sm),
+              Align(
+                alignment: AlignmentDirectional.centerEnd,
+                child: TextButton.icon(
                   onPressed: _pickPhoto,
+                  icon: const Icon(Icons.add_a_photo_outlined),
                   label: Text(l10n.profilePhotoChange),
                 ),
-              ),
-              const Divider(height: 1),
-              _ProfileRow(
-                icon: Icons.alternate_email,
-                label: l10n.profileEmailLabel,
-                // MASKED, like every other place the address appears.
-                value: PinResetService.maskEmail(owner.email),
-              ),
-              const Divider(height: 1),
-              _ProfileRow(
-                icon: Icons.verified_outlined,
-                label: l10n.profileVerifiedLabel,
-                value: widget.state.identityVerified
-                    ? l10n.profileVerifiedYes
-                    : l10n.profileVerifiedNo,
-                trailing: StatusChip(
-                  tone: widget.state.identityVerified
-                      ? StatusTone.success
-                      : StatusTone.warning,
-                  text: widget.state.identityVerified
-                      ? l10n.profileVerifiedYes
-                      : l10n.profileVerifiedNo,
-                  dense: true,
-                ),
-              ),
-              const Divider(height: 1),
-              _ProfileRow(
-                icon: Icons.event_outlined,
-                label: l10n.profileSinceLabel,
-                // Stored as a string, because an ISO timestamp is the only
-                // thing that survives a locale change. Formatted at render,
-                // here, rather than parsed everywhere else.
-                value: _formatSince(owner.createdAt, context),
-              ),
-              const Divider(height: 1),
-              _ProfileRow(
-                icon: Icons.storefront_outlined,
-                label: l10n.profileShopLabel,
-                value: owner.shopName,
-              ),
-              FutureBuilder<String?>(
-                future: BackendService.tenantId,
-                builder: (context, snapshot) {
-                  final id = snapshot.data;
-                  if (id == null || id.isEmpty) return const SizedBox.shrink();
-                  return Column(
-                    children: <Widget>[
-                      const Divider(height: 1),
-                      _ProfileRow(
-                        icon: Icons.badge_outlined,
-                        label: 'Shop ID',
-                        value: id,
-                      ),
-                    ],
-                  );
-                },
               ),
             ],
           ),
         ),
-        SizedBox(height: spacing.xl),
-        OutlinedButton.icon(
-          onPressed: () => context.push(Routes.settings),
-          icon: const Icon(Icons.settings_outlined),
-          label: Text(l10n.profileBackToSettings),
+        SizedBox(height: spacing.md),
+        SurfaceCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              _AccountInfo(
+                icon: Icons.alternate_email,
+                label: l10n.profileEmailLabel,
+                value: PinResetService.maskEmail(owner.email),
+              ),
+              SizedBox(height: spacing.md),
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: Text(
+                      l10n.profileVerifiedLabel,
+                      style: AppTypography.of(context).labelMedium?.copyWith(
+                            color: colors.onSurfaceMuted,
+                          ),
+                    ),
+                  ),
+                  StatusChip(
+                    tone: widget.state.identityVerified
+                        ? StatusTone.success
+                        : StatusTone.warning,
+                    text: widget.state.identityVerified
+                        ? l10n.profileVerifiedYes
+                        : l10n.profileVerifiedNo,
+                    dense: true,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: spacing.md),
+        SurfaceCard(
+          child: _AccountInfo(
+            icon: Icons.storefront_outlined,
+            label: l10n.profileShopLabel,
+            value: owner.shopName,
+          ),
+        ),
+        SizedBox(height: spacing.md),
+        SurfaceCard(
+          child: _AccountInfo(
+            icon: Icons.event_outlined,
+            label: l10n.profileSinceLabel,
+            value: _formatSince(owner.createdAt, context),
+          ),
+        ),
+        FutureBuilder<String?>(
+          future: BackendService.tenantId,
+          builder: (context, snapshot) {
+            final id = snapshot.data;
+            if (id == null || id.isEmpty) return const SizedBox.shrink();
+            return Padding(
+              padding: EdgeInsets.only(top: spacing.md),
+              child: SurfaceCard(
+                child: _AccountInfo(
+                  icon: Icons.badge_outlined,
+                  label: 'Shop ID',
+                  value: id,
+                ),
+              ),
+            );
+          },
         ),
       ],
     );
@@ -746,18 +788,16 @@ class _Initials extends StatelessWidget {
 /// address, a shop name, a help line — WRAPS instead of being cut off. A
 /// truncated value is a value the owner cannot read, and the whole point of
 /// this screen is that they can.
-class _ProfileRow extends StatelessWidget {
-  const _ProfileRow({
+class _AccountInfo extends StatelessWidget {
+  const _AccountInfo({
     required this.icon,
     required this.label,
     required this.value,
-    this.trailing,
   });
 
   final IconData icon;
   final String label;
   final String value;
-  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -766,19 +806,15 @@ class _ProfileRow extends StatelessWidget {
     final TextTheme type = AppTypography.of(context);
 
     return ConstrainedBox(
-      // The floor is on the row, not on the label: the target stays legal when
-      // the value wraps to three lines at 200% text.
       constraints: BoxConstraints(minHeight: spacing.minTapTarget),
-      child: Padding(
-        padding: EdgeInsetsDirectional.only(
-          start: spacing.lg,
-          end: spacing.lg,
-          top: spacing.md,
-          bottom: spacing.md,
-        ),
-        child: LayoutBuilder(
-          builder: (BuildContext context, BoxConstraints constraints) {
-            final Widget details = Expanded(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          IconBadge(icon: icon),
+          SizedBox(width: spacing.md),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: spacing.xs),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
@@ -793,46 +829,9 @@ class _ProfileRow extends StatelessWidget {
                   Text(value, style: type.bodyLarge),
                 ],
               ),
-            );
-            final Widget marker = IconBadge(icon: icon);
-            final bool stack = trailing != null &&
-                (constraints.maxWidth < 360 ||
-                    MediaQuery.textScalerOf(context).scale(1) > 1.3);
-            if (stack) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      marker,
-                      SizedBox(width: spacing.md),
-                      details,
-                    ],
-                  ),
-                  SizedBox(height: spacing.xs),
-                  Align(
-                    alignment: AlignmentDirectional.centerEnd,
-                    child: trailing!,
-                  ),
-                ],
-              );
-            }
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                marker,
-                SizedBox(width: spacing.md),
-                details,
-                if (trailing != null) ...<Widget>[
-                  SizedBox(width: spacing.md),
-                  trailing!,
-                ],
-              ],
-            );
-          },
-        ),
+            ),
+          ),
+        ],
       ),
     );
   }
