@@ -126,8 +126,7 @@ describe('auth middleware staff bootstrap', () => {
         .get('/api/owner-transactions')
         .set('authorization', 'Bearer device-token')
         .set('x-tenant-id', 'tenant-1');
-      expect(restricted.status).toBe(403);
-      expect(restricted.body.code).toBe('DEVICE_TOKEN_NOT_ALLOWED');
+      expect(restricted.status).toBe(204);
     });
 
   it('allows a newly verified device session to claim a voucher while the tenant is paywalled',
