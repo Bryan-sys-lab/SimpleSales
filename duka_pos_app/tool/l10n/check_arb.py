@@ -17,7 +17,7 @@ PLACEHOLDER = re.compile(r"\{([A-Za-z][A-Za-z0-9_]*)")
 
 
 def messages(path):
-    with path.open(encoding="utf-8") as handle:
+    with path.open(encoding="utf-8-sig") as handle:
         data = json.load(handle)
     return {key: value for key, value in data.items() if not key.startswith("@")}
 
