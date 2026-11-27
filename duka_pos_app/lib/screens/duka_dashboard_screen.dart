@@ -195,14 +195,6 @@ class DukaDashboardScreen extends StatelessWidget {
 
     final Widget kpiGrid = DashboardKpiGrid(items: kpis);
 
-    final Widget stockOverview = _DukaStockOverview(
-      totalProducts: data.totalProducts,
-      lowStockCount: data.lowStockCount,
-      outOfStockCount: data.outOfStockCount,
-      stockValue: data.stockValue,
-      onOpenInventory: onOpenInventory,
-    );
-
     final String addProductLabel =
         'Add ${appState.shopProfile.terminologyLocalized(AppLocalizations.of(context)).product}';
 
@@ -246,7 +238,6 @@ class DukaDashboardScreen extends StatelessWidget {
                     quickActions,
                     kpiGrid,
                     BackupReminderBanner(onBackupNow: onBackupNow),
-                    stockOverview,
                     sales,
                     topProducts,
                     if (data.tanks.isNotEmpty)
@@ -285,7 +276,6 @@ class DukaDashboardScreen extends StatelessWidget {
           quickActions,
           kpiGrid,
           BackupReminderBanner(onBackupNow: onBackupNow),
-          stockOverview,
           sales,
           topProducts,
           if (data.tanks.isNotEmpty)

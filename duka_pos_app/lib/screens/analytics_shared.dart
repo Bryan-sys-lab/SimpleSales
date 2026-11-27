@@ -225,16 +225,16 @@ class KpiGrid extends StatelessWidget {
         icon: Icons.trending_up,
       ),
       Kpi(
-        label: l10n.analyticsCogsLabel,
-        value: formatMoney(Money.fromMinor(totals.cogsMinor)),
-        icon: Icons.inventory_2_outlined,
-      ),
-      Kpi(
         label: l10n.analyticsNetProfitLabel,
         value: formatMoney(totals.netProfit),
         caption: '${l10n.analyticsNetProfitCaption} · '
             '${formatMoney(Money.fromMinor(totals.expensesMinor))}',
         icon: Icons.account_balance_outlined,
+      ),
+      Kpi(
+        label: l10n.analyticsCogsLabel,
+        value: formatMoney(Money.fromMinor(totals.cogsMinor)),
+        icon: Icons.inventory_2_outlined,
       ),
       Kpi(
         label: l10n.analyticsMarginLabel,
