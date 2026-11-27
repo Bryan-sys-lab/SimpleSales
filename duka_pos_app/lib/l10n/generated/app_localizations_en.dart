@@ -848,7 +848,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String sellChargingAmount(Object amount) {
-    return 'Charging $amountâ€¦';
+    return 'Charging $amount…';
   }
 
   @override
@@ -859,7 +859,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String sellCheckingPayment(Object reference) {
-    return 'Checking payment $referenceâ€¦';
+    return 'Checking payment $reference…';
   }
 
   @override
@@ -875,7 +875,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String sellChooseServingTitle(Object product) {
-    return 'Choose serving Â· $product';
+    return 'Choose serving · $product';
   }
 
   @override
@@ -1054,7 +1054,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get sellScanNoProductBarcode =>
-      'No product carries that barcode. Add it in Inventory â€” on the product or on one of its variants â€” or pick the product by name.';
+      'No product carries that barcode. Add it in Inventory — on the product or on one of its variants — or pick the product by name.';
 
   @override
   String get sellSearchNameOrCategory => 'Name or category';
@@ -1122,11 +1122,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsCreditOffSummary =>
-      'Off â€” on-account sales are not offered.';
+      'Off — on-account sales are not offered.';
 
   @override
   String settingsCreditOnSummary(Object limit) {
-    return 'On â€” default limit $limit.';
+    return 'On — default limit $limit.';
   }
 
   @override
@@ -1172,19 +1172,18 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String inventoryAddVariantsFirst(Object name) {
-    return 'Add $name\'s variants first â€” its stock is their total.';
+    return 'Add $name\'s variants first — its stock is their total.';
   }
 
   @override
   String get inventoryAdjustAction => 'Adjust stock';
 
   @override
-  String get inventoryAdjustStockFailed =>
-      'Couldnâ€™t adjust stock. Try again.';
+  String get inventoryAdjustStockFailed => 'Couldn’t adjust stock. Try again.';
 
   @override
   String inventoryAdjustStockTitle(Object name) {
-    return 'Adjust stock â€” $name';
+    return 'Adjust stock — $name';
   }
 
   @override
@@ -1196,14 +1195,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get inventoryBarcodesHelp =>
-      'A code on the product adds the whole product. A code on a variant â€” entered in that variant\'s own form â€” adds that variant, at its price and from its stock. Each code can only ever resolve to one of them.';
+      'A code on the product adds the whole product. A code on a variant — entered in that variant\'s own form — adds that variant, at its price and from its stock. Each code can only ever resolve to one of them.';
 
   @override
   String get inventoryBarcodesSection => 'Barcodes';
 
   @override
   String inventoryChooseVariantTitle(Object name) {
-    return 'Which variant? Â· $name';
+    return 'Which variant? · $name';
   }
 
   @override
@@ -1314,7 +1313,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get inventoryFieldSizeMlHelper =>
-      'Bottle, keg or tank â€” 330, 500, 50000';
+      'Bottle, keg or tank — 330, 500, 50000';
 
   @override
   String get productUnitPickerLabel => 'How this product is measured';
@@ -1468,7 +1467,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get inventoryNoBarcodesYet =>
-      'No barcodes yet â€” this product is sold by name only.';
+      'No barcodes yet — this product is sold by name only.';
 
   @override
   String get inventoryNoVariantsYet => 'no variants yet';
@@ -1504,7 +1503,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get inventorySaveFailed =>
-      'Couldnâ€™t save â€” check the phone has storage space free, then try again.';
+      'Couldn’t save — check the phone has storage space free, then try again.';
 
   @override
   String inventorySaveProductAndVariants(num count) {
@@ -1537,7 +1536,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get inventorySoldAsVariantsOnSubtitle =>
-      'The till offers Dark, Regular, Big cupâ€¦ instead of the whole product';
+      'The till offers Dark, Regular, Big cup… instead of the whole product';
 
   @override
   String get inventoryStockCannotGoBelowZero =>
@@ -1556,7 +1555,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String inventoryUnnamedVariant(Object position) {
-    return 'Give every variant a name â€” one of them has none (position $position).';
+    return 'Give every variant a name — one of them has none (position $position).';
   }
 
   @override
@@ -1833,7 +1832,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get settingsUpdatesDownloadingUnknown => 'Downloadingâ€¦';
+  String get settingsUpdatesDownloadingUnknown => 'Downloading…';
 
   @override
   String get settingsUpdatesReady => 'Downloaded. Tap install to apply it.';
@@ -1844,7 +1843,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsUpdatesRefused =>
-      'The phone refused this update. It can only be installed over the same signing key and a higher build number â€” ask the shop\'s developer.';
+      'The phone refused this update. It can only be installed over the same signing key and a higher build number — ask the shop\'s developer.';
 
   @override
   String get settingsUpdatesPermissionNeeded =>
@@ -1859,7 +1858,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String settingsUpdatesPromptBody(Object version) {
-    return 'Version $version is ready. Your shop\'s data is kept â€” this updates the app in place instead of replacing it.';
+    return 'Version $version is ready. Your shop\'s data is kept — this updates the app in place instead of replacing it.';
   }
 
   @override
@@ -1887,7 +1886,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get supportTicketHint =>
-      'Describe the problem â€” what you were doing, what happened, and what you expected instead.';
+      'Describe the problem — what you were doing, what happened, and what you expected instead.';
 
   @override
   String get supportFileTicketAction => 'File ticket';
@@ -1906,7 +1905,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get supportRequestHint =>
-      'Describe the feature â€” what it should do, and when you would use it.';
+      'Describe the feature — what it should do, and when you would use it.';
 
   @override
   String get supportFileRequestAction => 'File request';
@@ -1939,17 +1938,17 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsConnectFailed =>
-      'Couldnâ€™t connect. Check the identity login and internet connection.';
+      'Couldn’t connect. Check the identity login and internet connection.';
 
   @override
   String get settingsConnectMpesaTitle => 'Connect M-Pesa';
 
   @override
   String get settingsCreateShopFailed =>
-      'Couldnâ€™t create the shop. Check the phone has storage free, then try again.';
+      'Couldn’t create the shop. Check the phone has storage free, then try again.';
 
   @override
-  String get settingsDecryptBackupFailed => 'Couldnâ€™t decrypt the backup.';
+  String get settingsDecryptBackupFailed => 'Couldn’t decrypt the backup.';
 
   @override
   String get settingsEnterStaffName => 'Enter a staff name';
@@ -1959,7 +1958,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsEraseBackupsMessage =>
-      'This permanently removes this phoneâ€™s backup key and encrypted backup files. Copies already shared to another device or cloud storage are not erased.';
+      'This permanently removes this phone’s backup key and encrypted backup files. Copies already shared to another device or cloud storage are not erased.';
 
   @override
   String get settingsEraseBackupsTitle => 'Erase encrypted backups?';
@@ -1976,7 +1975,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get accountDeleteLocalAccountsMessage =>
-      'The cashiersâ€™ sign-in details are removed from this phone, so nobody can sign in to this till afterwards. Their names on past sales stay, because those are the shopâ€™s records.';
+      'The cashiers’ sign-in details are removed from this phone, so nobody can sign in to this till afterwards. Their names on past sales stay, because those are the shop’s records.';
 
   @override
   String get accountDeleteLocalAccountsDelete => 'Delete them';
@@ -2013,7 +2012,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get accountDeleteConfirmMessage =>
-      'Your online account and this shopâ€™s record of it are deleted. Everything on this phone that names or contacts a person â€” your name, your email, your PIN, the cashiers, the till numbers â€” is overwritten with unreadable data, and the key that would read it back is destroyed. The takings and stock figures themselves are left alone, because those are your books.\n\nAny encrypted backup taken before today is also made unreadable. This cannot be undone.';
+      'Your online account and this shop’s record of it are deleted. Everything on this phone that names or contacts a person — your name, your email, your PIN, the cashiers, the till numbers — is overwritten with unreadable data, and the key that would read it back is destroyed. The takings and stock figures themselves are left alone, because those are your books.\n\nAny encrypted backup taken before today is also made unreadable. This cannot be undone.';
 
   @override
   String get accountDeleteConfirmAction => 'Delete and erase';
@@ -2027,7 +2026,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get accountDeleteDoneLocalOnly =>
-      'This phone no longer holds any of your details. The server could not be reached, so ask it to finish the deletion when you are back online â€” the receipt below is what to quote.';
+      'This phone no longer holds any of your details. The server could not be reached, so ask it to finish the deletion when you are back online — the receipt below is what to quote.';
 
   @override
   String accountDeleteReceipt(Object at, Object id) {
@@ -2063,17 +2062,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get pinResetSendCode => 'Email me a code';
 
   @override
-  String get pinResetSending => 'Sendingâ€¦';
+  String get pinResetSending => 'Sending…';
 
   @override
   String get pinResetResend => 'Send another code';
 
   @override
-  String get pinResetSaving => 'Savingâ€¦';
+  String get pinResetSaving => 'Saving…';
 
   @override
   String pinResetSentTo(Object email) {
-    return 'Code sent to $email. Enter it here, then your new PIN. Check spam if you donâ€™t see it.';
+    return 'Code sent to $email. Enter it here, then your new PIN. Check spam if you don’t see it.';
   }
 
   @override
@@ -2186,7 +2185,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String settingsVerifyCodeSent(Object email) {
-    return 'Code sent to $email. Check spam if you donâ€™t see it.';
+    return 'Code sent to $email. Check spam if you don’t see it.';
   }
 
   @override
@@ -2469,7 +2468,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get membershipHeroDescription =>
-      'Tell us what you need. Weâ€™ll put together a membership that works for you.';
+      'Tell us what you need. We’ll put together a membership that works for you.';
 
   @override
   String get membershipGetStarted => 'Get started';
@@ -2489,14 +2488,14 @@ class AppLocalizationsEn extends AppLocalizations {
       'See offers and vouchers available to you.';
 
   @override
-  String get membershipStepLabel => 'BUILD YOUR PLAN Â· STEP 1';
+  String get membershipStepLabel => 'BUILD YOUR PLAN · STEP 1';
 
   @override
   String get membershipWhatDoYouNeed => 'What do you need?';
 
   @override
   String get membershipChooseFeatures =>
-      'Choose what youâ€™d like included. You can change your selections before sending your request.';
+      'Choose what you’d like included. You can change your selections before sending your request.';
 
   @override
   String get membershipCoreFeatures => 'Core features';
@@ -2523,7 +2522,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get membershipCustomRequirementsHint =>
-      'Tell us anything else youâ€™d like included.';
+      'Tell us anything else you’d like included.';
 
   @override
   String get membershipRequestOffer => 'Request a personal offer';
@@ -2640,7 +2639,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get membershipRequestSentDescription =>
-      'Our team has your request. Contact Sales on WhatsApp if youâ€™d like to discuss it.';
+      'Our team has your request. Contact Sales on WhatsApp if you’d like to discuss it.';
 
   @override
   String get membershipQuoteEmptyTitle => 'Start with what you need.';
@@ -2666,7 +2665,7 @@ class AppLocalizationsEn extends AppLocalizations {
       other: '$count failures kept',
       one: '1 failure kept',
     );
-    return '$_temp0 â€” the last $days weeks, newer than $cap rows are not kept';
+    return '$_temp0 — the last $days weeks, newer than $cap rows are not kept';
   }
 
   @override
@@ -2681,7 +2680,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get diagnosticsUnreadableMessage =>
-      'The log is on this phone, but it did not open. That is itself worth reporting â€” refresh to try again, and send this screen to the shop\'s developer.';
+      'The log is on this phone, but it did not open. That is itself worth reporting — refresh to try again, and send this screen to the shop\'s developer.';
 
   @override
   String get diagnosticsTrailTitle => 'What the shop was doing';
@@ -2703,7 +2702,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get diagnosticsLedgerHealthy => 'Every count agrees with its history.';
 
   @override
-  String get diagnosticsLedgerChecking => 'Checking the stock ledgerâ€¦';
+  String get diagnosticsLedgerChecking => 'Checking the stock ledger…';
 
   @override
   String diagnosticsLedgerDifferences(num count) {
@@ -2755,7 +2754,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get diagnosticsUpload => 'Send to admin';
 
   @override
-  String get diagnosticsUploading => 'Sendingâ€¦';
+  String get diagnosticsUploading => 'Sending…';
 
   @override
   String get diagnosticsUploaded => 'Report sent to the admin panel.';
@@ -2776,26 +2775,26 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String diagnosticsEntryContext(Object action, Object actor, Object route) {
-    return 'on $route Â· $actor Â· $action';
+    return 'on $route · $actor · $action';
   }
 
   @override
   String get settingsImportInventory => 'Import inventory (.xlsx)';
 
   @override
-  String get settingsImportStageReading => 'Reading the workbookâ€¦';
+  String get settingsImportStageReading => 'Reading the workbook…';
 
   @override
-  String get settingsImportStageParsing => 'Reading the rowsâ€¦';
+  String get settingsImportStageParsing => 'Reading the rows…';
 
   @override
-  String get settingsImportStageWriting => 'Writing the productsâ€¦';
+  String get settingsImportStageWriting => 'Writing the products…';
 
   @override
-  String get settingsImportStageBarcodes => 'Attaching the barcodesâ€¦';
+  String get settingsImportStageBarcodes => 'Attaching the barcodes…';
 
   @override
-  String get settingsImportStageVariants => 'Attaching the variantsâ€¦';
+  String get settingsImportStageVariants => 'Attaching the variants…';
 
   @override
   String get settingsImportStageDone => 'Done.';
@@ -2807,11 +2806,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsImportWorkbookFailed =>
-      'Couldnâ€™t import the workbook. Check the file and try again.';
+      'Couldn’t import the workbook. Check the file and try again.';
 
   @override
   String get importNotOurFormat =>
-      'That file isnâ€™t in this appâ€™s inventory format, so nothing was imported. Add a header row to the sheet â€” Name, Cost price, Selling price, Stock qty â€” or export a template from Settings and paste your rows into it.';
+      'That file isn’t in this app’s inventory format, so nothing was imported. Add a header row to the sheet — Name, Cost price, Selling price, Stock qty — or export a template from Settings and paste your rows into it.';
 
   @override
   String get settingsIncluded => 'Included';
@@ -2851,15 +2850,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsMpesaOffSubtitle =>
-      'Excluded â€” turn on to accept M-Pesa. Requires a one-time backend connection.';
+      'Excluded — turn on to accept M-Pesa. Requires a one-time backend connection.';
 
   @override
   String get settingsMpesaOnSubtitle =>
-      'Included â€” customers can pay by M-Pesa STK push. Requires internet at checkout.';
+      'Included — customers can pay by M-Pesa STK push. Requires internet at checkout.';
 
   @override
   String get settingsMpesaUpdateFailed =>
-      'Couldnâ€™t update M-Pesa setting â€” check your connection and try again.';
+      'Couldn’t update M-Pesa setting — check your connection and try again.';
 
   @override
   String get settingsNoOnlineShops =>
@@ -2899,7 +2898,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String settingsPrinterPermissionDenied(Object app) {
-    return 'Bluetooth permission was turned off for $app. Open the phoneâ€™s app settings and allow Bluetooth.';
+    return 'Bluetooth permission was turned off for $app. Open the phone’s app settings and allow Bluetooth.';
   }
 
   @override
@@ -2991,14 +2990,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get settingsAddStaffFailed => 'Couldnâ€™t add staff â€” try again.';
+  String get settingsAddStaffFailed => 'Couldn’t add staff — try again.';
 
   @override
-  String get settingsResetPinFailed => 'Couldnâ€™t reset PIN â€” try again.';
+  String get settingsResetPinFailed => 'Couldn’t reset PIN — try again.';
 
   @override
-  String get settingsRemoveStaffFailed =>
-      'Couldnâ€™t remove staff â€” try again.';
+  String get settingsRemoveStaffFailed => 'Couldn’t remove staff — try again.';
 
   @override
   String settingsRemoveStaffMessage(Object name) {
@@ -3087,23 +3085,23 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsSyncFailed =>
-      'Sync failed â€” try again when you have signal.';
+      'Sync failed — try again when you have signal.';
 
   @override
   String get settingsSyncNowAction => 'Sync now';
 
   @override
   String get settingsSyncOfflineExcel =>
-      'No internet â€” saved an Excel file instead. Share it from the prompt that opened.';
+      'No internet — saved an Excel file instead. Share it from the prompt that opened.';
 
   @override
-  String get settingsSyncSection => 'Sync â€” Google Sheets & Excel';
+  String get settingsSyncSection => 'Sync — Google Sheets & Excel';
 
   @override
   String get settingsSyncSheets => 'Synced to Google Sheets just now.';
 
   @override
-  String get settingsSyncing => 'Syncingâ€¦';
+  String get settingsSyncing => 'Syncing…';
 
   @override
   String get settingsTestPrintAction => 'Test print';
@@ -3126,12 +3124,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String settingsTaxSummary(Object rate, Object till) {
-    return 'VAT $rate% Â· receipts numbered $till-000001';
+    return 'VAT $rate% · receipts numbered $till-000001';
   }
 
   @override
   String settingsTaxSummaryWithTin(Object rate, Object till, Object tin) {
-    return 'VAT $rate% Â· TIN $tin Â· receipts numbered $till-000001';
+    return 'VAT $rate% · TIN $tin · receipts numbered $till-000001';
   }
 
   @override
@@ -3267,13 +3265,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String settingsBusinessProfilePreviewNavigation(Object after, Object before) {
-    return 'Navigation: $before â†’ $after';
+    return 'Navigation: $before → $after';
   }
 
   @override
   String settingsBusinessProfilePreviewTerminology(
       Object after, Object before) {
-    return 'Product wording: $before â†’ $after';
+    return 'Product wording: $before → $after';
   }
 
   @override
@@ -3287,7 +3285,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String transactionsExpenseTitle(Object category) {
-    return 'Expense Â· $category';
+    return 'Expense · $category';
   }
 
   @override
@@ -3331,7 +3329,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String servingsCardName(Object capacity, Object label) {
-    return '$label Â· $capacity ml';
+    return '$label · $capacity ml';
   }
 
   @override
@@ -3369,7 +3367,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get servingsEmptyTitle => 'No servings yet';
 
   @override
-  String get servingsLoadFailed => 'Couldnâ€™t load the servings. Try again.';
+  String get servingsLoadFailed => 'Couldn’t load the servings. Try again.';
 
   @override
   String get servingsNameAtTillLabel => 'Name at the till';
@@ -3408,7 +3406,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get servingsRetryLoading => 'Try loading again';
 
   @override
-  String get servingsSaveFailed => 'Couldnâ€™t save the serving. Try again.';
+  String get servingsSaveFailed => 'Couldn’t save the serving. Try again.';
 
   @override
   String get servingsStopSellingAction => 'Stop selling';
@@ -3456,11 +3454,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get taxSettingsEtimsOnSubtitle =>
-      'On â€” every sale is filed with KRA. Sales keep working with no signal; receipts upload as soon as there is a connection.';
+      'On — every sale is filed with KRA. Sales keep working with no signal; receipts upload as soon as there is a connection.';
 
   @override
   String get taxSettingsEtimsOffSubtitle =>
-      'Off â€” sales are recorded and VAT reports remain available. KRA eTIMS is not activated.';
+      'Off — sales are recorded and VAT reports remain available. KRA eTIMS is not activated.';
 
   @override
   String get taxSettingsTinNotRegisteredHelp =>
@@ -3499,7 +3497,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get taxSettingsEtimsUpdateFailed =>
-      'Couldnâ€™t update eTIMS. Check your connection and try again.';
+      'Couldn’t update eTIMS. Check your connection and try again.';
 
   @override
   String get taxSettingsEtimsNotLinked =>
@@ -3513,11 +3511,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get taxSettingsKraUnreachable =>
-      'Couldnâ€™t reach KRA. Check the shop is linked and you have a connection, then try again.';
+      'Couldn’t reach KRA. Check the shop is linked and you have a connection, then try again.';
 
   @override
   String get taxSettingsKraUnreachableRetry =>
-      'Couldnâ€™t reach KRA. Try again when you have a connection.';
+      'Couldn’t reach KRA. Try again when you have a connection.';
 
   @override
   String get taxSettingsNotActivatedStatus => 'KRA eTIMS not activated';
@@ -3574,7 +3572,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get taxSettingsVatExempt =>
-      'Exempt â€” receipts omit the VAT line entirely.';
+      'Exempt — receipts omit the VAT line entirely.';
 
   @override
   String get taxSettingsVatSection => 'Value Added Tax';
@@ -3613,7 +3611,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get variantCountableNote =>
-      'Countable â€” no serving size. One bottle is one Dark.';
+      'Countable — no serving size. One bottle is one Dark.';
 
   @override
   String get variantEditTitle => 'Edit variant';
@@ -3656,8 +3654,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get variantSellPriceNotNegative => 'Selling price must be 0 or more';
 
   @override
-  String get variantSizeHelper =>
-      'Millilitres or litres â€” 500ml, 0.5L, 1.5 L.';
+  String get variantSizeHelper => 'Millilitres or litres — 500ml, 0.5L, 1.5 L.';
 
   @override
   String get variantSizeLeaveBlankHelper =>
@@ -3671,7 +3668,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get variantSizeInvalid =>
-      'Size must be a number, optionally with ml or L â€” for example 500ml';
+      'Size must be a number, optionally with ml or L — for example 500ml';
 
   @override
   String get variantSizeLabel => 'Serving size';
@@ -3944,7 +3941,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String sellPourOptionTitle(Object label, Object ml) {
-    return '$label Â· $ml ml';
+    return '$label · $ml ml';
   }
 
   @override
@@ -3987,7 +3984,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String dashboardSalesToday(Object scopeLabel) {
-    return 'Sales today Â· $scopeLabel';
+    return 'Sales today · $scopeLabel';
   }
 
   @override
@@ -4146,13 +4143,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get creditAging7 => '0â€“7 days';
+  String get creditAging7 => '0–7 days';
 
   @override
-  String get creditAging30 => '8â€“30 days';
+  String get creditAging30 => '8–30 days';
 
   @override
-  String get creditAging60 => '31â€“60 days';
+  String get creditAging60 => '31–60 days';
 
   @override
   String get creditAgingOver => '60+ days';
@@ -4277,7 +4274,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String customerStatementTitle(Object name) {
-    return 'Statement â€” $name';
+    return 'Statement — $name';
   }
 
   @override
@@ -4472,12 +4469,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get supplierPhoneLabel => 'Phone number';
 
   @override
-  String get supplierPhoneHelper =>
-      'For ordering later. 07â€¦, 01â€¦ or 254â€¦';
+  String get supplierPhoneHelper => 'For ordering later. 07…, 01… or 254…';
 
   @override
   String get supplierPhoneInvalid =>
-      'That is not a Kenyan number. Use 07â€¦, 01â€¦, +254â€¦ or 254â€¦';
+      'That is not a Kenyan number. Use 07…, 01…, +254… or 254…';
 
   @override
   String get supplierSaveAction => 'Save supplier';
@@ -4956,10 +4952,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get liveStatusConnecting => 'Connectingâ€¦';
+  String get liveStatusConnecting => 'Connecting…';
 
   @override
-  String get liveStatusReconnecting => 'Reconnectingâ€¦';
+  String get liveStatusReconnecting => 'Reconnecting…';
 
   @override
   String get dashboardAllClear => 'All clear';
@@ -5025,12 +5021,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String saleDetailsTendered(Object change, Object tendered) {
-    return 'Tendered $tendered Â· change $change';
+    return 'Tendered $tendered · change $change';
   }
 
   @override
   String saleDetailsQuantity(Object quantity) {
-    return '$quantity Ã—';
+    return '$quantity ×';
   }
 
   @override
@@ -5163,7 +5159,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String analyticsRowSpokenCompact(Object margin, Object profit, Object units) {
-    return '$units units Â· $profit profit Â· $margin margin';
+    return '$units units · $profit profit · $margin margin';
   }
 
   @override
@@ -5628,7 +5624,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get tankFieldCapacityLHint =>
-      'Write a number. A big drum holds 50 litres â€” write 50.';
+      'Write a number. A big drum holds 50 litres — write 50.';
 
   @override
   String get tankFieldTankCount => 'How many full tanks you have now';
@@ -5664,7 +5660,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get tankSaveFailed =>
-      'That tank could not be saved. Your numbers are still here â€” try again.';
+      'That tank could not be saved. Your numbers are still here — try again.';
 
   @override
   String get tankAddEntry => 'Add a tank';
@@ -5767,7 +5763,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get tankDetailSubtitle =>
-      'Capacity, investment, what remains â€” and the three actions: receive, measure, history.';
+      'Capacity, investment, what remains — and the three actions: receive, measure, history.';
 
   @override
   String get tankActionReceive => 'Receive / replenish';
@@ -5934,7 +5930,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get reportsPrinterOff => 'Printing is switched off.';
 
   @override
-  String get reportsSendingToPrinter => 'Sending the receipt to the printerâ€¦';
+  String get reportsSendingToPrinter => 'Sending the receipt to the printer…';
 
   @override
   String get reportsReceiptReprinted => 'The receipt printed again.';
@@ -5958,7 +5954,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String sellTileStockCountLow(Object quantity) {
-    return '$quantity in stock Â· running low';
+    return '$quantity in stock · running low';
   }
 
   @override
@@ -6170,7 +6166,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String dashboardCurrentBusiness(Object shopName) {
-    return 'Current business â€” $shopName';
+    return 'Current business — $shopName';
   }
 
   @override
@@ -7331,7 +7327,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get exchangeRecorded =>
-      'Exchange #\$exchangeId recorded â€” return and replacement committed.';
+      'Exchange #\$exchangeId recorded — return and replacement committed.';
 
   @override
   String get exchangeAddReplacement => 'Add replacement variant';
@@ -7368,7 +7364,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get livePreviewNoReportNumberIsUsed =>
-      'Live preview Â· no report number is used';
+      'Live preview · no report number is used';
 
   @override
   String get open => 'Open';
@@ -7405,7 +7401,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get firstTenderRemainingIsPaidByTheSecondTender =>
-      'First tender Â· remaining is paid by the second tender';
+      'First tender · remaining is paid by the second tender';
 
   @override
   String get holdSale => 'Hold sale';
@@ -7444,7 +7440,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get paymentSucceededLocalRecordingFailedContactSupportBeforeReconcilingReports =>
-      'Payment succeeded. Local recording failed â€” contact support before reconciling reports.';
+      'Payment succeeded. Local recording failed — contact support before reconciling reports.';
 
   @override
   String get pricesChanged => 'Prices changed';
@@ -7887,7 +7883,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get productOnboardingPage1Body =>
-      'SimpleSales is a point of sale built for Kenyan shops â€” record sales, track stock, and take payments on the counter or off it. Works on your phone, no extra hardware.';
+      'SimpleSales is a point of sale built for Kenyan shops — record sales, track stock, and take payments on the counter or off it. Works on your phone, no extra hardware.';
 
   @override
   String get productOnboardingPage2Label => 'Choose your shop profile';
@@ -7897,7 +7893,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get productOnboardingPage2Body =>
-      'Pick the profile that matches your shop. Each one changes the words you see and the actions that matter most â€” but every profile uses the same simple POS.';
+      'Pick the profile that matches your shop. Each one changes the words you see and the actions that matter most — but every profile uses the same simple POS.';
 
   @override
   String get productOnboardingPage3Label => 'Local first, always';
@@ -7907,7 +7903,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get productOnboardingPage3Body =>
-      'Sales, stock and customer records live on this device. They sync when you are back online â€” nothing stops working when the network drops. M-Pesa and online reports need a connection; everything else does not.';
+      'Sales, stock and customer records live on this device. They sync when you are back online — nothing stops working when the network drops. M-Pesa and online reports need a connection; everything else does not.';
 
   @override
   String get productOnboardingHeader => 'SimpleSales product tour';
@@ -7923,28 +7919,28 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get productOnboardingDukaSubtitle =>
-      'General shop Â· products, stock, POS';
+      'General shop · products, stock, POS';
 
   @override
   String get productOnboardingDrinksTitle => 'Drinks';
 
   @override
   String get productOnboardingDrinksSubtitle =>
-      'Bar and drinks Â· tanks, pours, stock';
+      'Bar and drinks · tanks, pours, stock';
 
   @override
   String get productOnboardingFashionTitle => 'Fashion';
 
   @override
   String get productOnboardingFashionSubtitle =>
-      'Fashion boutique Â· styles, sizes, colours';
+      'Fashion boutique · styles, sizes, colours';
 
   @override
   String get productOnboardingOpenTitle => 'Open';
 
   @override
   String get productOnboardingOpenSubtitle =>
-      'Open commerce Â· inventory, sales, payments';
+      'Open commerce · inventory, sales, payments';
 
   @override
   String get actionSignIn => 'Sign in';
@@ -8124,7 +8120,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get accountRecoveryAction => 'Sign in to shop';
 
   @override
-  String get accountRecoveryWorking => 'Signing inâ€¦';
+  String get accountRecoveryWorking => 'Signing in…';
 
   @override
   String get accountRecoveryInvalidPin => 'Enter the 6-digit owner PIN.';
