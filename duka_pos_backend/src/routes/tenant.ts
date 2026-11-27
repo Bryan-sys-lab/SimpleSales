@@ -5,7 +5,7 @@
  * authMiddleware in index.ts), except provision/shops and the explicitly
  * tenant-selected staff bootstrap route.
  */
-import { Router } from 'express';
+import { Router, Request } from 'express';
 import { createHash, randomUUID } from 'node:crypto';
 import { Prisma } from '../generated/prisma/client';
 import { asyncHandler, HttpError, requireUser } from '../lib/http';
@@ -165,11 +165,19 @@ function managedStaffProfileFilter() {
   };
 }
 
+function staffAuthKey(req: Request): string {
+  const tenantId = req.header('x-tenant-id')?.trim() || req.user?.tenantId || 'unknown';
+  const body = req.body as { username?: unknown };
+  const username = typeof body?.username === 'string' ? body.username.trim().toLowerCase() : '';
+  return `${tenantId}:${username || req.ip || 'unknown'}`;
+}
+
 const staffAuthLimiter = simpleRateLimit('tenant:staff-auth', {
   windowMs: 60_000,
   limit: 10,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
+  keyGenerator: staffAuthKey,
 });
 
 async function verifyStaffPin(pin: string, stored: string | null): Promise<boolean> {
