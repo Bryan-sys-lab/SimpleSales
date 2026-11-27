@@ -186,7 +186,7 @@ router.post('/login', loginLimiter, asyncHandler(async (req: Request, res: Respo
     await recordAuthAuditEvent({ eventType: 'admin_login_locked', actorType: 'admin', actorId: `admin:${key.id}`, outcome: 'failure', reason: 'account_locked', email: input.email, ip: req.ip, requestId: req.requestId, userAgent: req.header('user-agent') || undefined });
     return res.status(429).json({ error: 'Account locked. Try again later.', code: 'ADMIN_LOCKED' });
   }
-  const validKey = !!key && constantTimeEqual(crypto.createHash('sha256').update(input.key).digest('hex'), key.keyHash);
+  const validKey = !!key && constantTimeEqual(crypto.createHash('sha256').update(normalizeAdminKey(input.key ?? '')).digest('hex'), key.keyHash);
   if (!key || !validKey) {
     if (key) {
       const failedAttempts = (key.failedAttempts ?? 0) + 1;
