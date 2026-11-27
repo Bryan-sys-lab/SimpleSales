@@ -62,6 +62,12 @@ export default function AdminsPage() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not create administrator key'); }
     finally { setBusy(false); }
   }
+  async function removeKey(id: string) {
+    if (!window.confirm('Delete this administrator key now?')) return;
+    try { await fetchJson(`/api/admin/auth/keys/${encodeURIComponent(id)}`, { method: 'DELETE' }); await load(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not delete key'); }
+  }
+
   async function revoke(id: string) {
     if (!window.confirm('Revoke this administrator key now?')) return;
     try { await fetchJson(`/api/admin/auth/keys/${encodeURIComponent(id)}/revoke`, { method: 'POST' }); await load(); }
@@ -124,7 +130,7 @@ export default function AdminsPage() {
       if(key==='lastUsed') return <span>{row.usedAt?new Date(row.usedAt).toLocaleString():'Never'}</span>;
       if(key==='canRecruit') return <span>{row.canRecruit ? 'Allowed' : 'No'}</span>;
       if(key==='expiresAt') return <span>{new Date(row.expiresAt).toLocaleDateString()}</span>;
-      if(key==='actions') return <div className="flex flex-wrap justify-end gap-1">{canManageKeys&&!row.revokedAt&&<button className="button-secondary min-h-10 text-xs" onClick={e=>{e.stopPropagation();beginEdit(row);}}>Edit</button>}{canManageKeys&&!row.revokedAt&&<button className="button-secondary min-h-10 text-xs" onClick={e=>{e.stopPropagation(); void revoke(row.id);}}>Revoke</button>}{row.revokedAt&&<span className="badge badge-high">Revoked</span>}</div>;
+      if(key==='actions') return <div className="flex flex-wrap justify-end gap-1">{canManageKeys&&!row.revokedAt&&<button className="button-secondary min-h-10 text-xs" onClick={e=>{e.stopPropagation();beginEdit(row);}}>Edit</button>}{canManageKeys&&!row.revokedAt&&<button className="button-secondary min-h-10 text-xs" onClick={e=>{e.stopPropagation(); void revoke(row.id);}}>Revoke</button>}{canManageKeys&&<button className="button-secondary min-h-10 text-xs text-red-700" onClick={e=>{e.stopPropagation(); void removeKey(row.id);}}>Delete</button>}{row.revokedAt&&<span className="badge badge-high">Revoked</span>}</div>;
       return <span>{String(row[key as keyof AdminKeyRow] ?? '—')}</span>;
     }} emptyMessage="No department administrators have been added." /></section>
   </main></ShellLayout>;

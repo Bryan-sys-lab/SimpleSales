@@ -76,6 +76,16 @@ export default function UsersPage() {
 
   const selectedShop = shops.find((shop) => shop.tenantId === selectedTenantId) ?? null;
 
+  async function remove(profile: ShopUser) {
+    if (!window.confirm(`Delete ${profile.name}'s account? This cannot be undone.`)) return;
+    try {
+      await fetchJson(`/api/system/users/${encodeURIComponent(profile.id)}`, { method: 'DELETE' });
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not delete user');
+    }
+  }
+
   async function update(profile: ShopUser, changes: { active?: boolean; role?: string }) {
     try {
       await fetchJson(`/api/system/users/${encodeURIComponent(profile.id)}`, {
@@ -172,6 +182,12 @@ export default function UsersPage() {
                           onClick={() => void update(profile, { active: !profile.active })}
                         >
                           {profile.active ? 'Suspend access' : 'Restore access'}
+                        </button>
+                        <button
+                          className="button-secondary min-h-10 text-xs text-red-700"
+                          onClick={() => void remove(profile)}
+                        >
+                          Delete
                         </button>
                       </div>
                     )}
