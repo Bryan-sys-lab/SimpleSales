@@ -19,6 +19,7 @@ import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/audit_log.dart';
 import '../models/credit.dart';
+import '../models/models.dart';
 import 'package:provider/provider.dart';
 
 import '../services/audit_actor.dart';
@@ -115,6 +116,15 @@ class _CustomerDetailSheetState extends State<_CustomerDetailSheet> {
     await _load();
     if (!mounted) return;
     setState(() {}); // the balance header refreshes from _customer.
+  }
+
+  Future<void> _addCharge() async {
+    final bool taken = await showCreditChargeSheet(context, _customer);
+    if (!taken) return;
+    _changed = true;
+    await _load();
+    if (!mounted) return;
+    setState(() {});
   }
 
   Future<void> _edit() async {
@@ -305,10 +315,12 @@ class _CustomerDetailSheetState extends State<_CustomerDetailSheet> {
                       ),
                     ),
                     SizedBox(width: spacing.sm),
-                    OutlinedButton.icon(
-                      onPressed: _customer.phone == null ? null : _sendReminder,
-                      icon: const Icon(Icons.sms_outlined),
-                      label: Text(l10n.customerRemindAction),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _addCharge,
+                        icon: const Icon(Icons.add_card_outlined),
+                        label: const Text('Record charge'),
+                      ),
                     ),
                   ],
                 ),
@@ -321,6 +333,12 @@ class _CustomerDetailSheetState extends State<_CustomerDetailSheet> {
                         icon: const Icon(Icons.description_outlined),
                         label: Text(l10n.customerStatementAction),
                       ),
+                    ),
+                    SizedBox(width: spacing.sm),
+                    OutlinedButton.icon(
+                      onPressed: _customer.phone == null ? null : _sendReminder,
+                      icon: const Icon(Icons.sms_outlined),
+                      label: Text(l10n.customerRemindAction),
                     ),
                     SizedBox(width: spacing.sm),
                     OutlinedButton.icon(
@@ -663,6 +681,185 @@ class _CustomerEditSheetState extends State<_CustomerEditSheet> {
 /// optional; an M-Pesa code is asked for as the reference when the method is
 /// mpesa. A cash repayment NEEDS the open shift — the drawer it adds to —
 /// and the database says so when there is none (spec 7.4).
+Future<bool> showCreditChargeSheet(
+    BuildContext context, Customer customer) async {
+  final result = await showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    builder: (_) => _CreditChargeSheet(customer: customer),
+  );
+  return result ?? false;
+}
+
+class _CreditChargeSheet extends StatefulWidget {
+  const _CreditChargeSheet({required this.customer});
+
+  final Customer customer;
+
+  @override
+  State<_CreditChargeSheet> createState() => _CreditChargeSheetState();
+}
+
+class _CreditChargeSheetState extends State<_CreditChargeSheet> {
+  final GlobalKey<FormState> _form = GlobalKey<FormState>();
+  final TextEditingController _amount = TextEditingController();
+  final TextEditingController _qty = TextEditingController(text: '1');
+  final TextEditingController _note = TextEditingController();
+  List<Product> _products = const [];
+  Product? _selectedProduct;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProducts();
+  }
+
+  Future<void> _loadProducts() async {
+    try {
+      final products = await DatabaseHelper.instance.getProducts();
+      if (!mounted) return;
+      setState(() => _products = products.where((p) => p.active).toList());
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _amount.dispose();
+    _qty.dispose();
+    _note.dispose();
+    super.dispose();
+  }
+
+  void _recalc() {
+    final product = _selectedProduct;
+    if (product == null) return;
+    final double q = double.tryParse(_qty.text.trim()) ?? 1;
+    final Money total = product.sellPrice.times(q);
+    _amount.text = total.asMajor.toStringAsFixed(2);
+  }
+
+  Future<void> _save() async {
+    if (!(_form.currentState?.validate() ?? false)) return;
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final AppState state = context.read<AppState>();
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      final double? major = parseMoneyInput(_amount.text.trim());
+      if (major == null || major <= 0) {
+        setState(() {
+          _saving = false;
+          _error = 'Enter a valid amount';
+        });
+        return;
+      }
+      await DatabaseHelper.instance.recordCreditCharge(
+        customerId: widget.customer.id!,
+        amount: Money.fromMajor(major),
+        reference: _note.text.trim().isEmpty ? null : _note.text.trim(),
+        staffId: state.currentStaffId,
+        staffName: state.currentStaffName ?? '',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.customerSavedTitle)),
+      );
+      Navigator.pop(context, true);
+    } on StateError catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = error.message.toString();
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
+    final TextTheme type = AppTypography.of(context);
+
+    return Padding(
+      padding: EdgeInsets.only(
+        left: spacing.md,
+        right: spacing.md,
+        top: spacing.md,
+        bottom: MediaQuery.of(context).viewInsets.bottom + spacing.md,
+      ),
+      child: Form(
+        key: _form,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Text(l10n.customerAddPayment, style: type.titleLarge),
+            SizedBox(height: spacing.md),
+            DropdownButtonFormField<Product>(
+              initialValue: _selectedProduct,
+              decoration: const InputDecoration(labelText: 'Product (optional)'),
+              items: _products
+                  .map((p) => DropdownMenuItem<Product>(
+                        value: p,
+                        child: Text(p.name),
+                      ))
+                  .toList(),
+              onChanged: (p) {
+                setState(() => _selectedProduct = p);
+                _recalc();
+              },
+            ),
+            SizedBox(height: spacing.md),
+            TextField(
+              controller: _qty,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: 'Quantity'),
+              onChanged: (_) => _recalc(),
+            ),
+            SizedBox(height: spacing.md),
+            TextFormField(
+              controller: _amount,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: 'Amount'),
+              validator: (v) =>
+                  (parseMoneyInput(v?.trim() ?? '') == null) ? 'Invalid' : null,
+            ),
+            SizedBox(height: spacing.md),
+            TextField(
+              controller: _note,
+              decoration: const InputDecoration(labelText: 'Note (optional)'),
+            ),
+            if (_error != null) ...<Widget>[
+              SizedBox(height: spacing.sm),
+              Text(_error!, style: TextStyle(color: colors.danger)),
+            ],
+            SizedBox(height: spacing.md),
+            FilledButton(
+              onPressed: _saving ? null : _save,
+              child: _saving
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Record charge'),
+            ),
+            SizedBox(height: spacing.md),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 Future<bool> showCreditPaymentSheet(
     BuildContext context, Customer customer) async {
   final result = await showModalBottomSheet<bool>(

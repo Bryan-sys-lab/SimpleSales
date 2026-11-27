@@ -8792,6 +8792,22 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   /// cash — belongs to the shift that is open NOW, because the money sits in
   /// THAT drawer. A cash repayment without an open shift is refused, exactly
   /// like a cash refund.
+Future<int> recordCreditCharge({
+    required int customerId,
+    required Money amount,
+    String? reference,
+    int? staffId,
+    String? staffName,
+  }) async {
+    return CustomerRepository.instance.recordCreditCharge(
+      customerId: customerId,
+      amount: amount,
+      reference: reference,
+      staffId: staffId,
+      staffName: staffName,
+    );
+  }
+
   Future<int> recordCreditRepayment({
     required int customerId,
     required Money amount,
