@@ -184,7 +184,8 @@ export const authMiddleware = async (req: express.Request, res: express.Response
       normalizedOriginalPath === '/tenant/subscription' ||
       normalizedOriginalPath.startsWith('/tenant/subscription/') ||
       normalizedOriginalPath.startsWith('/tenant/membership') ||
-      normalizedOriginalPath === '/telemetry/support';
+      normalizedOriginalPath === '/telemetry/support' ||
+      normalizedOriginalPath === '/tenant/staff/sync';
     if (!billingExemption) {
       const entitlement = await tenantEntitlement(profile.tenantId);
       if (!entitlement.allowed) {
