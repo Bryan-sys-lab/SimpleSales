@@ -17,6 +17,14 @@ function LoginContent() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
+  const normalizeKey = (value: string) => {
+    const compact = value.trim().replace(/\s+/g, '');
+    if (/^[A-Za-z0-9_-]+$/.test(compact)) return compact;
+    const matches = compact.match(/[A-Za-z0-9_-]{24,}/g);
+    if (matches?.length) return matches.reduce((a, b) => (b.length > a.length ? b : a));
+    return compact.replace(/[^A-Za-z0-9_-]/g, '');
+  };
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true); setError('');
@@ -24,7 +32,7 @@ function LoginContent() {
       const response = await fetch('/api/admin/auth/login', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(departmentLogin ? { email: email.trim(), phone: phone.trim(), key: key.trim().replace(/\s+/g, ''), rememberMe } : { email: email.trim(), masterToken: masterToken.trim(), rememberMe }),
+        body: JSON.stringify(departmentLogin ? { email: email.trim(), phone: phone.trim(), key: normalizeKey(key), rememberMe } : { email: email.trim(), masterToken: masterToken.trim(), rememberMe }),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? 'Sign in failed');
@@ -59,7 +67,7 @@ function LoginContent() {
             </div>
             <div>
               <label className="label" htmlFor="key">Administrator key</label>
-              <input id="key" className="input" type="password" autoComplete="current-password" required value={key} onChange={(e) => setKey(e.target.value)} />
+              <input id="key" className="input" type="password" autoComplete="current-password" autoCapitalize="none" autoCorrect="off" spellCheck={false} required value={key} onChange={(e) => setKey(e.target.value)} />
             </div>
           </> : <div>
             <label className="label" htmlFor="master-token">System access token</label>
