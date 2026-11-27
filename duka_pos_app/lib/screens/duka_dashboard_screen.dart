@@ -190,14 +190,6 @@ class DukaDashboardScreen extends StatelessWidget {
           icon: Icons.credit_card_outlined,
           tone: DashboardKpiTone.pending,
           onTap: () => context.push(Routes.customers),
-        )
-      else
-        DashboardKpiData(
-          label: l10n.dashboardTransactionsLabel,
-          value: '${data.totals.transactions}',
-          icon: Icons.receipt_long_outlined,
-          tone: DashboardKpiTone.neutral,
-          onTap: () => context.push(Routes.transactions),
         ),
     ];
 
@@ -413,113 +405,116 @@ class _DukaStockOverview extends StatelessWidget {
     final double availability =
         productCount == 0 ? 0 : availableProducts / productCount;
 
-    return DashboardPanel(
-      title: l10n.dashboardStockOverview,
-      padChild: false,
-      child: LayoutBuilder(
-        builder: (BuildContext context, BoxConstraints constraints) {
-          final int columns = constraints.maxWidth >= 560
-              ? 3
-              : constraints.maxWidth >= 280
-                  ? 2
-                  : 1;
-          final double metricWidth =
-              (constraints.maxWidth - spacing.sm * (columns - 1)) / columns;
-          return Padding(
-            padding: EdgeInsets.all(spacing.md),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                Text(
-                  l10n.dashboardStockValue,
-                  style: AppTypography.of(context).labelMedium,
-                ),
-                SizedBox(height: spacing.xs),
-                Text(
-                  formatMoney(stockValue),
-                  style: AppTypography.money(
-                    context,
-                    size: 26,
-                    weight: FontWeight.w800,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        SectionHeader(label: l10n.dashboardStockOverview),
+        SizedBox(height: spacing.sm),
+        LayoutBuilder(
+          builder: (BuildContext context, BoxConstraints constraints) {
+            final int columns = constraints.maxWidth >= 560
+                ? 3
+                : constraints.maxWidth >= 280
+                    ? 2
+                    : 1;
+            final double metricWidth =
+                (constraints.maxWidth - spacing.sm * (columns - 1)) / columns;
+            return Padding(
+              padding: EdgeInsets.all(spacing.md),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Text(
+                    l10n.dashboardStockValue,
+                    style: AppTypography.of(context).labelMedium,
                   ),
-                ),
-                SizedBox(height: spacing.lg),
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: Text(
-                        l10n.dashboardStockAvailability(
-                          availableProducts,
-                          productCount,
+                  SizedBox(height: spacing.xs),
+                  Text(
+                    formatMoney(stockValue),
+                    style: AppTypography.money(
+                      context,
+                      size: 26,
+                      weight: FontWeight.w800,
+                    ),
+                  ),
+                  SizedBox(height: spacing.lg),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: Text(
+                          l10n.dashboardStockAvailability(
+                            availableProducts,
+                            productCount,
+                          ),
+                          style: AppTypography.of(context).titleSmall,
                         ),
-                        style: AppTypography.of(context).titleSmall,
                       ),
-                    ),
-                    SizedBox(width: spacing.sm),
-                    Text('${(availability * 100).round()}%'),
-                  ],
-                ),
-                SizedBox(height: spacing.xs),
-                Semantics(
-                  label: l10n.dashboardStockAvailability(
-                    availableProducts,
-                    productCount,
+                      SizedBox(width: spacing.sm),
+                      Text('${(availability * 100).round()}%'),
+                    ],
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: availability,
-                      minHeight: 8,
+                  SizedBox(height: spacing.xs),
+                  Semantics(
+                    label: l10n.dashboardStockAvailability(
+                      availableProducts,
+                      productCount,
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: availability,
+                        minHeight: 8,
+                      ),
                     ),
                   ),
-                ),
-                SizedBox(height: spacing.lg),
-                Wrap(
-                  spacing: spacing.sm,
-                  runSpacing: spacing.sm,
-                  children: <Widget>[
-                    SizedBox(
-                      width: metricWidth,
-                      child: _StockMetric(
-                        label: l10n.dashboardTotalProducts,
-                        value: '$productCount',
-                        icon: Icons.inventory_2_outlined,
+                  SizedBox(height: spacing.lg),
+                  Wrap(
+                    spacing: spacing.sm,
+                    runSpacing: spacing.sm,
+                    children: <Widget>[
+                      SizedBox(
+                        width: metricWidth,
+                        child: _StockMetric(
+                          label: l10n.dashboardTotalProducts,
+                          value: '$productCount',
+                          icon: Icons.inventory_2_outlined,
+                        ),
                       ),
-                    ),
-                    SizedBox(
-                      width: metricWidth,
-                      child: _StockMetric(
-                        label: l10n.dashboardLowStockCount,
-                        value: '$lowCount',
-                        icon: Icons.warning_amber_outlined,
-                        tone: StatusTone.warning,
+                      SizedBox(
+                        width: metricWidth,
+                        child: _StockMetric(
+                          label: l10n.dashboardLowStockCount,
+                          value: '$lowCount',
+                          icon: Icons.warning_amber_outlined,
+                          tone: StatusTone.warning,
+                        ),
                       ),
-                    ),
-                    SizedBox(
-                      width: metricWidth,
-                      child: _StockMetric(
-                        label: l10n.dashboardOutOfStockCount,
-                        value: '$outCount',
-                        icon: Icons.cancel_outlined,
-                        tone: StatusTone.danger,
+                      SizedBox(
+                        width: metricWidth,
+                        child: _StockMetric(
+                          label: l10n.dashboardOutOfStockCount,
+                          value: '$outCount',
+                          icon: Icons.cancel_outlined,
+                          tone: StatusTone.danger,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: spacing.md),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: OutlinedButton.icon(
-                    onPressed: onOpenInventory,
-                    icon: const Icon(Icons.inventory_2_outlined),
-                    label: Text(l10n.dashboardInventory),
+                    ],
                   ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
+                  SizedBox(height: spacing.md),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: OutlinedButton.icon(
+                      onPressed: onOpenInventory,
+                      icon: const Icon(Icons.inventory_2_outlined),
+                      label: Text(l10n.dashboardInventory),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 }

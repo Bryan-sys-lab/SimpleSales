@@ -669,6 +669,16 @@ class FinancialEventTimelineRow extends StatelessWidget {
                   timestamp == null ? '' : _formatTimestamp(timestamp),
                   style: type.bodySmall?.copyWith(color: colors.onSurfaceMuted),
                 ),
+                if (event.cogsMinor != 0 &&
+                    (event.cashInMinor != 0 ||
+                        event.cashOutMinor != 0 ||
+                        event.revenueMinor != 0))
+                  Text(
+                    '${AppLocalizations.of(context).analyticsCogsLabel}: '
+                    '${event.cogsMinor < 0 ? '−' : ''}'
+                    '${formatMoney(Money.fromMinor(event.cogsMinor.abs()))}',
+                    style: type.bodySmall?.copyWith(color: colors.onSurfaceMuted),
+                  ),
               ],
             ),
           ),

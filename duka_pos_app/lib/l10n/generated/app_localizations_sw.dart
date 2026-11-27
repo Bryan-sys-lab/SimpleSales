@@ -763,7 +763,7 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String sellCompletePaidOther(Object amount, Object method) {
-    return '$method Â· $amount';
+    return '$method - $amount';
   }
 
   @override
@@ -1010,7 +1010,25 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get sellSaleNotRecordedNothingCharged =>
-      'Couldn\'t record the sale. Nothing was charged â€” try again.';
+      'Mauzo hayakurekodiwa. Hakuna malipo yaliyotumwa. Kagua bidhaa kisha ujaribu tena.';
+
+  @override
+  String get sellCostPoolUnavailable =>
+      'Mauzo hayakurekodiwa. Kundi la gharama lililounganishwa halina gharama ya kutosha iliyobaki. Kagua salio lake kisha ujaribu tena.';
+
+  @override
+  String get sellCostPoolNeedsUnitCost =>
+      'Weka gharama ya bidhaa kabla ya kuiuza kupitia kundi lake la gharama.';
+
+  @override
+  String sellTileCostPoolBalance(Object amount) {
+    return 'Salio la kundi la gharama: $amount';
+  }
+
+  @override
+  String sellTileStockAndCostPool(Object amount, Object quantity) {
+    return '$quantity kwenye hisa · kundi la gharama $amount';
+  }
 
   @override
   String sellSaleTotalLabel(Object amount) {
@@ -1660,7 +1678,7 @@ class AppLocalizationsSw extends AppLocalizations {
   String get statusConnecting => 'Reconnecting to the server.';
 
   @override
-  String get statusOnline => 'Online â€” syncing with the server.';
+  String get statusOnline => 'Imeunganishwa - inasawazisha na seva.';
 
   @override
   String get importRepairedTitle => 'Row repaired';
@@ -5116,6 +5134,9 @@ class AppLocalizationsSw extends AppLocalizations {
   String get analyticsProfitLabel => 'Profit';
 
   @override
+  String get analyticsCogsLabel => 'Gharama ya bidhaa zilizouzwa (COGS)';
+
+  @override
   String get analyticsNetProfitLabel => 'Net profit';
 
   @override
@@ -6277,6 +6298,10 @@ class AppLocalizationsSw extends AppLocalizations {
   String get inventoryStockValue => 'Thamani ya hisa';
 
   @override
+  String get inventoryLinkedCostGroupBalance =>
+      'Salio la kundi la gharama lililounganishwa';
+
+  @override
   String get inventoryStockMovement => 'Unganisho wa hisa';
 
   @override
@@ -7306,6 +7331,12 @@ class AppLocalizationsSw extends AppLocalizations {
       'Huduma ya kifedha iliyosawazisha';
 
   @override
+  String get reportsDirectCost => 'Gharama ya moja kwa moja (COGS)';
+
+  @override
+  String get reportsOperatingExpenses => 'Gharama za uendeshaji';
+
+  @override
   String get reportsZReport => 'Ripoti Z';
 
   @override
@@ -7383,7 +7414,7 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get couldnTCompleteTheSaleCheckStockAndTryAgain =>
-      'Couldn’t complete the sale. Check stock and try again.';
+      'Mauzo hayakukamilika. Kagua akiba ya bidhaa na gharama yake, kisha ujaribu tena.';
 
   @override
   String get firstTenderRemainingIsPaidByTheSecondTender =>
@@ -7438,7 +7469,7 @@ class AppLocalizationsSw extends AppLocalizations {
   String get quickSale => 'Quick sale';
 
   @override
-  String get quickSaleRecorded => 'Quick sale recorded.';
+  String get quickSaleRecorded => 'Mauzo ya haraka yamerekodiwa.';
 
   @override
   String get quickSaleCreditCustomer => 'Customer on account';

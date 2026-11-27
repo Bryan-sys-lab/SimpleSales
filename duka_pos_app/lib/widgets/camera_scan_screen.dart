@@ -282,10 +282,7 @@ class _CameraScanScreenState extends State<CameraScanScreen>
 
   @override
   Widget build(BuildContext context) {
-    final AppColors colors = AppColors.of(context);
-
     return Scaffold(
-      backgroundColor: colors.canvas,
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,

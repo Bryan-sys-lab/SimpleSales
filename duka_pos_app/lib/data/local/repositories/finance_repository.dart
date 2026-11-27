@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:sqflite/sqflite.dart';
 import 'package:crypto/crypto.dart' show sha256;
@@ -482,7 +483,7 @@ class FinanceRepository {
       whereArgs: [poolId, saleId],
       limit: 1,
     );
-    if (allocation.isEmpty) throw StateError('Pool sale allocation not found');
+    if (allocation.isEmpty) return 0;
     final already = await txn.query(
       'sale_pool_allocation_reversals',
       columns: ['COALESCE(SUM(amount_minor), 0) AS total'],
@@ -491,20 +492,19 @@ class FinanceRepository {
     );
     final allocated = (allocation.first['amount_minor'] as num).toInt();
     final reversed = (already.first['total'] as num?)?.toInt() ?? 0;
-    if (reversed + amount.minorUnits > allocated) {
-      throw StateError('Pool recovery reversal exceeds the sale allocation');
-    }
+    final reversalMinor = math.min(amount.minorUnits, allocated - reversed);
+    if (reversalMinor <= 0) return 0;
     final now = DateTime.now().toIso8601String();
     final id = await txn.insert('sale_pool_allocation_reversals', {
       'pool_id': poolId,
       'sale_id': saleId,
       'return_id': returnId,
-      'amount_minor': amount.minorUnits,
+      'amount_minor': reversalMinor,
       'created_at': now,
     });
     await txn.rawUpdate(
       'UPDATE cost_pools SET recovered_minor = MAX(0, recovered_minor - ?) WHERE id = ?',
-      [amount.minorUnits, poolId],
+      [reversalMinor, poolId],
     );
     return id;
   }

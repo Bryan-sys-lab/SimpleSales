@@ -276,7 +276,6 @@ class _LoginScreenState extends State<LoginScreen> {
     final String shopName = owner?.shopName ?? SimplePosBrand.appName;
 
     return Scaffold(
-      backgroundColor: colors.canvas,
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(

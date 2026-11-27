@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:sqflite/sqflite.dart';
 
 import '../../../db/database_helper.dart';
@@ -671,14 +673,25 @@ class CustomerRepository {
           whereArgs: [sale.id],
           orderBy: 'id ASC',
         );
+        final totalAllocated = allocations.fold<int>(
+          0,
+          (sum, allocation) =>
+              sum + (allocation['amount_minor'] as num).toInt(),
+        );
+        final targetReversal = math.min(
+          totalAllocated,
+          DatabaseHelper.roundHalfUp(
+            totalAllocated * restockedCostMinor / originalCostMinor,
+          ),
+        );
         var reversedSoFar = 0;
         for (var i = 0; i < allocations.length; i++) {
           final allocation = allocations[i];
           final allocated = (allocation['amount_minor'] as num).toInt();
           final reversal = i == allocations.length - 1
-              ? restockedCostMinor - reversedSoFar
+              ? targetReversal - reversedSoFar
               : DatabaseHelper.roundHalfUp(
-                  allocated * restockedCostMinor / originalCostMinor,
+                  allocated * targetReversal / totalAllocated,
                 );
           if (reversal <= 0) continue;
           await FinanceRepository.instance.reverseCostPoolRecoveryInTransaction(

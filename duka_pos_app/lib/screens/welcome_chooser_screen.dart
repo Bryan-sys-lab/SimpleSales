@@ -133,7 +133,6 @@ class _WelcomeChooserScreenState extends State<WelcomeChooserScreen> {
     final bool showShop = widget.hasShop && widget.shopName.trim().isNotEmpty;
 
     return Scaffold(
-      backgroundColor: colors.canvas,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(

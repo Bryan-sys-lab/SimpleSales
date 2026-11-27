@@ -44,6 +44,55 @@ void main() {
     });
   });
 
+  test('stock value counts a linked cost pool once instead of duplicating it',
+      () {
+    final products = <Product>[
+      Product(
+        name: 'Unlinked stock',
+        category: 'General',
+        costPrice: Money.fromMinor(100),
+        sellPrice: Money.fromMinor(200),
+        stockQty: 3,
+        reorderLevel: 0,
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      ),
+      Product(
+        name: 'First pooled item',
+        category: 'General',
+        costPrice: Money.fromMinor(150),
+        sellPrice: Money.fromMinor(250),
+        stockQty: 4,
+        reorderLevel: 0,
+        costPoolId: 7,
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      ),
+      Product(
+        name: 'Second pooled item',
+        category: 'General',
+        costPrice: Money.fromMinor(200),
+        sellPrice: Money.fromMinor(300),
+        stockQty: 2,
+        reorderLevel: 0,
+        costPoolId: 7,
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      ),
+    ];
+
+    expect(
+      inventoryStockValueMinor(
+        products: products,
+        costPools: <Map<String, dynamic>>[
+          <String, dynamic>{
+            'id': 7,
+            'invested_minor': 1000,
+            'recovered_minor': 200,
+          },
+        ],
+      ),
+      1100,
+    );
+  });
+
   setUpAll(() {
     TestWidgetsFlutterBinding.ensureInitialized();
     sqfliteFfiInit();
@@ -212,6 +261,7 @@ void main() {
     int? staffId,
     required int totalMinor,
     int? profitMinor,
+    int? taxableMinor,
     required DateTime at,
     String paymentMethod = 'cash',
     bool paymentVerified = true,
@@ -222,6 +272,7 @@ void main() {
       'staff_id': staffId,
       'total': totalMinor,
       'profit': profitMinor ?? (totalMinor ~/ 5),
+      'taxable_minor': taxableMinor ?? totalMinor,
       'payment_method': paymentMethod,
       'created_at': at.toIso8601String(),
       'etims_status': etimsStatus,
@@ -282,9 +333,34 @@ void main() {
       expect(totals.transactions, 3);
       expect(totals.totalMinor, 5000);
       expect(totals.profitMinor, 1700);
+      expect(totals.cogsMinor, 3300);
       expect(totals.averageMinor, 1667); // 5000 / 3 = 1666.67, rounded half up
       expect(totals.hasSales, isTrue);
       expect(totals.total, Money.fromMinor(5000));
+    });
+
+    test('excludes unverified offline payments from sales aggregates',
+        () async {
+      await writeSale(
+        staffName: 'Amina',
+        totalMinor: 2500,
+        profitMinor: 500,
+        at: midnight.add(const Duration(hours: 9)),
+      );
+      await writeSale(
+        staffName: 'Amina',
+        totalMinor: 4000,
+        profitMinor: 800,
+        at: midnight.add(const Duration(hours: 10)),
+        paymentMethod: 'mpesa',
+        paymentVerified: false,
+      );
+
+      final totals = await db.salesTotalsFor(since: midnight);
+
+      expect(totals.transactions, 1);
+      expect(totals.totalMinor, 2500);
+      expect(totals.profitMinor, 500);
     });
 
     test('net profit subtracts posted expenses in the same range and scope',

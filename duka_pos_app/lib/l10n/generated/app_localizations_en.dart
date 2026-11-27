@@ -763,7 +763,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String sellCompletePaidOther(Object amount, Object method) {
-    return '$method Â· $amount';
+    return '$method - $amount';
   }
 
   @override
@@ -1010,7 +1010,25 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get sellSaleNotRecordedNothingCharged =>
-      'Couldn\'t record the sale. Nothing was charged â€” try again.';
+      'Couldn\'t record the sale. No payment was sent. Check stock and try again.';
+
+  @override
+  String get sellCostPoolUnavailable =>
+      'Sale not recorded. The linked cost pool does not have enough remaining cost. Check its balance, then try again.';
+
+  @override
+  String get sellCostPoolNeedsUnitCost =>
+      'Add a unit cost to this item before selling it through its linked cost pool.';
+
+  @override
+  String sellTileCostPoolBalance(Object amount) {
+    return 'Cost group available: $amount';
+  }
+
+  @override
+  String sellTileStockAndCostPool(Object amount, Object quantity) {
+    return '$quantity in stock · cost group $amount';
+  }
 
   @override
   String sellSaleTotalLabel(Object amount) {
@@ -1660,7 +1678,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get statusConnecting => 'Reconnecting to the server.';
 
   @override
-  String get statusOnline => 'Online â€” syncing with the server.';
+  String get statusOnline => 'Online - syncing with the server.';
 
   @override
   String get importRepairedTitle => 'Row repaired';
@@ -5110,6 +5128,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get analyticsProfitLabel => 'Profit';
 
   @override
+  String get analyticsCogsLabel => 'Cost of goods sold (COGS)';
+
+  @override
   String get analyticsNetProfitLabel => 'Net profit';
 
   @override
@@ -6270,6 +6291,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inventoryStockValue => 'Stock value';
 
   @override
+  String get inventoryLinkedCostGroupBalance => 'Linked cost group balance';
+
+  @override
   String get inventoryStockMovement => 'Stock movement';
 
   @override
@@ -7294,6 +7318,12 @@ class AppLocalizationsEn extends AppLocalizations {
       'Reconciled financial statement';
 
   @override
+  String get reportsDirectCost => 'Direct cost (COGS)';
+
+  @override
+  String get reportsOperatingExpenses => 'Operating expenses';
+
+  @override
   String get reportsZReport => 'Z report';
 
   @override
@@ -7371,7 +7401,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get couldnTCompleteTheSaleCheckStockAndTryAgain =>
-      'Couldnâ€™t complete the sale. Check stock and try again.';
+      'Couldn\'t complete the sale. Check stock and product cost, then try again.';
 
   @override
   String get firstTenderRemainingIsPaidByTheSecondTender =>

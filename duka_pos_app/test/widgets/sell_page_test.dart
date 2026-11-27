@@ -45,6 +45,7 @@ Product _product({
   double stock = 12,
   String? imagePath,
   double price = 60,
+  int? costPoolId,
 }) {
   return Product(
     name: name,
@@ -55,17 +56,19 @@ Product _product({
     reorderLevel: 5,
     updatedAt: '2026-01-01T00:00:00.000Z',
     imagePath: imagePath,
+    costPoolId: costPoolId,
   );
 }
 
-ProductTileData _tile(Product product) {
+ProductTileData _tile(Product product, {int? poolBalance}) {
   return ProductTileData(
     product: product,
     inCart: 0,
     sellsAsVariants: false,
     variantCount: 0,
     cheapestPrice: null,
-    canTap: product.stockQty > 0,
+    canTap: product.stockQty > 0 || product.costPoolId != null,
+    costPoolRemainingMinor: poolBalance,
   );
 }
 
@@ -384,6 +387,28 @@ void main() {
       await tester.pump();
 
       expect(find.textContaining('0.4'), findsOneWidget);
+      expect(find.textContaining('0 in stock'), findsNothing);
+    });
+
+    testWidgets('a pool-backed item shows its remaining cost, not zero stock',
+        (WidgetTester tester) async {
+      tester.useDevice(Device.small);
+
+      await tester.pumpApp(
+        home: Scaffold(
+          body: ProductTile(
+            data: _tile(
+              _product(stock: 0, costPoolId: 7),
+              poolBalance: 2550,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      tester.expectNoOverflow('the cost-pool balance on a phone tile');
+      expect(find.textContaining('Cost group available: KSh 25.50'),
+          findsOneWidget);
       expect(find.textContaining('0 in stock'), findsNothing);
     });
   });

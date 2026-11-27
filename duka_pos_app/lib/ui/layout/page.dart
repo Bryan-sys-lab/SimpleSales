@@ -1,10 +1,9 @@
 import 'package:material_ui/material_ui.dart';
 
-import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import 'window_size_class.dart';
 
-/// A screen's body: full-bleed background, inset content.
+/// A screen's content, inset over the shared app background.
 ///
 /// The window is edge-to-edge; the TARGETS are inset. Those are two different
 /// questions and conflating them is why an app ends up either with a stripe of
@@ -62,19 +61,15 @@ class AdaptivePage extends StatelessWidget {
       );
     }
 
-    return ColoredBox(
-      // Full-bleed behind the system bars.
-      color: AppColors.of(context).canvas,
-      child: SafeArea(
-        bottom: false,
-        child: resizeToAvoidBottomInset
-            ? content
-            : MediaQuery.removeViewInsets(
-                context: context,
-                removeBottom: true,
-                child: content,
-              ),
-      ),
+    return SafeArea(
+      bottom: false,
+      child: resizeToAvoidBottomInset
+          ? content
+          : MediaQuery.removeViewInsets(
+              context: context,
+              removeBottom: true,
+              child: content,
+            ),
     );
   }
 }

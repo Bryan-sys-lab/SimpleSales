@@ -510,6 +510,146 @@ void main() {
       expect(pool['recovered_minor'], 200);
     });
 
+    test('linked cost pool backs sales when no unit count is recorded',
+        () async {
+      final poolId = await db.createCostPool(
+        uuid: 'pool-limited-recovery',
+        name: 'Limited recovery pool',
+        poolType: 'lot',
+        initialCost: Money.fromMinor(200),
+      );
+      final productId = await db.upsertProduct(Product(
+        name: 'Pool-backed stock',
+        category: 'General',
+        costPrice: Money.fromMinor(200),
+        sellPrice: Money.fromMinor(500),
+        stockQty: 0,
+        reorderLevel: 0,
+        costPoolId: poolId,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      final saleId = await db.recordSale(
+        staffName: 'Owner',
+        items: <SaleItem>[
+          SaleItem(
+            saleId: 0,
+            productId: productId,
+            productName: 'Pool-backed stock',
+            qty: 1,
+            unitPrice: Money.fromMinor(500),
+            unitCost: Money.fromMinor(200),
+          ),
+        ],
+      );
+
+      final allocations = await (await db.database).query(
+        'sale_pool_allocations',
+        where: 'sale_id = ?',
+        whereArgs: <Object?>[saleId],
+      );
+      expect(allocations.single['amount_minor'], 200);
+      final saleEvent = (await db.getFinancialEvents()).singleWhere(
+        (event) => event.eventType == 'sale' && event.sourceId == saleId,
+      );
+      expect(saleEvent.cogsMinor, 200);
+      final pool = (await db.getCostPools()).single;
+      expect(pool['recovered_minor'], 200);
+      expect((await db.getProductById(productId))!.stockQty, 0);
+
+      await expectLater(
+        db.recordSale(
+          staffName: 'Owner',
+          items: <SaleItem>[
+            SaleItem(
+              saleId: 0,
+              productId: productId,
+              productName: 'Pool-backed stock',
+              qty: 1,
+              unitPrice: Money.fromMinor(500),
+              unitCost: Money.fromMinor(200),
+            ),
+          ],
+        ),
+        throwsA(isA<StateError>()),
+      );
+      expect((await db.getSales()).length, 1);
+    });
+
+    test('linked products still require physical stock when a count exists',
+        () async {
+      final poolId = await db.createCostPool(
+        uuid: 'pool-with-counted-stock',
+        name: 'Pool with counted stock',
+        poolType: 'lot',
+        initialCost: Money.fromMajor(10),
+      );
+      final productId = await db.upsertProduct(Product(
+        name: 'Counted linked stock',
+        category: 'General',
+        costPrice: Money.fromMajor(2),
+        sellPrice: Money.fromMinor(500),
+        stockQty: 1,
+        reorderLevel: 0,
+        costPoolId: poolId,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+      await expectLater(
+        db.recordSale(
+          staffName: 'Owner',
+          items: <SaleItem>[
+            SaleItem(
+              saleId: 0,
+              productId: productId,
+              productName: 'Counted linked stock',
+              qty: 2,
+              unitPrice: Money.fromMinor(500),
+              unitCost: Money.fromMajor(2),
+            ),
+          ],
+        ),
+        throwsA(isA<StateError>()),
+      );
+      expect(await db.getSales(), isEmpty);
+    });
+
+    test('a linked cost pool requires unit cost to track sales', () async {
+      final poolId = await db.createCostPool(
+        uuid: 'pool-requires-unit-cost',
+        name: 'Pool requires unit cost',
+        poolType: 'lot',
+        initialCost: Money.fromMajor(10),
+      );
+      final productId = await db.upsertProduct(Product(
+        name: 'Uncosted pool-backed item',
+        category: 'General',
+        costPrice: Money.zero,
+        sellPrice: Money.fromMajor(5),
+        stockQty: 0,
+        reorderLevel: 0,
+        costPoolId: poolId,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      await expectLater(
+        db.recordSale(
+          staffName: 'Owner',
+          items: <SaleItem>[
+            SaleItem(
+              saleId: 0,
+              productId: productId,
+              productName: 'Uncosted pool-backed item',
+              qty: 1,
+              unitPrice: Money.fromMajor(5),
+              unitCost: Money.zero,
+            ),
+          ],
+        ),
+        throwsA(isA<StateError>()),
+      );
+      expect(await db.getSales(), isEmpty);
+    });
+
     test('linked catalogue products allocate pool cost automatically',
         () async {
       final poolId = await db.createCostPool(
@@ -633,6 +773,58 @@ void main() {
           .singleWhere((event) => event.sourceId == receiptId);
       expect(purchase.cashOutMinor, 0);
       expect(purchase.payableDeltaMinor, 600);
+    });
+
+    test('cost pool reload adds to the prior balance and stock valuation',
+        () async {
+      final poolId = await db.createCostPool(
+        uuid: 'pool-cumulative-reload',
+        name: 'Cumulative reload pool',
+        poolType: 'lot',
+        initialCost: Money.fromMajor(15),
+      );
+      final productId = await db.upsertProduct(Product(
+        name: 'Cumulative reload stock',
+        category: 'General',
+        costPrice: Money.fromMajor(12),
+        sellPrice: Money.fromMajor(20),
+        stockQty: 1,
+        reorderLevel: 0,
+        costPoolId: poolId,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+      await db.recordSale(
+        staffName: 'Owner',
+        items: <SaleItem>[
+          SaleItem(
+            saleId: 0,
+            productId: productId,
+            productName: 'Cumulative reload stock',
+            qty: 1,
+            unitPrice: Money.fromMajor(20),
+            unitCost: Money.fromMajor(12),
+          ),
+        ],
+      );
+
+      await db.reloadCostPoolStock(
+        poolId: poolId,
+        productId: productId,
+        qty: 1,
+        unitCost: Money.fromMajor(15),
+        staffName: 'Owner',
+      );
+
+      final pool = (await db.getCostPools()).single;
+      expect(pool['invested_minor'], 3000);
+      expect(pool['recovered_minor'], 1200);
+      expect(
+        (pool['invested_minor'] as int) - (pool['recovered_minor'] as int),
+        1800,
+      );
+      final reloadedProduct = await db.getProductById(productId);
+      expect(reloadedProduct!.stockQty, 1);
+      expect(reloadedProduct.stockValue, Money.fromMajor(15));
     });
 
     test('Stock adjustment', () async {

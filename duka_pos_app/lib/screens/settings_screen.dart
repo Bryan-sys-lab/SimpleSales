@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:dio/dio.dart';
 import 'package:crypto/crypto.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:path_provider/path_provider.dart';
@@ -302,6 +303,57 @@ class _SettingsScreenState extends State<SettingsScreen>
     });
     _backendLinked = await BackendService.isBackendLinked;
     if (_backendLinked) {
+      try {
+        final channel = await BackendService.fetchMpesaChannel();
+        if (channel != null) {
+          final channelType = switch (channel.channelType) {
+            'paybill' => 'Paybill',
+            'bank' => 'Bank',
+            _ => 'Till',
+          };
+          await prefs.setBool('mpesa_enabled_local', channel.mpesaEnabled);
+          await db.setSetting(
+            DatabaseHelper.settingMpesaChannelId,
+            channel.channelId?.toString() ?? '',
+          );
+          await db.setSetting(
+              DatabaseHelper.settingMpesaChannelType, channelType);
+          await db.setSetting(
+            DatabaseHelper.settingMpesaMerchantNumber,
+            channel.shortCode ?? '',
+          );
+          await db.setSetting(
+            DatabaseHelper.settingPayheroAccountNumber,
+            channel.accountNumber ?? '',
+          );
+          if (!mounted) return;
+          setState(() {
+            _mpesaEnabled = channel.mpesaEnabled;
+            _mpesaChannelId = channel.channelId;
+            _mpesaChannelType = channelType;
+            _mpesaMerchantNumber = channel.shortCode ?? '';
+            _payheroAccountNumber = channel.accountNumber ?? '';
+          });
+        }
+      } on DioException {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Could not refresh the M-Pesa channel from the backend. Check your connection and retry.',
+              ),
+            ),
+          );
+        }
+      } on StateError {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Backend returned invalid M-Pesa channel details.'),
+            ),
+          );
+        }
+      }
       try {
         final requests = await BackendService.getStaffPinResetRequests();
         if (mounted) setState(() => _pinResetRequests = requests);
@@ -1235,7 +1287,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             accountNumber: setup.accountNumber,
           );
         }
-        await BackendService.setMpesaEnabled(value, channelId: channelId);
+        await BackendService.setMpesaEnabled(value);
         if (value) {
           await BackendService.syncProductsToBackend();
           await BackendService.syncStaffToBackend();
@@ -1288,6 +1340,93 @@ class _SettingsScreenState extends State<SettingsScreen>
         title: l10n.settingsMpesaUpdateFailedTitle,
         message: l10n.settingsMpesaUpdateFailed,
       );
+    } finally {
+      if (mounted) setState(() => _savingToggle = false);
+    }
+  }
+
+  Future<void> _removeMpesaChannel() async {
+    if (!_backendLinked || _mpesaChannelId == null) return;
+    final AppState state = context.read<AppState>();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Remove M-Pesa channel?'),
+        content: const Text(
+          'This disconnects the channel from this shop and disables M-Pesa. '
+          'It does not delete the channel from the central PayHero account or '
+          'change historical payments.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(AppLocalizations.of(context).settingsRemoveAction),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final l10n = AppLocalizations.of(context);
+    setState(() => _savingToggle = true);
+    try {
+      try {
+        await BackendService.removeMpesaChannel();
+      } on DioException {
+        if (mounted) {
+          showOperationFailure(
+            context,
+            title: l10n.settingsMpesaUpdateFailedTitle,
+            message: l10n.settingsMpesaUpdateFailed,
+          );
+        }
+        return;
+      } on StateError {
+        if (mounted) {
+          showOperationFailure(
+            context,
+            title: l10n.settingsMpesaUpdateFailedTitle,
+            message: l10n.settingsMpesaUpdateFailed,
+          );
+        }
+        return;
+      }
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('mpesa_enabled_local', false);
+      await DatabaseHelper.instance.setSetting(
+        DatabaseHelper.settingMpesaChannelId,
+        '',
+      );
+      await DatabaseHelper.instance.setSetting(
+        DatabaseHelper.settingMpesaChannelType,
+        '',
+      );
+      await DatabaseHelper.instance.setSetting(
+        DatabaseHelper.settingMpesaMerchantNumber,
+        '',
+      );
+      await DatabaseHelper.instance.setSetting(
+        DatabaseHelper.settingPayheroAccountNumber,
+        '',
+      );
+      await recordActionAudit(
+        state,
+        action: AuditAction.paymentMethodChanged,
+        entity: AuditEntity.settings,
+        detail: 'M-Pesa channel removed from shop',
+      );
+      if (!mounted) return;
+      setState(() {
+        _mpesaEnabled = false;
+        _mpesaChannelId = null;
+        _mpesaChannelType = 'Till';
+        _mpesaMerchantNumber = '';
+        _payheroAccountNumber = '';
+      });
     } finally {
       if (mounted) setState(() => _savingToggle = false);
     }
@@ -2693,7 +2832,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       mpesaMerchantNumber: _mpesaMerchantNumber,
       payheroAccountNumber: _payheroAccountNumber,
       savingPaymentToggle: _savingToggle,
-      onToggleMpesa: _toggleMpesa,
+      onToggleMpesa: ownerSession ? _toggleMpesa : null,
+      onRemoveMpesaChannel: ownerSession ? _removeMpesaChannel : null,
       printer: _printer,
       printerBusy: _printerBusy,
       onPairPrinter: _chooseAndPairPrinter,
@@ -2896,7 +3036,8 @@ class SettingsPanel extends StatelessWidget {
     this.mpesaMerchantNumber = '',
     this.payheroAccountNumber = '',
     required this.savingPaymentToggle,
-    required this.onToggleMpesa,
+    this.onToggleMpesa,
+    this.onRemoveMpesaChannel,
     required this.printer,
     required this.printerBusy,
     required this.onPairPrinter,
@@ -2988,7 +3129,8 @@ class SettingsPanel extends StatelessWidget {
   final String mpesaMerchantNumber;
   final String payheroAccountNumber;
   final bool savingPaymentToggle;
-  final Future<void> Function(bool) onToggleMpesa;
+  final Future<void> Function(bool)? onToggleMpesa;
+  final Future<void> Function()? onRemoveMpesaChannel;
 
   final PrinterConfig printer;
   final bool printerBusy;
@@ -3124,6 +3266,7 @@ class SettingsPanel extends StatelessWidget {
           payheroAccountNumber: payheroAccountNumber,
           saving: savingPaymentToggle,
           onToggleMpesa: onToggleMpesa,
+          onRemoveChannel: onRemoveMpesaChannel,
         ),
         _PrinterPanel(
           printer: printer,
@@ -4333,6 +4476,7 @@ class _PaymentsPanel extends StatelessWidget {
     this.payheroAccountNumber = '',
     required this.saving,
     required this.onToggleMpesa,
+    required this.onRemoveChannel,
   });
 
   final bool mpesaEnabled;
@@ -4341,7 +4485,8 @@ class _PaymentsPanel extends StatelessWidget {
   final String mpesaMerchantNumber;
   final String payheroAccountNumber;
   final bool saving;
-  final Future<void> Function(bool) onToggleMpesa;
+  final Future<void> Function(bool)? onToggleMpesa;
+  final Future<void> Function()? onRemoveChannel;
 
   @override
   Widget build(BuildContext context) {
@@ -4358,13 +4503,27 @@ class _PaymentsPanel extends StatelessWidget {
           SettingsSwitchRow(
             icon: Icons.phone_iphone_outlined,
             title: l10n.settingsMpesaMethod,
-            subtitle: mpesaEnabled
-                ? '${l10n.settingsMpesaOnSubtitle} · $mpesaChannelType ${mpesaMerchantNumber.isEmpty ? 'number not set' : mpesaMerchantNumber}${mpesaChannelType == 'Bank' && payheroAccountNumber.isNotEmpty ? ' · account ••••${payheroAccountNumber.substring(payheroAccountNumber.length - 4)}' : ''} · Channel ${mpesaChannelId ?? 'not set'}'
-                : l10n.settingsMpesaOffSubtitle,
+            subtitle: mpesaChannelId == null
+                ? (mpesaEnabled
+                    ? l10n.settingsMpesaOnSubtitle
+                    : l10n.settingsMpesaOffSubtitle)
+                : '${mpesaEnabled ? l10n.settingsMpesaOnSubtitle : l10n.settingsMpesaOffSubtitle} · $mpesaChannelType ${mpesaMerchantNumber.isEmpty ? 'number not set' : mpesaMerchantNumber}${mpesaChannelType == 'Bank' && payheroAccountNumber.isNotEmpty ? ' · account ••••${payheroAccountNumber.substring(payheroAccountNumber.length - 4)}' : ''} · Channel $mpesaChannelId',
             value: mpesaEnabled,
-            enabled: !saving,
-            onChanged: (value) => onToggleMpesa(value),
+            enabled: !saving && onToggleMpesa != null,
+            onChanged: (value) {
+              final callback = onToggleMpesa;
+              if (callback != null) unawaited(callback(value));
+            },
           ),
+          if (mpesaChannelId != null && onRemoveChannel != null)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: saving ? null : onRemoveChannel,
+                icon: const Icon(Icons.link_off_outlined),
+                label: Text(l10n.settingsRemoveAction),
+              ),
+            ),
           ExpansionTile(
             key: const ValueKey<String>('payhero-setup-guide'),
             leading: const Icon(Icons.info_outline),

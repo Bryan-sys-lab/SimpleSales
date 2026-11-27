@@ -35,6 +35,7 @@ Widget _panel({
   List<Staff> staff = const <Staff>[],
   PrinterConfig printer = const PrinterConfig(),
   bool mpesaEnabled = false,
+  int? mpesaChannelId,
   bool autoSyncEnabled = false,
   bool syncing = false,
   String? syncStatus,
@@ -44,6 +45,7 @@ Widget _panel({
   bool showDiagnostics = false,
   SubscriptionEntitlement? subscription,
   VoidCallback onOpenSubscription = _noop,
+  Future<void> Function()? onRemoveMpesaChannel,
 }) =>
     SettingsPanel(
       // The handlers are inert: this suite asserts LAYOUT, not behaviour, and
@@ -83,6 +85,8 @@ Widget _panel({
       staff: staff,
       printer: printer,
       mpesaEnabled: mpesaEnabled,
+      mpesaChannelId: mpesaChannelId,
+      onRemoveMpesaChannel: onRemoveMpesaChannel,
       autoSyncEnabled: autoSyncEnabled,
       syncing: syncing,
       syncStatus: syncStatus,
@@ -113,6 +117,22 @@ void main() {
       await tester.pumpApp(home: _panel(showDiagnostics: true));
 
       expect(find.text(l10n.diagnosticsTitle), findsOneWidget);
+    });
+
+    testWidgets('shows the server-configured channel and owner removal action',
+        (tester) async {
+      tester.useDevice(Device.small);
+      await tester.pumpApp(
+        home: _panel(
+          mpesaEnabled: false,
+          mpesaChannelId: 42,
+          onRemoveMpesaChannel: () async {},
+        ),
+      );
+
+      expect(find.textContaining('Channel 42'), findsOneWidget);
+      expect(find.text(l10n.settingsRemoveAction), findsOneWidget);
+      tester.expectNoOverflow('configured M-Pesa channel controls');
     });
 
     testWidgets('every section renders and nothing overflows', (tester) async {

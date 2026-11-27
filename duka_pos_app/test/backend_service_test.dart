@@ -28,7 +28,9 @@ void main() {
       );
     });
 
-    test('staff auth rejection is authoritative while missing response is offline fallback', () {
+    test(
+        'staff auth rejection is authoritative while missing response is offline fallback',
+        () {
       expect(
         BackendService.isAuthoritativeStaffAuthenticationRejection(
           <String, dynamic>{'_rejected': true},
@@ -89,11 +91,35 @@ void main() {
   });
 
   group('Payment Outcome Tests', () {
-    test('Payment outcome enum values exist', () {
-      expect(PaymentOutcome.values.length, equals(3));
-      expect(PaymentOutcome.success, isNotNull);
-      expect(PaymentOutcome.failed, isNotNull);
-      expect(PaymentOutcome.timedOut, isNotNull);
+    test('provider review and terminal statuses remain distinct', () {
+      expect(
+        BackendService.paymentOutcomeFromProviderStatus('SUCCESS'),
+        PaymentOutcome.success,
+      );
+      expect(
+        BackendService.paymentOutcomeFromProviderStatus('FAILED'),
+        PaymentOutcome.failed,
+      );
+      expect(
+        BackendService.paymentOutcomeFromProviderStatus('REQUIRES_REVIEW'),
+        PaymentOutcome.reviewRequired,
+      );
+      expect(
+        BackendService.paymentOutcomeFromProviderStatus('PENDING'),
+        isNull,
+      );
+    });
+
+    test('authentication failures are not treated as payment failures', () {
+      expect(
+        BackendService.paymentOutcomeFromHttpStatus(401),
+        PaymentOutcome.sessionExpired,
+      );
+      expect(
+        BackendService.paymentOutcomeFromHttpStatus(403),
+        PaymentOutcome.accessDenied,
+      );
+      expect(BackendService.paymentOutcomeFromHttpStatus(503), isNull);
     });
   });
 
@@ -162,7 +188,8 @@ void main() {
       expect(ready.map((cup) => cup.id), <int?>[2]);
     });
 
-    test('does not send variants until their parent product has a remote id', () {
+    test('does not send variants until their parent product has a remote id',
+        () {
       final variants = <ProductVariant>[
         ProductVariant(
           id: 1,
@@ -233,7 +260,8 @@ void main() {
     test('keeps Open cost-pool types aligned with the backend contract', () {
       expect(BackendService.costPoolTypeForSync('lot'), 'lot');
       expect(BackendService.costPoolTypeForSync('bale'), 'bale');
-      expect(BackendService.costPoolTypeForSync('rolling_stock'), 'rolling_stock');
+      expect(
+          BackendService.costPoolTypeForSync('rolling_stock'), 'rolling_stock');
       expect(BackendService.costPoolTypeForSync('unknown'), 'lot');
     });
 
@@ -245,13 +273,13 @@ void main() {
         ],
       };
       expect(
-        BackendService.laybyReadyForSync(row, <int, String>{1: 'customer'},
-            <int, String>{}),
+        BackendService.laybyReadyForSync(
+            row, <int, String>{1: 'customer'}, <int, String>{}),
         isFalse,
       );
       expect(
-        BackendService.laybyReadyForSync(row, <int, String>{1: 'customer'},
-            <int, String>{2: 'product'}),
+        BackendService.laybyReadyForSync(
+            row, <int, String>{1: 'customer'}, <int, String>{2: 'product'}),
         isTrue,
       );
     });

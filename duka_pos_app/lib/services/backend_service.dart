@@ -612,9 +612,7 @@ enum DeploymentMode {
   connected,
 }
 
-/// Backend API service using self-hosted OIDC tokens instead of Supabase.
-/// Keeps the same interface as the old backend_service.dart so the
-/// rest of the app doesn't need changes.
+/// Backend API service for authenticated sync and payment operations.
 class BackendService {
   static Future<void>? _livePullInFlight;
 
@@ -720,6 +718,23 @@ class BackendService {
     if (error is! DioException) return false;
     return error.response?.statusCode == 401 || _isRetryable(error);
   }
+
+  @visibleForTesting
+  static PaymentOutcome? paymentOutcomeFromProviderStatus(Object? status) =>
+      switch (status) {
+        'SUCCESS' => PaymentOutcome.success,
+        'FAILED' => PaymentOutcome.failed,
+        'REQUIRES_REVIEW' => PaymentOutcome.reviewRequired,
+        _ => null,
+      };
+
+  @visibleForTesting
+  static PaymentOutcome? paymentOutcomeFromHttpStatus(int? statusCode) =>
+      switch (statusCode) {
+        401 => PaymentOutcome.sessionExpired,
+        403 => PaymentOutcome.accessDenied,
+        _ => null,
+      };
 
   static SharedPreferences? _prefs;
 
@@ -1265,8 +1280,7 @@ class BackendService {
         support is Map ? support['whatsappUrl'] as String? : null;
     final availableVoucher =
         support is Map ? support['availableVoucher'] : null;
-    final paymentMethod =
-        support is Map ? support['paymentMethod'] : null;
+    final paymentMethod = support is Map ? support['paymentMethod'] : null;
     final checkout = support is Map ? support['checkout'] : null;
     return SubscriptionEntitlement(
       allowed: entitlement.allowed,
@@ -1949,7 +1963,11 @@ class BackendService {
       }
       final leaseToken = data['offline_lease'];
       final leaseExpiresAt = data['offline_lease_expires_at'];
-      if (localId is int && leaseToken is String && leaseToken.isNotEmpty && leaseExpiresAt is String && leaseExpiresAt.isNotEmpty) {
+      if (localId is int &&
+          leaseToken is String &&
+          leaseToken.isNotEmpty &&
+          leaseExpiresAt is String &&
+          leaseExpiresAt.isNotEmpty) {
         await StaffCredentialCache.storeOfflineLease(
           localId,
           token: leaseToken,
@@ -1959,7 +1977,8 @@ class BackendService {
       if (data.isEmpty) {
         diagnostics['classification'] = 'empty_response';
         if (kDebugMode) {
-          debugPrint('[StaffAuth] empty response body (status ${response.statusCode})');
+          debugPrint(
+              '[StaffAuth] empty response body (status ${response.statusCode})');
         }
         return <String, dynamic>{
           '_emptyResponse': true,
@@ -1997,7 +2016,10 @@ class BackendService {
             'data=${diagnostics['responseData']}',
           );
         }
-        return <String, dynamic>{'_rejected': true, '_diagnostics': diagnostics};
+        return <String, dynamic>{
+          '_rejected': true,
+          '_diagnostics': diagnostics
+        };
       }
       diagnostics['classification'] = 'transport_failure';
       if (kDebugMode) {
@@ -2176,7 +2198,8 @@ class BackendService {
     if (data is Map && data['devices'] is List) {
       return (data['devices'] as List)
           .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e.map((k, v) => MapEntry(k.toString(), v))))
+          .map((e) => Map<String, dynamic>.from(
+              e.map((k, v) => MapEntry(k.toString(), v))))
           .toList();
     }
     return const <Map<String, dynamic>>[];
@@ -2184,15 +2207,19 @@ class BackendService {
 
   static Future<void> revokeManagedDevice(String deviceId) async {
     await ensureInitialized();
-    await _dio.post('$backendUrl/tenant/devices/${Uri.encodeComponent(deviceId)}/revoke');
+    await _dio.post(
+        '$backendUrl/tenant/devices/${Uri.encodeComponent(deviceId)}/revoke');
   }
 
-  static Future<Map<String, dynamic>?> refreshManagedDeviceLease(String deviceId) async {
+  static Future<Map<String, dynamic>?> refreshManagedDeviceLease(
+      String deviceId) async {
     await ensureInitialized();
-    final response = await _dio.post('$backendUrl/tenant/devices/${Uri.encodeComponent(deviceId)}/lease');
+    final response = await _dio.post(
+        '$backendUrl/tenant/devices/${Uri.encodeComponent(deviceId)}/lease');
     final data = response.data;
     if (data is Map) {
-      return Map<String, dynamic>.from(data.map((k, v) => MapEntry(k.toString(), v)));
+      return Map<String, dynamic>.from(
+          data.map((k, v) => MapEntry(k.toString(), v)));
     }
     return null;
   }
@@ -2358,14 +2385,13 @@ class BackendService {
   }
 
   /// Enable/disable M-Pesa payments
-  static Future<void> setMpesaEnabled(bool enabled, {int? channelId}) async {
+  static Future<void> setMpesaEnabled(bool enabled) async {
     await ensureInitialized();
     final tid = await tenantId;
     if (tid == null) throw StateError('Shop is not linked to backend');
 
     await _dio.patch('$backendUrl/tenant/settings', data: {
       'mpesaEnabled': enabled,
-      if (channelId != null) 'payheroChannelId': channelId,
     });
   }
 
@@ -2393,6 +2419,51 @@ class BackendService {
       throw StateError('PayHero did not return a payment channel');
     }
     return id;
+  }
+
+  static Future<MpesaChannelConfiguration?> fetchMpesaChannel() async {
+    await ensureInitialized();
+    if (await tenantId == null) return null;
+    final response = await _dio.get('$backendUrl/tenant/mpesa/channel');
+    final data = response.data;
+    if (data is! Map) {
+      throw StateError('Backend returned an invalid M-Pesa channel response');
+    }
+    final channelIdValue = data['channelId'];
+    final channelType = data['channelType'];
+    final shortCode = data['shortCode'];
+    final accountNumber = data['accountNumber'];
+    final enabled = data['mpesaEnabled'];
+    if (enabled is! bool ||
+        (channelIdValue != null &&
+            (channelIdValue is! num ||
+                !channelIdValue.isFinite ||
+                channelIdValue <= 0 ||
+                channelIdValue.truncateToDouble() != channelIdValue)) ||
+        (channelType != null &&
+            !const {'till', 'paybill', 'bank'}.contains(channelType)) ||
+        (shortCode != null && shortCode is! String) ||
+        (accountNumber != null && accountNumber is! String)) {
+      throw StateError('Backend returned an invalid M-Pesa channel response');
+    }
+    return MpesaChannelConfiguration(
+      mpesaEnabled: enabled,
+      channelId: (channelIdValue as num?)?.toInt(),
+      channelType: channelType as String?,
+      shortCode: shortCode as String?,
+      accountNumber: accountNumber as String?,
+    );
+  }
+
+  static Future<void> removeMpesaChannel() async {
+    await ensureInitialized();
+    if (await tenantId == null) {
+      throw StateError('Shop is not linked to backend');
+    }
+    final response = await _dio.delete('$backendUrl/tenant/mpesa/channel');
+    if (response.data is! Map || response.data['removed'] != true) {
+      throw StateError('Backend did not confirm M-Pesa channel removal');
+    }
   }
 
   /// Enable/disable eTIMS flag
@@ -4625,6 +4696,7 @@ class BackendService {
     required String staffName,
     String? customerName,
     String? staffProfileId,
+    String? operationId,
   }) async {
     await ensureInitialized();
 
@@ -4634,6 +4706,7 @@ class BackendService {
       'staff_name': staffName,
       if (staffProfileId != null) 'staff_profile_id': staffProfileId,
       if (customerName != null) 'customer_name': customerName,
+      if (operationId != null) 'operation_id': operationId,
     });
 
     final reference = result.data['reference'];
@@ -4652,6 +4725,7 @@ class BackendService {
     required String staffName,
     String? customerName,
     String? staffProfileId,
+    String? operationId,
   }) async {
     await ensureInitialized();
     final response = await _dio.post('$backendUrl/payments/qr', data: {
@@ -4659,6 +4733,7 @@ class BackendService {
       'staff_name': staffName,
       if (staffProfileId != null) 'staff_profile_id': staffProfileId,
       if (customerName != null) 'customer_name': customerName,
+      if (operationId != null) 'operation_id': operationId,
     });
     final data = response.data;
     if (data is! Map ||
@@ -4688,13 +4763,28 @@ class BackendService {
           queryParameters: {'reference': reference},
         );
 
-        final status = result.data['status'];
-        if (status == 'SUCCESS') return PaymentOutcome.success;
-        if (status == 'FAILED') return PaymentOutcome.failed;
+        final data = result.data;
+        if (data is! Map) return PaymentOutcome.statusUnavailable;
+        final outcome = paymentOutcomeFromProviderStatus(data['status']);
+        if (outcome != null) return outcome;
 
         await Future.delayed(const Duration(seconds: 3));
-      } catch (e) {
-        // Continue polling on network errors
+      } on DioException catch (error) {
+        final statusCode = error.response?.statusCode;
+        final authOutcome = paymentOutcomeFromHttpStatus(statusCode);
+        if (authOutcome != null) return authOutcome;
+        final retryableStatus =
+            statusCode == 429 || (statusCode != null && statusCode >= 500);
+        final retryableNetworkFailure = statusCode == null &&
+            const {
+              DioExceptionType.connectionTimeout,
+              DioExceptionType.sendTimeout,
+              DioExceptionType.receiveTimeout,
+              DioExceptionType.connectionError,
+            }.contains(error.type);
+        if (!retryableStatus && !retryableNetworkFailure) {
+          return PaymentOutcome.statusUnavailable;
+        }
         await Future.delayed(const Duration(seconds: 3));
       }
     }
@@ -4850,7 +4940,31 @@ class QrPaymentSession {
   final String qrCode;
 }
 
-enum PaymentOutcome { success, failed, timedOut }
+enum PaymentOutcome {
+  success,
+  failed,
+  timedOut,
+  reviewRequired,
+  sessionExpired,
+  accessDenied,
+  statusUnavailable,
+}
+
+class MpesaChannelConfiguration {
+  const MpesaChannelConfiguration({
+    required this.mpesaEnabled,
+    required this.channelId,
+    required this.channelType,
+    required this.shortCode,
+    required this.accountNumber,
+  });
+
+  final bool mpesaEnabled;
+  final int? channelId;
+  final String? channelType;
+  final String? shortCode;
+  final String? accountNumber;
+}
 
 /// What the backend returned for an issued tax receipt.
 class EtimsIssueResult {

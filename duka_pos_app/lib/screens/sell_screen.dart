@@ -17,6 +17,7 @@ import '../services/analytics.dart';
 import '../services/roles.dart';
 import '../services/printer/cash_drawer_service.dart';
 import '../utils/crypto_utils.dart';
+import '../utils/error_utils.dart';
 import '../services/audit_actor.dart';
 import '../services/backend_service.dart';
 import '../services/receipt_actions_service.dart';
@@ -76,6 +77,7 @@ class _SellScreenState extends State<SellScreen>
 
   final _wedgeFocus = FocusNode(skipTraversal: true);
   List<Product> _products = [];
+  Map<int, int> _costPoolRemainingMinor = <int, int>{};
 
   VariantCatalogue _variants = VariantCatalogue.empty;
 
@@ -204,6 +206,7 @@ class _SellScreenState extends State<SellScreen>
         db.getShotCups(),
         db.topProducts(since: dayStart, limit: 10),
         db.getSales(since: dayStart, limit: 20, withItems: true),
+        db.getCostPools(),
       ]);
     } on Object {
       // The read failed. Without this the loader's future ended in an
@@ -222,11 +225,20 @@ class _SellScreenState extends State<SellScreen>
     final cups = results[2] as List<ShotCup>;
     final topRows = results[3] as List<ProductSalesRow>;
     final recentSales = results[4] as List<Sale>;
+    final poolRows = results[5] as List<Map<String, dynamic>>;
+    final poolBalances = <int, int>{
+      for (final pool in poolRows)
+        (pool['id'] as num).toInt(): ((pool['invested_minor'] as num).toInt() -
+                (pool['recovered_minor'] as num).toInt())
+            .clamp(0, 0x7fffffffffffffff)
+            .toInt(),
+    };
     final liveIds = products.where((p) => p.active).map((p) => p.id).toSet();
     final shots = cups.where((c) => liveIds.contains(c.productId)).toList();
     if (mounted) {
       setState(() {
         _products = products.where((p) => p.active).toList();
+        _costPoolRemainingMinor = poolBalances;
         _variants = catalogue;
         _shots = shots;
         _loading = false;
@@ -372,15 +384,34 @@ class _SellScreenState extends State<SellScreen>
       return;
     }
 
-    _announceStatus(
-        'Payment $reference is still unconfirmed. Do not charge again.');
+    if (outcome == PaymentOutcome.sessionExpired ||
+        outcome == PaymentOutcome.accessDenied ||
+        outcome == PaymentOutcome.statusUnavailable) {
+      final message = switch (outcome) {
+        PaymentOutcome.sessionExpired =>
+          'Your session expired while checking payment $reference. Sign in again before checking it. Do not charge again.',
+        PaymentOutcome.accessDenied =>
+          'You are not authorized to check payment $reference. Ask an administrator to reconcile it. Do not charge again.',
+        _ =>
+          'Payment status for $reference could not be checked. Try again when the service is available. Do not charge again.',
+      };
+      _announceStatus(message);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+      return;
+    }
+
+    final message = outcome == PaymentOutcome.reviewRequired
+        ? 'Payment $reference requires reconciliation. Do not charge again.'
+        : 'Payment $reference is still unconfirmed. Do not charge again.';
+    _announceStatus(message);
     final checkAgain = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(AppLocalizations.of(context).sellPaymentUnconfirmedTitle),
         content: Text(
-            'Reference $reference${amount is num ? ' for ${formatMoney(Money.fromMajor(amount))}' : ''} has not been confirmed by the provider. '
-            'Do not charge the customer again. Check again now, or record the sale later from Reports.'),
+            'Reference $reference${amount is num ? ' for ${formatMoney(Money.fromMajor(amount))}' : ''} ${outcome == PaymentOutcome.reviewRequired ? 'requires reconciliation before it can be recorded as paid.' : 'has not been confirmed by the provider.'} '
+            'Do not charge the customer again. Check again later or contact support.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -693,8 +724,41 @@ class _SellScreenState extends State<SellScreen>
       sellsAsVariants: sellsAsVariants,
       variantCount: variants.length,
       cheapestPrice: fromPrice,
-      canTap: !product.trackStock || product.stockQty > 0 || sellsAsVariants,
+      costPoolRemainingMinor: product.costPoolId == null
+          ? null
+          : ((_costPoolRemainingMinor[product.costPoolId] ?? 0) -
+                  _costInCartForPool(product.costPoolId!))
+              .clamp(0, 0x7fffffffffffffff)
+              .toInt(),
+      canTap: !product.trackStock ||
+          product.stockQty > 0 ||
+          sellsAsVariants ||
+          product.costPoolId != null,
     );
+  }
+
+  int _costInCartForPool(int poolId) => _cart
+      .where((CartItem item) => item.product.costPoolId == poolId)
+      .fold<int>(
+        0,
+        (int sum, CartItem item) =>
+            sum + item.unitCost.times(item.qty).minorUnits,
+      );
+
+  double _availableUnitsFor(Product product) {
+    final int? poolId = product.costPoolId;
+    if (poolId == null) return product.stockQty - _cartUnitsFor(product);
+    final int unitCostMinor = product.costPrice.minorUnits;
+    if (unitCostMinor <= 0) return 0;
+    final int remainingPoolMinor =
+        (_costPoolRemainingMinor[poolId] ?? 0) - _costInCartForPool(poolId);
+    final double poolBackedUnits =
+        (remainingPoolMinor > 0 ? remainingPoolMinor : 0) / unitCostMinor;
+    if (!product.trackStock || product.stockQty <= 0) {
+      return poolBackedUnits;
+    }
+    final double countedStock = product.stockQty - _cartUnitsFor(product);
+    return countedStock < poolBackedUnits ? countedStock : poolBackedUnits;
   }
 
   Future<void> _addToCart(Product product) async {
@@ -716,6 +780,18 @@ class _SellScreenState extends State<SellScreen>
         product.sellsWhole ||
         product.halfPrice != null ||
         product.quarterPrice != null;
+    if (product.costPoolId != null &&
+        !sellsAsVariants &&
+        product.costPrice.isZero) {
+      _say(l10n.sellCostPoolNeedsUnitCost);
+      return;
+    }
+    if (product.costPoolId != null &&
+        !sellsAsVariants &&
+        _availableUnitsFor(product) <= 0) {
+      _say(l10n.sellCostPoolUnavailable);
+      return;
+    }
     if (!hasSomethingToSell) {
       _portionSheetOpen = false;
       _say(l10n.sellNoPriceSetYet);
@@ -736,7 +812,7 @@ class _SellScreenState extends State<SellScreen>
           variants: variants,
           sellsAsVariants: sellsAsVariants,
           shots: shots,
-          remainingStock: product.stockQty - _cartUnitsFor(product),
+          remainingStock: _availableUnitsFor(product),
           onChoose: (choice) => Navigator.of(sheetContext).pop(choice),
         ),
       );
@@ -827,9 +903,15 @@ class _SellScreenState extends State<SellScreen>
       return;
     }
     if (pack != null) {
-      final available = current.stockQty - _cartUnitsFor(current);
+      if (current.costPoolId != null && pack.unitCost.minorUnits <= 0) {
+        _say(AppLocalizations.of(context).sellCostPoolNeedsUnitCost);
+        return;
+      }
+      final available = _availableUnitsFor(current);
       if (available < qty) {
-        _say(AppLocalizations.of(context).sellNotEnoughLeft(current.name));
+        _say(current.costPoolId != null
+            ? AppLocalizations.of(context).sellCostPoolUnavailable
+            : AppLocalizations.of(context).sellNotEnoughLeft(current.name));
         return;
       }
       final existing = _cart.where((c) => c.pack?.id == pack.id);
@@ -849,6 +931,10 @@ class _SellScreenState extends State<SellScreen>
       return;
     }
     if (shotCup != null) {
+      if (current.costPoolId != null && current.costPrice.isZero) {
+        _say(AppLocalizations.of(context).sellCostPoolNeedsUnitCost);
+        return;
+      }
       // A shot comes out of the parent bottle, so it is checked and reserved
       // against the parent — not against a count of its own, which it has none
       // of. The amount reserved is the poured volume as a fraction of the
@@ -865,9 +951,11 @@ class _SellScreenState extends State<SellScreen>
       final needed = servingMl <= 0 || current.bottleMl <= 0
           ? 0.0
           : (servingMl / current.bottleMl).clamp(0.0, 1.0);
-      final available = current.stockQty - _cartUnitsFor(current);
+      final available = _availableUnitsFor(current);
       if (available < needed) {
-        _say(AppLocalizations.of(context).sellNotEnoughForShot(current.name));
+        _say(current.costPoolId != null
+            ? AppLocalizations.of(context).sellCostPoolUnavailable
+            : AppLocalizations.of(context).sellNotEnoughForShot(current.name));
         return;
       }
       // Merges on the cup, not on the product: a 30 ml shot and a 45 ml shot of
@@ -889,9 +977,15 @@ class _SellScreenState extends State<SellScreen>
       });
       return;
     }
+    if (current.costPoolId != null && current.costPrice.isZero) {
+      _say(AppLocalizations.of(context).sellCostPoolNeedsUnitCost);
+      return;
+    }
     final needed = current.fractionFor(portion);
-    if (current.stockQty - _cartUnitsFor(current) < needed) {
-      _say(AppLocalizations.of(context).sellNotEnoughLeft(current.name));
+    if (_availableUnitsFor(current) < needed) {
+      _say(current.costPoolId != null
+          ? AppLocalizations.of(context).sellCostPoolUnavailable
+          : AppLocalizations.of(context).sellNotEnoughLeft(current.name));
       return;
     }
     final existing = _cart.where((c) =>
@@ -1087,7 +1181,9 @@ class _SellScreenState extends State<SellScreen>
     }
     final stockFailure = productUnits.entries.any((entry) {
           final product = _products.firstWhere((p) => p.id == entry.key);
-          return entry.value > product.stockQty + 1e-9;
+          final usesPoolWithoutCount =
+              product.costPoolId != null && product.stockQty <= 0;
+          return !usesPoolWithoutCount && entry.value > product.stockQty + 1e-9;
         }) ||
         variantUnits.entries.any((entry) {
           final variant = _variants.byId(entry.key);
@@ -1900,9 +1996,11 @@ class _SellScreenState extends State<SellScreen>
     // Prevent double-submit
     setState(() => _processingPayment = true);
 
+    int? committedSaleId;
     try {
       final items = _cart.map(_saleItemFor).toList();
       final openShift = await DatabaseHelper.instance.getAnyOpenShift();
+      final Money saleTotal = _total;
 
       final saleId = await DatabaseHelper.instance.recordSale(
         staffName: state.currentStaffName ?? 'Unknown',
@@ -1920,6 +2018,17 @@ class _SellScreenState extends State<SellScreen>
         tenders: tenders,
         shiftId: openShift?.id,
       );
+      committedSaleId = saleId;
+      if (mounted) {
+        _announceStatus(AppLocalizations.of(context).sellCompleteTitle);
+        setState(() {
+          _cart.clear();
+          _heldCustomerId = null;
+          _rebuildReservations();
+        });
+        _loadProducts();
+      }
+
       if (paymentMethod == 'mpesa_till' &&
           paymentReference != null &&
           paymentReference.isNotEmpty) {
@@ -1944,70 +2053,95 @@ class _SellScreenState extends State<SellScreen>
               claimedBy: state.currentStaffName,
             ));
           }
-        } catch (error) {
+        } catch (error, stackTrace) {
           // The sale is already committed. Persist the ownership work instead
           // of silently losing it: offline transport failures retry, while a
           // server 409 is a genuine cross-till dispute.
           final disputed =
               error is DioException && error.response?.statusCode == 409;
-          await DatabaseHelper.instance.recordIncomingPaymentClaim(
-            remoteId: paymentReference,
-            saleId: saleId,
-            saleUuid: 'local-sale-$saleId',
-            status: disputed ? 'disputed' : 'pending',
-            reason: disputed
-                ? 'This payment was claimed by another till.'
-                : 'Claim is waiting for a connection.',
-          );
-          if (disputed) {
-            await DatabaseHelper.instance.markIncomingPaymentClaimDisputed(
-              paymentReference,
-              'This payment was claimed by another till.',
+          try {
+            await DatabaseHelper.instance.recordIncomingPaymentClaim(
+              remoteId: paymentReference,
+              saleId: saleId,
+              saleUuid: 'local-sale-$saleId',
+              status: disputed ? 'disputed' : 'pending',
+              reason: disputed
+                  ? 'This payment was claimed by another till.'
+                  : 'Claim is waiting for a connection.',
+            );
+            if (disputed) {
+              await DatabaseHelper.instance.markIncomingPaymentClaimDisputed(
+                paymentReference,
+                'This payment was claimed by another till.',
+              );
+            }
+          } catch (queueError, queueStackTrace) {
+            debugPrint(
+              'Sale $saleId was recorded, but its incoming-payment claim '
+              'could not be queued: $queueError\n$queueStackTrace',
             );
           }
+          debugPrint(
+            'Incoming-payment claim for sale $saleId needs follow-up: '
+            '$error\n$stackTrace',
+          );
         }
       }
       // Every sale is attributed. The ledger records THAT money changed hands;
       // the log records WHO rang it, which is the question a variance review
       // asks and the sales table answers only by a display name.
-      await recordActionAudit(
-        state,
-        action: AuditAction.saleRecorded,
-        entity: AuditEntity.sale,
-        entityId: 'id-$saleId',
-        detail: '${items.length} line(s), $paymentMethod',
-      );
-      final drawerEnabled = await DatabaseHelper.instance
-              .getSetting(DatabaseHelper.settingCashDrawerEnabled) ==
-          '1';
-      final drawerOnCashSale = await DatabaseHelper.instance
-              .getSetting(DatabaseHelper.settingCashDrawerOnCashSale) ==
-          '1';
-      if (paymentMethod == 'cash' && drawerEnabled && drawerOnCashSale) {
-        final openShift = await DatabaseHelper.instance.getAnyOpenShift();
-        final db = DatabaseHelper.instance;
-        final opened = await CashDrawerService().open(
-          pin: int.tryParse(
-                  await db.getSetting(DatabaseHelper.settingCashDrawerPin) ??
-                      '') ??
-              0,
-          onMs: int.tryParse(
-                  await db.getSetting(DatabaseHelper.settingCashDrawerOnMs) ??
-                      '') ??
-              50,
-          offMs: int.tryParse(
-                  await db.getSetting(DatabaseHelper.settingCashDrawerOffMs) ??
-                      '') ??
-              500,
+      try {
+        await recordActionAudit(
+          state,
+          action: AuditAction.saleRecorded,
+          entity: AuditEntity.sale,
+          entityId: 'id-$saleId',
+          detail: '${items.length} line(s), $paymentMethod',
         );
-        await db.recordDrawerEvent(
-          uuid: generateUuid(),
-          shiftId: openShift?.id,
-          eventType: 'sale',
-          saleId: saleId,
-          staffId: staffId,
-          staffName: state.currentStaffName ?? 'Unknown',
-          success: opened,
+      } catch (error, stackTrace) {
+        debugPrint(
+          'Sale $saleId was recorded, but its audit entry failed: '
+          '$error\n$stackTrace',
+        );
+      }
+
+      try {
+        final drawerEnabled = await DatabaseHelper.instance
+                .getSetting(DatabaseHelper.settingCashDrawerEnabled) ==
+            '1';
+        final drawerOnCashSale = await DatabaseHelper.instance
+                .getSetting(DatabaseHelper.settingCashDrawerOnCashSale) ==
+            '1';
+        if (paymentMethod == 'cash' && drawerEnabled && drawerOnCashSale) {
+          final db = DatabaseHelper.instance;
+          final opened = await CashDrawerService().open(
+            pin: int.tryParse(
+                    await db.getSetting(DatabaseHelper.settingCashDrawerPin) ??
+                        '') ??
+                0,
+            onMs: int.tryParse(
+                    await db.getSetting(DatabaseHelper.settingCashDrawerOnMs) ??
+                        '') ??
+                50,
+            offMs: int.tryParse(await db
+                        .getSetting(DatabaseHelper.settingCashDrawerOffMs) ??
+                    '') ??
+                500,
+          );
+          await db.recordDrawerEvent(
+            uuid: generateUuid(),
+            shiftId: openShift?.id,
+            eventType: 'sale',
+            saleId: saleId,
+            staffId: staffId,
+            staffName: state.currentStaffName ?? 'Unknown',
+            success: opened,
+          );
+        }
+      } catch (error, stackTrace) {
+        debugPrint(
+          'Sale $saleId was recorded, but cash-drawer follow-up failed: '
+          '$error\n$stackTrace',
         );
       }
 
@@ -2016,23 +2150,7 @@ class _SellScreenState extends State<SellScreen>
       // which a crash sold a bottle and kept the count.
 
       if (mounted) {
-        // The sale's total, captured BEFORE the cart is cleared.
-        //
-        // `_total` is a getter over the cart, so reading it after the clear
-        // answers "KSh 0" — and the success sheet and the popup both did
-        // exactly that: the change line was right (captured first) while the
-        // amount above it read zero. The number the cashier is shown is the
-        // number the customer just paid, so it is taken once, here, and
-        // carried to every surface that reports this sale.
-        final Money saleTotal = _total;
-        _announceStatus('Sale recorded: ${formatMoney(saleTotal)}');
         final Money change = amountTendered - saleTotal;
-        setState(() {
-          _cart.clear();
-          _heldCustomerId = null;
-          _rebuildReservations();
-        });
-        _loadProducts(); // Refresh stock
         if (!mounted) return;
         // CASH gets the full screen. Everything else gets a popup.
         //
@@ -2065,14 +2183,23 @@ class _SellScreenState extends State<SellScreen>
       // able to fail the checkout it is reporting on — a till that has taken the
       // money has done its job whether or not paper or a KRA receipt follows.
       unawaited(_afterSale(saleId, etimsEnabled: etimsEnabled));
-    } catch (e) {
-      if (mounted) {
-        _announceStatus(
-            'Sale could not be completed. Check stock and try again.');
+    } catch (error, stackTrace) {
+      if (committedSaleId != null) {
+        debugPrint(
+          'Sale $committedSaleId was recorded, but its confirmation failed: '
+          '$error\n$stackTrace',
+        );
+      } else {
+        debugPrint('Sale could not be recorded: $error\n$stackTrace');
+      }
+      if (mounted && committedSaleId == null) {
+        final message = ErrorUtils.saleFailureMessage(
+          AppLocalizations.of(context),
+          error,
+        );
+        _announceStatus(message);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(AppLocalizations.of(context)
-                  .couldnTCompleteTheSaleCheckStockAndTryAgain)),
+          SnackBar(content: Text(message)),
         );
       }
     } finally {
@@ -2486,6 +2613,7 @@ class _SellScreenState extends State<SellScreen>
       final useQr = result['mode'] == 'qr';
       final String reference;
       String? qrCode;
+      final operationId = 'DUKA-${generateUuid()}';
       if (useQr) {
         final session = await BackendService.initiateQrPayment(
           items: paymentItems,
@@ -2493,6 +2621,7 @@ class _SellScreenState extends State<SellScreen>
           staffProfileId:
               state.isOwnerSession ? null : cashierProfile!.remoteId,
           customerName: result['customer'],
+          operationId: operationId,
         );
         reference = session.reference;
         qrCode = session.qrCode;
@@ -2504,6 +2633,7 @@ class _SellScreenState extends State<SellScreen>
           staffProfileId:
               state.isOwnerSession ? null : cashierProfile!.remoteId,
           customerName: result['customer'],
+          operationId: operationId,
         );
       }
 
@@ -2695,15 +2825,24 @@ class _SellScreenState extends State<SellScreen>
             await DatabaseHelper.instance.resolvePendingPayment(reference);
           }
           if (!mounted) return;
-          _announceStatus(outcome == PaymentOutcome.failed
-              ? 'M-Pesa payment failed.'
-              : 'M-Pesa payment timed out. Do not charge again.');
+          final message = switch (outcome) {
+            PaymentOutcome.failed => 'M-Pesa payment failed.',
+            PaymentOutcome.reviewRequired =>
+              'M-Pesa payment requires reconciliation. Do not charge again.',
+            PaymentOutcome.sessionExpired =>
+              'Your session expired while checking the M-Pesa payment. Sign in again; do not charge again.',
+            PaymentOutcome.accessDenied =>
+              'You are not authorized to check this M-Pesa payment. Ask an administrator; do not charge again.',
+            PaymentOutcome.statusUnavailable =>
+              'M-Pesa payment status is unavailable. Try again later; do not charge again.',
+            _ => 'M-Pesa payment timed out. Do not charge again.',
+          };
+          _announceStatus(message);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
                 content: Text(outcome == PaymentOutcome.failed
                     ? 'Payment failed - customer cancelled or insufficient funds'
-                    : 'Payment timed out - do not charge again. '
-                        'Reference $reference is saved and will be reconciled before another payment.')),
+                    : '$message Reference $reference is saved and will be reconciled before another payment.')),
           );
         }
       }

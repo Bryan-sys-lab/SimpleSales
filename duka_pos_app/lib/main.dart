@@ -272,7 +272,7 @@ class _ThemedApp extends StatelessWidget {
               ShopScreenBackground(
             brightness: brightness,
             colors: colors,
-            isShopScreen: state.isSignedIn,
+            isShopScreen: true,
             child: child ?? const SizedBox.shrink(),
           ),
         );

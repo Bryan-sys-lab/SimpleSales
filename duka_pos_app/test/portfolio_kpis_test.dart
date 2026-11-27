@@ -50,6 +50,7 @@ void main() {
         'total': 1250,
         'profit': 300,
         'expensesMinor': 80,
+        'taxableMinor': 600,
         'count': 2,
       },
       'paymentMix': <Map<String, dynamic>>[
@@ -67,6 +68,7 @@ void main() {
     expect(summary.totals.totalMinor, 1250);
     expect(summary.totals.averageMinor, 625);
     expect(summary.totals.expensesMinor, 80);
+    expect(summary.totals.cogsMinor, 300);
     expect(summary.payments.single.salesMinor, 1000);
     expect(summary.days.single.day, '2026-10-24');
     expect(summary.days.single.salesMinor, 1250);

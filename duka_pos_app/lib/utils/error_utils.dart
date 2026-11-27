@@ -136,6 +136,23 @@ abstract final class ErrorUtils {
     return messageFor(l10n, PosFailureCode.unknown);
   }
 
+  /// A sale-specific message that distinguishes inventory and cost-pool
+  /// failures without exposing database exception details.
+  static String saleFailureMessage(AppLocalizations l10n, Object error) {
+    if (error is PosFailure) return messageFor(l10n, error.code);
+
+    final String text = error.toString().toLowerCase();
+    if (text.contains('stock') || text.contains('inventory')) {
+      return l10n.errorInsufficientStock;
+    }
+    if (text.contains('cost pool') ||
+        text.contains('pool remaining cost') ||
+        text.contains('cost-pool')) {
+      return l10n.sellCostPoolUnavailable;
+    }
+    return l10n.couldnTCompleteTheSaleCheckStockAndTryAgain;
+  }
+
   /// Reports a failure.
   ///
   /// A SNACKBAR, and only ever for a failure the user can see has been handled:

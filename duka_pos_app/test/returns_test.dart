@@ -178,6 +178,74 @@ void main() {
       expect(returns.single.total, Money.fromMajor(200));
     });
 
+    test('a return reverses only the pool recovery actually allocated', () async {
+      final int poolId = await DatabaseHelper.instance.createCostPool(
+        uuid: 'return-partial-pool-allocation',
+        name: 'Partially funded pool',
+        poolType: 'lot',
+        initialCost: Money.fromMinor(200),
+      );
+      final int productId =
+          await DatabaseHelper.instance.upsertProduct(Product(
+        name: 'Pooled return item',
+        category: 'General',
+        costPrice: Money.fromMinor(200),
+        sellPrice: Money.fromMinor(500),
+        stockQty: 1,
+        reorderLevel: 0,
+        costPoolId: poolId,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+      await DatabaseHelper.instance.recordSale(
+        staffName: 'Amina',
+        staffId: 7,
+        items: <SaleItem>[
+          SaleItem(
+            saleId: 0,
+            productId: productId,
+            productName: 'Pooled return item',
+            qty: 1,
+            unitPrice: Money.fromMinor(500),
+            unitCost: Money.fromMinor(200),
+          ),
+        ],
+      );
+      final Sale sale = (await DatabaseHelper.instance.getSales()).single;
+      final db = await DatabaseHelper.instance.database;
+      await db.update(
+        'sale_pool_allocations',
+        <String, Object?>{'amount_minor': 100},
+        where: 'sale_id = ?',
+        whereArgs: <Object?>[sale.id],
+      );
+      await db.update(
+        'cost_pools',
+        <String, Object?>{'recovered_minor': 100},
+        where: 'id = ?',
+        whereArgs: <Object?>[poolId],
+      );
+      await openShift();
+
+      final int returnId = await DatabaseHelper.instance.recordReturn(
+        sale: sale,
+        lines: <ReturnLineDraft>[
+          ReturnLineDraft(saleItemId: sale.items.single.id!, qty: 1),
+        ],
+        reason: 'Pool allocation regression',
+        staffName: 'Amina',
+        staffId: 7,
+      );
+
+      final reversals = await (await DatabaseHelper.instance.database).query(
+        'sale_pool_allocation_reversals',
+        where: 'return_id = ?',
+        whereArgs: <Object?>[returnId],
+      );
+      expect(reversals.single['amount_minor'], 100);
+      expect((await DatabaseHelper.instance.getCostPools()).single['recovered_minor'],
+          0);
+    });
+
     test('a part of a line refunds that part', () async {
       final int productId = await seedProduct();
       final Sale sale =

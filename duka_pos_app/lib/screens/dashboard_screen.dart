@@ -224,16 +224,17 @@ class _DashboardScreenState extends State<DashboardScreen>
       final DateTime tomorrow = dayStart.add(const Duration(days: 1));
 
       final List<Product> products = await db.getProducts();
+      final List<Map<String, dynamic>> costPools = await db.getCostPools();
       final List<Product> tanks =
           products.where((p) => p.category == 'Tanks' && p.active).toList();
       final int totalProducts = products.where((p) => p.active).length;
       final int outOfStockCount =
           products.where((p) => p.active && p.isOutOfStock).length;
       final Money stockValue = Money.fromMinor(
-        products.where((p) => p.active).fold<int>(
-              0,
-              (sum, p) => sum + (p.stockQty * p.costPrice.minorUnits).round(),
-            ),
+        inventoryStockValueMinor(
+          products: products,
+          costPools: costPools,
+        ),
       );
       // Variant-level low stock for fashion: a variant is low when its own
       // available count is at or below its reorder level.

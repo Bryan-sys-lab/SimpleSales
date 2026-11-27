@@ -402,8 +402,14 @@ class SalesRepository {
         trackExpiryByProduct[productId] =
             (current.first['track_expiry'] as num?)?.toInt() == 1;
         final kind = current.first['item_kind'] as String? ?? 'unknown';
-        stockableByProduct[productId] = kind != 'service' && kind != 'fee' &&
-            ((current.first['track_stock'] as num?)?.toInt() ?? 1) == 1;
+        final linkedPoolId =
+            costPoolId ?? costPoolByProduct[productId];
+        final poolBackedWithoutQuantity =
+            linkedPoolId != null && stockByProduct[productId] == 0;
+        stockableByProduct[productId] = kind != 'service' &&
+            kind != 'fee' &&
+            ((current.first['track_stock'] as num?)?.toInt() ?? 1) == 1 &&
+            !poolBackedWithoutQuantity;
       }
 
       final variantRowsById = <int, Map<String, dynamic>>{};

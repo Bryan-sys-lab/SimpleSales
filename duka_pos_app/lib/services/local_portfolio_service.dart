@@ -166,9 +166,23 @@ class LocalPortfolioService {
       var stockValueMinor = 0;
       try {
         final stockRows = await db.rawQuery('''
-          SELECT COALESCE(SUM(stock_qty * cost_price), 0) AS stock_value
-            FROM products
-           WHERE active = 1
+          SELECT
+            COALESCE((
+              SELECT SUM(p.stock_qty * p.cost_price)
+                FROM products p
+               WHERE p.active = 1
+                 AND (p.cost_pool_id IS NULL OR NOT EXISTS (
+                   SELECT 1 FROM cost_pools cp WHERE cp.id = p.cost_pool_id
+                 ))
+            ), 0)
+            + COALESCE((
+              SELECT SUM(MAX(0, cp.invested_minor - cp.recovered_minor))
+                FROM cost_pools cp
+               WHERE EXISTS (
+                 SELECT 1 FROM products p
+                  WHERE p.cost_pool_id = cp.id AND p.active = 1
+               )
+            ), 0) AS stock_value
         ''');
         stockValueMinor =
             (stockRows.first['stock_value'] as num?)?.round() ?? 0;

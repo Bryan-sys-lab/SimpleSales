@@ -58,6 +58,7 @@ class ProductTileData {
     required this.variantCount,
     required this.cheapestPrice,
     required this.canTap,
+    this.costPoolRemainingMinor,
   });
 
   final Product product;
@@ -79,6 +80,9 @@ class ProductTileData {
   /// it is not something to tap.
   final bool canTap;
 
+  /// Remaining cost-group balance after the current cart is accounted for.
+  final int? costPoolRemainingMinor;
+
   /// The price line, exactly as the tile shows it.
   ///
   /// Shared with the grid, which measures this string to size the cell. Two
@@ -92,8 +96,20 @@ class ProductTileData {
   }
 
   /// The stock line, exactly as the tile shows it.
-  String stockLine(AppLocalizations l10n) =>
-      l10n.sellTileStockCount(stockText(product.stockQty));
+  String stockLine(AppLocalizations l10n) {
+    final int? poolBalance = costPoolRemainingMinor;
+    if (product.costPoolId == null || poolBalance == null) {
+      return l10n.sellTileStockCount(stockText(product.stockQty));
+    }
+    final String balance = formatMoney(Money.fromMinor(poolBalance));
+    if (product.stockQty <= 0) {
+      return l10n.sellTileCostPoolBalance(balance);
+    }
+    return l10n.sellTileStockAndCostPool(
+      balance,
+      stockText(product.stockQty),
+    );
+  }
 
   /// A stock count, as a cashier reads it.
   ///

@@ -10650,9 +10650,13 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     DateTime? since,
     DateTime? until,
     int? staffId,
+    bool includeUnverified = false,
   }) {
     final where = <String>[];
     final args = <Object?>[];
+    if (!includeUnverified) {
+      where.add('payment_verified = 1');
+    }
     if (since != null) {
       where.add('created_at >= ?');
       args.add(since.toIso8601String());
@@ -10686,13 +10690,15 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
            r.staff_id AS staff_id,
            r.total AS total,
            r.vat_total AS vat_minor,
+           s.payment_verified AS payment_verified,
            COALESCE((SELECT SUM(i.refund_minor - i.vat_minor -
                       CASE WHEN i.restock = 1
                            THEN CAST(ROUND(i.unit_cost * i.qty) AS INTEGER)
                            ELSE 0 END)
                      FROM sale_return_items i
                      WHERE i.return_id = r.id), 0) AS profit_minor
-    FROM sale_returns r''';
+    FROM sale_returns r
+    JOIN sales s ON s.id = r.sale_id''';
 
   /// The whole range reduced to one row: takings, profit, receipts, basket.
   ///
@@ -10812,6 +10818,12 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     ''', [...where.args, limit]);
     // What came back in the same range comes off each product, on the same
     // basis as the sales above, so a refunded line stops counting as a seller.
+    final returnWhere = _salesRangeWhere(
+      since: since,
+      until: until,
+      staffId: staffId,
+      includeUnverified: true,
+    );
     final returned = await (await database).rawQuery('''
       SELECT
         i.product_id AS product_id,
@@ -10822,9 +10834,11 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
           AS INTEGER) AS profit_minor
       FROM sale_return_items i
       JOIN sale_returns r ON r.id = i.return_id
-      ${where.clause}
+      ${returnWhere.clause}
+      ${returnWhere.clause.isEmpty ? 'WHERE' : 'AND'}
+        r.sale_id IN (SELECT id FROM sales WHERE payment_verified = 1)
       GROUP BY i.product_id
-    ''', where.args);
+    ''', returnWhere.args);
     final backByProduct = <int, Map<String, Object?>>{
       for (final row in returned) (row['product_id'] as num).toInt(): row,
     };

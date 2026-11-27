@@ -145,6 +145,31 @@ void main() {
       );
     });
 
+    test('sale errors identify stock and cost-pool failures without details',
+        () {
+      expect(
+        ErrorUtils.saleFailureMessage(
+          l10n,
+          StateError('Not enough stock for Product A'),
+        ),
+        l10n.errorInsufficientStock,
+      );
+      expect(
+        ErrorUtils.saleFailureMessage(
+          l10n,
+          StateError('That allocation exceeds the pool remaining cost'),
+        ),
+        l10n.sellCostPoolUnavailable,
+      );
+      expect(
+        ErrorUtils.saleFailureMessage(
+          l10n,
+          StateError('SQLite write failed at /private/shop.db'),
+        ),
+        l10n.couldnTCompleteTheSaleCheckStockAndTryAgain,
+      );
+    });
+
     test('Generic error fallback', () {
       expect(
         ErrorUtils.userMessage(l10n, Exception('Unknown error')),

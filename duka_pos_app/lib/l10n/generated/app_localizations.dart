@@ -1398,7 +1398,7 @@ abstract class AppLocalizations {
   /// No description provided for @sellCompletePaidOther.
   ///
   /// In en, this message translates to:
-  /// **'{method} Â· {amount}'**
+  /// **'{method} - {amount}'**
   String sellCompletePaidOther(Object amount, Object method);
 
   /// No description provided for @sellCompleteNext.
@@ -1765,8 +1765,32 @@ abstract class AppLocalizations {
   /// No description provided for @sellSaleNotRecordedNothingCharged.
   ///
   /// In en, this message translates to:
-  /// **'Couldn\'t record the sale. Nothing was charged â€” try again.'**
+  /// **'Couldn\'t record the sale. No payment was sent. Check stock and try again.'**
   String get sellSaleNotRecordedNothingCharged;
+
+  /// No description provided for @sellCostPoolUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Sale not recorded. The linked cost pool does not have enough remaining cost. Check its balance, then try again.'**
+  String get sellCostPoolUnavailable;
+
+  /// No description provided for @sellCostPoolNeedsUnitCost.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a unit cost to this item before selling it through its linked cost pool.'**
+  String get sellCostPoolNeedsUnitCost;
+
+  /// No description provided for @sellTileCostPoolBalance.
+  ///
+  /// In en, this message translates to:
+  /// **'Cost group available: {amount}'**
+  String sellTileCostPoolBalance(Object amount);
+
+  /// No description provided for @sellTileStockAndCostPool.
+  ///
+  /// In en, this message translates to:
+  /// **'{quantity} in stock · cost group {amount}'**
+  String sellTileStockAndCostPool(Object amount, Object quantity);
 
   /// No description provided for @sellSaleTotalLabel.
   ///
@@ -2845,7 +2869,7 @@ abstract class AppLocalizations {
   /// No description provided for @statusOnline.
   ///
   /// In en, this message translates to:
-  /// **'Online â€” syncing with the server.'**
+  /// **'Online - syncing with the server.'**
   String get statusOnline;
 
   /// No description provided for @importRepairedTitle.
@@ -8390,6 +8414,12 @@ abstract class AppLocalizations {
   /// **'Profit'**
   String get analyticsProfitLabel;
 
+  /// No description provided for @analyticsCogsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cost of goods sold (COGS)'**
+  String get analyticsCogsLabel;
+
   /// No description provided for @analyticsNetProfitLabel.
   ///
   /// In en, this message translates to:
@@ -10301,6 +10331,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Stock value'**
   String get inventoryStockValue;
+
+  /// No description provided for @inventoryLinkedCostGroupBalance.
+  ///
+  /// In en, this message translates to:
+  /// **'Linked cost group balance'**
+  String get inventoryLinkedCostGroupBalance;
 
   /// No description provided for @inventoryStockMovement.
   ///
@@ -12282,6 +12318,18 @@ abstract class AppLocalizations {
   /// **'Reconciled financial statement'**
   String get reportsReconciledFinancialStatement;
 
+  /// No description provided for @reportsDirectCost.
+  ///
+  /// In en, this message translates to:
+  /// **'Direct cost (COGS)'**
+  String get reportsDirectCost;
+
+  /// No description provided for @reportsOperatingExpenses.
+  ///
+  /// In en, this message translates to:
+  /// **'Operating expenses'**
+  String get reportsOperatingExpenses;
+
   /// No description provided for @reportsZReport.
   ///
   /// In en, this message translates to:
@@ -12429,7 +12477,7 @@ abstract class AppLocalizations {
   /// No description provided for @couldnTCompleteTheSaleCheckStockAndTryAgain.
   ///
   /// In en, this message translates to:
-  /// **'Couldnâ€™t complete the sale. Check stock and try again.'**
+  /// **'Couldn\'t complete the sale. Check stock and product cost, then try again.'**
   String get couldnTCompleteTheSaleCheckStockAndTryAgain;
 
   /// No description provided for @firstTenderRemainingIsPaidByTheSecondTender.

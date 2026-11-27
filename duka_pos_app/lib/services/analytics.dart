@@ -75,6 +75,9 @@ class DailyTotals {
   /// `SUM(profit)`. Integer minor units.
   final int profitMinor;
 
+  /// Cost of sold goods, derived from taxable revenue less gross profit.
+  int get cogsMinor => math.max(0, taxableMinor - profitMinor);
+
   /// `COUNT(*)`. Distinct receipts, not distinct line items.
   final int transactions;
 
@@ -176,6 +179,38 @@ int _intValue(Object? value) => switch (value) {
       final String v => int.tryParse(v) ?? 0,
       _ => 0,
     };
+
+/// Values ordinary stock at its unit cost and linked cost groups at their
+/// unrecovered balance. A linked group is counted once, not once per product.
+int inventoryStockValueMinor({
+  required Iterable<Product> products,
+  required Iterable<Map<String, dynamic>> costPools,
+}) {
+  final activeProducts = products.where((Product product) => product.active);
+  final poolsById = <int, Map<String, dynamic>>{
+    for (final pool in costPools)
+      if (pool['id'] is num) (pool['id'] as num).toInt(): pool,
+  };
+  final linkedPoolIds = activeProducts
+      .map((Product product) => product.costPoolId)
+      .whereType<int>()
+      .toSet();
+  var totalMinor = 0;
+  for (final product in activeProducts) {
+    if (product.costPoolId == null ||
+        !poolsById.containsKey(product.costPoolId)) {
+      totalMinor += product.stockValue.minorUnits;
+    }
+  }
+  for (final poolId in linkedPoolIds) {
+    final pool = poolsById[poolId];
+    if (pool == null) continue;
+    final invested = (pool['invested_minor'] as num?)?.toInt() ?? 0;
+    final recovered = (pool['recovered_minor'] as num?)?.toInt() ?? 0;
+    totalMinor += math.max(0, invested - recovered);
+  }
+  return totalMinor;
+}
 
 // ---------------------------------------------------------------------------
 // Per-product

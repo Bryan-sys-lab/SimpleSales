@@ -185,8 +185,7 @@ class Product {
   final bool active;
   final String updatedAt;
   final String? imagePath;
-  final String?
-      remoteId; // Supabase products.id, once synced — see backend_service.dart
+  final String? remoteId; // Backend product ID after sync.
 
   /// Where this product's photograph lives, relative to the documents directory.
   ///
@@ -270,7 +269,11 @@ class Product {
       : ((sellPrice.minorUnits - costPrice.minorUnits) / sellPrice.minorUnits) *
           100;
   double get availableStockQty => math.max(0.0, stockQty - reservedQty);
-  bool get isLow => trackStock && itemKind != 'service' && itemKind != 'fee' &&
+  Money get stockValue => costPrice.times(stockQty);
+  bool get isLow =>
+      trackStock &&
+      itemKind != 'service' &&
+      itemKind != 'fee' &&
       availableStockQty <= reorderLevel;
 
   /// Whether this product should ever be treated as out of stock.
@@ -492,7 +495,8 @@ class Product {
         unitMappingStatus: m['unit_mapping_status'] as String? ?? 'unknown',
         packQuantity: (m['pack_quantity'] as num?)?.toDouble(),
         packUnitCode: m['pack_unit_code'] as String?,
-        identityProvenance: m['identity_provenance'] as String? ?? 'system_derived',
+        identityProvenance:
+            m['identity_provenance'] as String? ?? 'system_derived',
         productUuid: m['product_uuid'] as String?,
       );
 

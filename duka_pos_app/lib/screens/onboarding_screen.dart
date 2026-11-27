@@ -153,7 +153,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final AppColors colors = AppColors.of(context);
 
     return Scaffold(
-      backgroundColor: colors.canvas,
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(

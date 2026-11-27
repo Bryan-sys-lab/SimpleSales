@@ -202,7 +202,9 @@ If this owner has (or plans to have) more than one shop location, that's a meani
 
 ## 9. New: backend, multi-tenancy, and M-Pesa (added this round)
 
-A real backend now exists (`duka_pos_backend/`, Supabase-based) implementing what was asked for: Row Level Security for tenant isolation (each shop's data is invisible to every other shop, enforced by Postgres itself, not app-level filtering), role-based access control (owner vs. staff permissions enforced by RLS policies, not just hidden UI), and M-Pesa payments via PayHero. This is real, deployable code — not a mockup — but it has never touched a live Supabase project or a real PayHero account, so it inherits the same "needs a real first run" caveat as the Flutter app, plus a few gaps specific to this addition:
+> **Status note (2026-11-27):** This historical section is superseded by the current [PayHero forensic audit](../SimpleSales-cloudflare/docs/PAYHERO_AUDIT.md). The active backend is a Cloudflare Worker with D1/Prisma and self-hosted OIDC; the legacy Supabase Edge Functions and migrations have been removed from the backend worktree. No production PayHero transaction or channel operation has been run.
+
+A real backend now exists (`duka_pos_backend/`, Cloudflare Worker + D1 + Prisma) implementing tenant-scoped authorization, role-based access control and M-Pesa payments via PayHero. The live PayHero account and settlement behavior have not been verified, so it remains subject to the blockers documented in the current audit:
 
 ### 9.1 Deploy and test against real accounts 🔴
 Nothing here has run against an actual Supabase project or PayHero merchant account. This is the direct equivalent of item 1.1 for the new backend half of the system — see the go-live checklist's new step 3.5.

@@ -355,17 +355,17 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
           : null;
       if (!requestIsCurrent()) return;
       final List<Product> products = results[4] as List<Product>;
+      final List<Map<String, dynamic>> pools =
+          results[11] as List<Map<String, dynamic>>;
       final Money stockValue = Money.fromMinor(
-        products.where((p) => p.active).fold<int>(
-              0,
-              (sum, p) => sum + (p.stockQty * p.costPrice.minorUnits).round(),
-            ),
+        inventoryStockValueMinor(
+          products: products,
+          costPools: pools,
+        ),
       );
       final List<Product> expiring = results[5] as List<Product>;
       final List<Product> expired = results[6] as List<Product>;
       final List<SlowMoverRow> slowMovers = results[7] as List<SlowMoverRow>;
-      final List<Map<String, dynamic>> pools =
-          results[11] as List<Map<String, dynamic>>;
       final ({int totalOwedMinor, int customerCount}) creditSummary =
           results[12] as ({int totalOwedMinor, int customerCount});
       final ({
@@ -1223,6 +1223,14 @@ class FinancialStatementCard extends StatelessWidget {
           'Net profit',
           formatMoney(Money.fromMinor(statement.netProfitMinor)),
           Icons.trending_up),
+      _StatementMetric(
+          AppLocalizations.of(context).reportsDirectCost,
+          formatMoney(Money.fromMinor(statement.directCostMinor)),
+          Icons.inventory_2_outlined),
+      _StatementMetric(
+          AppLocalizations.of(context).reportsOperatingExpenses,
+          formatMoney(Money.fromMinor(statement.operatingExpenseMinor)),
+          Icons.payments_outlined),
       _StatementMetric(
           'Cash flow',
           _signedMoney(statement.totals.netCashFlowMinor),

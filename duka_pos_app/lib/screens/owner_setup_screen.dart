@@ -347,7 +347,6 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
         widget.onCancel?.call();
       },
       child: Scaffold(
-        backgroundColor: colors.canvas,
         body: SafeArea(
           child: Center(
             child: ConstrainedBox(

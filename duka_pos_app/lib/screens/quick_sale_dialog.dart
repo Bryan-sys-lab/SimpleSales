@@ -7,6 +7,7 @@ import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
 import '../models/credit.dart';
 import '../utils/money.dart';
+import '../utils/error_utils.dart';
 import '../profile/shop_profile.dart';
 import '../services/app_state.dart';
 import '../services/roles.dart';
@@ -256,6 +257,7 @@ Future<int?> showQuickSaleDialog({
     return null;
   }
 
+  int? committedSaleId;
   try {
     final method = (result['method'] ?? 'cash') as String;
     final customerId = result['customerId'] as int?;
@@ -311,9 +313,13 @@ Future<int?> showQuickSaleDialog({
         customerDraft: method == 'credit' ? customerDraft : null,
         creditApprovedBy: creditApprovedBy,
       );
+      committedSaleId = saleId;
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Quick sale recorded')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(AppLocalizations.of(context).quickSaleRecorded),
+          ),
+        );
       }
       return saleId;
     }
@@ -343,29 +349,39 @@ Future<int?> showQuickSaleDialog({
       creditApprovedBy: creditApprovedBy,
       costPoolId: costPoolId,
     );
+    committedSaleId = saleId;
     if (context.mounted) {
       final committed = await db.getSaleById(saleId);
       if (!context.mounted || committed == null) return saleId;
+      final l10n = AppLocalizations.of(context);
+      final paymentLabel = switch (committed.paymentMethod) {
+        'cash' => l10n.sellCompletePaidCash,
+        'mpesa_till' || 'mpesa' => l10n.sellCompletePaidMpesa,
+        'card' => l10n.sellCompletePaidCard,
+        'bank_transfer' => l10n.sellCompletePaidBank,
+        'mobile_money' => l10n.sellCompletePaidMobileMoney,
+        _ => l10n.sellCompletePaidOtherGeneric,
+      };
       await showModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
         builder: (sheetContext) => SafeArea(
           child: SuccessView(
-            title: 'Sale recorded',
-            message: committed.paymentMethod,
+            title: l10n.sellCompleteTitle,
+            message: paymentLabel,
             amountLabel: formatMoney(committed.total),
             facts: <SuccessFact>[
               SuccessFact(
-                label: 'Paid',
+                label: l10n.sellCompleteFactPaid,
                 value: formatMoney(committed.amountTendered),
               ),
               SuccessFact(
-                label: 'Change',
+                label: l10n.sellCompleteFactChange,
                 value: formatMoney(committed.changeGiven),
               ),
             ],
             onNext: () => Navigator.pop(sheetContext),
-            nextLabel: 'Done',
+            nextLabel: l10n.sellCompleteNext,
             secondaryAction: Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -375,19 +391,19 @@ Future<int?> showQuickSaleDialog({
                   onPressed: () => ReceiptActionsService.instance
                       .shareTextReceipt(context, saleId),
                   icon: const Icon(Icons.share_outlined),
-                  label: const Text('Share receipt'),
+                  label: Text(l10n.shareReceipt),
                 ),
                 OutlinedButton.icon(
                   onPressed: () => ReceiptActionsService.instance
                       .sharePdfReceipt(context, saleId),
                   icon: const Icon(Icons.picture_as_pdf_outlined),
-                  label: const Text('Share PDF'),
+                  label: Text(l10n.sharePdf),
                 ),
                 OutlinedButton.icon(
                   onPressed: () => ReceiptActionsService.instance
                       .printReceipt(context, saleId),
                   icon: const Icon(Icons.print_outlined),
-                  label: const Text('Print receipt'),
+                  label: Text(l10n.printReceipt),
                 ),
               ],
             ),
@@ -396,10 +412,27 @@ Future<int?> showQuickSaleDialog({
       );
     }
     return saleId;
-  } catch (e) {
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+  } catch (error, stackTrace) {
+    if (committedSaleId != null) {
+      debugPrint(
+        'Quick sale $committedSaleId was recorded, but its confirmation '
+        'failed: $error\n$stackTrace',
+      );
+    } else {
+      debugPrint('Quick sale could not be recorded: $error\n$stackTrace');
     }
-    return null;
+    if (context.mounted) {
+      final l10n = AppLocalizations.of(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            committedSaleId == null
+                ? ErrorUtils.saleFailureMessage(l10n, error)
+                : l10n.quickSaleRecorded,
+          ),
+        ),
+      );
+    }
+    return committedSaleId;
   }
 }

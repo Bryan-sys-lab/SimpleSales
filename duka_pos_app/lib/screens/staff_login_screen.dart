@@ -490,7 +490,6 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
     final TextTheme type = AppTypography.of(context);
 
     return Scaffold(
-      backgroundColor: colors.canvas,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(

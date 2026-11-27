@@ -42,6 +42,7 @@ class ProductDetailScreen extends StatefulWidget {
 class _ProductDetailScreenState extends State<ProductDetailScreen> {
   Product? _product;
   List<StockMovement> _stockActivity = const <StockMovement>[];
+  int? _linkedCostGroupBalanceMinor;
   bool _loading = true;
   bool _loadError = false;
 
@@ -68,6 +69,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       final p = await DatabaseHelper.instance.getProductById(productId);
       if (!mounted) return;
       setState(() => _product = p);
+      int? linkedCostGroupBalanceMinor;
+      if (p?.costPoolId != null) {
+        final pools = await DatabaseHelper.instance.getCostPools();
+        final pool = pools
+            .where((row) => (row['id'] as num).toInt() == p!.costPoolId)
+            .firstOrNull;
+        if (pool != null) {
+          final invested = (pool['invested_minor'] as num?)?.toInt() ?? 0;
+          final recovered = (pool['recovered_minor'] as num?)?.toInt() ?? 0;
+          final remaining = invested - recovered;
+          linkedCostGroupBalanceMinor = remaining > 0 ? remaining : 0;
+        }
+      }
       final movements = p == null
           ? const <StockMovement>[]
           : await DatabaseHelper.instance
@@ -76,6 +90,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       setState(() {
         _product = p;
         _stockActivity = movements;
+        _linkedCostGroupBalanceMinor = linkedCostGroupBalanceMinor;
         _loading = false;
         _loadError = false;
       });
@@ -143,15 +158,25 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     // those permissions were customized independently.
     final bool canEdit = appState.canManageStock;
 
-    final Money stockValue = Money.fromMinor(
-      (product.stockQty * product.costPrice.minorUnits).round(),
-    );
+    final Money stockValue = product.stockValue;
 
     final bool tracksStock = product.trackStock &&
         product.itemKind != 'service' &&
         product.itemKind != 'fee';
-    final bool isOut = product.isOutOfStock;
-    final bool isLow = !isOut && product.isLow;
+    final double costGroupUnits = _linkedCostGroupBalanceMinor == null ||
+            product.costPrice.minorUnits <= 0
+        ? 0
+        : _linkedCostGroupBalanceMinor! / product.costPrice.minorUnits;
+    final bool usesPoolQuantity =
+        product.costPoolId != null && product.stockQty <= 0;
+    final double trackedQuantity =
+        usesPoolQuantity ? costGroupUnits : product.stockQty;
+    final double availableTrackedQuantity =
+        usesPoolQuantity ? costGroupUnits : product.availableStockQty;
+    final bool isOut = tracksStock && trackedQuantity <= 0;
+    final bool isLow = tracksStock &&
+        !isOut &&
+        availableTrackedQuantity <= product.reorderLevel;
 
     final StatusTone tone = !tracksStock
         ? StatusTone.neutral
@@ -279,6 +304,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         icon: Icons.account_balance_wallet_outlined,
                       ),
                     ),
+                    if (_linkedCostGroupBalanceMinor != null)
+                      SizedBox(
+                        width: tileWidth,
+                        child: _DukaStatCard(
+                          label: l10n.inventoryLinkedCostGroupBalance,
+                          value: formatMoney(Money.fromMinor(
+                              _linkedCostGroupBalanceMinor!)),
+                          icon: Icons.inventory_2_outlined,
+                        ),
+                      ),
                   ],
                 );
               },

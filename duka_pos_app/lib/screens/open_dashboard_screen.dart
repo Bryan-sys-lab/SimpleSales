@@ -95,6 +95,12 @@ class OpenDashboardScreen extends StatelessWidget {
         tone: DashboardKpiTone.positive,
       ),
       DashboardKpiData(
+        label: l10n.analyticsCogsLabel,
+        value: formatMoney(Money.fromMinor(data.totals.cogsMinor)),
+        icon: Icons.inventory_2_outlined,
+        tone: DashboardKpiTone.expense,
+      ),
+      DashboardKpiData(
         label: l10n.dashboardExpenses,
         value: formatMoney(Money.fromMinor(data.totals.expensesMinor)),
         icon: Icons.payments_outlined,

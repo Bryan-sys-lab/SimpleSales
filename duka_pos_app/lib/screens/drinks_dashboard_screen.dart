@@ -278,6 +278,7 @@ class DrinksDashboardScreen extends StatelessWidget {
     );
 
     if (twoColumns) {
+      body.add(SizedBox(height: gap));
       body.addAll(<Widget>[
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -323,6 +324,7 @@ class DrinksDashboardScreen extends StatelessWidget {
         ),
       ]);
     } else {
+      body.add(SizedBox(height: gap));
       body.addAll(spaced(
         <Widget?>[
           sales,
