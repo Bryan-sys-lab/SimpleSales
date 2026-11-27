@@ -677,7 +677,14 @@ List<RouteBase> _shellRoutes(AppStageController stage, AppState appState) {
       path: Routes.openCostGroupNew,
       parentNavigatorKey: rootNavigatorKey,
       pageBuilder: (BuildContext context, GoRouterState routerState) =>
-          _fadeThrough(routerState, const OpenCostGroupFormScreen()),
+          _fadeThrough(
+        routerState,
+        OpenCostGroupFormScreen(
+          existing: routerState.extra is Map<String, dynamic>
+              ? routerState.extra as Map<String, dynamic>
+              : null,
+        ),
+      ),
     ),
     GoRoute(
       path: Routes.openCostGroupDetailPattern,

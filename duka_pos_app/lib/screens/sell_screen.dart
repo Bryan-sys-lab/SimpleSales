@@ -903,10 +903,6 @@ class _SellScreenState extends State<SellScreen>
       return;
     }
     if (pack != null) {
-      if (current.costPoolId != null && pack.unitCost.minorUnits <= 0) {
-        _say(AppLocalizations.of(context).sellCostPoolNeedsUnitCost);
-        return;
-      }
       final available = _availableUnitsFor(current);
       if (available < qty) {
         _say(current.costPoolId != null
@@ -931,10 +927,6 @@ class _SellScreenState extends State<SellScreen>
       return;
     }
     if (shotCup != null) {
-      if (current.costPoolId != null && current.costPrice.isZero) {
-        _say(AppLocalizations.of(context).sellCostPoolNeedsUnitCost);
-        return;
-      }
       // A shot comes out of the parent bottle, so it is checked and reserved
       // against the parent — not against a count of its own, which it has none
       // of. The amount reserved is the poured volume as a fraction of the
@@ -975,10 +967,6 @@ class _SellScreenState extends State<SellScreen>
         }
         _rebuildReservations();
       });
-      return;
-    }
-    if (current.costPoolId != null && current.costPrice.isZero) {
-      _say(AppLocalizations.of(context).sellCostPoolNeedsUnitCost);
       return;
     }
     final needed = current.fractionFor(portion);

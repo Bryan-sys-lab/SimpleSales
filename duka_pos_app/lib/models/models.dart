@@ -271,6 +271,7 @@ class Product {
   double get availableStockQty => math.max(0.0, stockQty - reservedQty);
   Money get stockValue => costPrice.times(stockQty);
   bool get isLow =>
+      costPoolId == null &&
       trackStock &&
       itemKind != 'service' &&
       itemKind != 'fee' &&
@@ -280,9 +281,14 @@ class Product {
   ///
   /// Items and services added without stock tracking (trackStock = false) are
   /// never out of stock no matter what stock_qty says. Only tracked products
-  /// can be out of stock.
+  /// can be out of stock. Items linked to a cost group are pooled, not
+  /// individually stocked, so they never count as out of stock either.
   bool get isOutOfStock =>
-      itemKind != 'service' && itemKind != 'fee' && trackStock && stockQty <= 0;
+      costPoolId == null &&
+      itemKind != 'service' &&
+      itemKind != 'fee' &&
+      trackStock &&
+      stockQty <= 0;
 
   /// The price charged for one portion of a bottle.
   ///

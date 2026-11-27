@@ -12,7 +12,9 @@ import '../utils/money.dart';
 const double _openCostGroupFormMaxWidth = 720;
 
 class OpenCostGroupFormScreen extends StatefulWidget {
-  const OpenCostGroupFormScreen({super.key});
+  const OpenCostGroupFormScreen({super.key, this.existing});
+
+  final Map<String, dynamic>? existing;
 
   @override
   State<OpenCostGroupFormScreen> createState() =>
@@ -33,6 +35,24 @@ class _OpenCostGroupFormScreenState extends State<OpenCostGroupFormScreen> {
   DatabaseHelper get _db => DatabaseHelper.instance;
 
   @override
+  void initState() {
+    super.initState();
+    final existing = widget.existing;
+    if (existing != null) {
+      _nameController.text = (existing['name'] as String?) ?? '';
+      _noteController.text = (existing['note'] as String?) ?? '';
+      final cost = existing['invested_minor'];
+      if (cost is num) {
+        _costController.text = (cost / 100).toStringAsFixed(2);
+      }
+      _poolType = (existing['pool_type'] as String?) ?? 'lot';
+      _entryType = (existing['entry_type'] as String?) ?? 'purchase';
+      _paidFrom = (existing['paid_from'] as String?) ?? 'other';
+      _units = existing['units'] as String?;
+    }
+  }
+
+  @override
   void dispose() {
     _nameController.dispose();
     _noteController.dispose();
@@ -48,21 +68,36 @@ class _OpenCostGroupFormScreenState extends State<OpenCostGroupFormScreen> {
       final cost = costText.isEmpty
           ? null
           : Money.fromMajor(parseMoneyInput(costText) ?? 0);
-      await _db.createCostPool(
-        uuid: generateUuid(),
-        name: _nameController.text.trim(),
-        poolType: _poolType,
-        note: _noteController.text.trim().isEmpty
-            ? null
-            : _noteController.text.trim(),
-        initialCost: cost,
-        entryType: _entryType,
-        paidFrom: _paidFrom,
-        units: _units,
-        description: _noteController.text.trim().isEmpty
-            ? null
-            : _noteController.text.trim(),
-      );
+      final existing = widget.existing;
+      if (existing != null && existing['id'] is num) {
+        await _db.updateCostPool(
+          id: (existing['id'] as num).toInt(),
+          name: _nameController.text.trim(),
+          note: _noteController.text.trim(),
+          poolType: _poolType,
+          units: _units,
+          initialCost: cost,
+          entryType: _entryType,
+          paidFrom: _paidFrom,
+          description: _noteController.text.trim(),
+        );
+      } else {
+        await _db.createCostPool(
+          uuid: generateUuid(),
+          name: _nameController.text.trim(),
+          poolType: _poolType,
+          note: _noteController.text.trim().isEmpty
+              ? null
+              : _noteController.text.trim(),
+          initialCost: cost,
+          entryType: _entryType,
+          paidFrom: _paidFrom,
+          units: _units,
+          description: _noteController.text.trim().isEmpty
+              ? null
+              : _noteController.text.trim(),
+        );
+      }
       if (mounted) context.pop(true);
     } catch (e) {
       if (mounted) {
@@ -196,7 +231,9 @@ class _OpenCostGroupFormScreenState extends State<OpenCostGroupFormScreen> {
                         width: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : Text(AppLocalizations.of(context).createCostGroup),
+                     : Text(widget.existing != null
+                         ? 'Save changes'
+                         : AppLocalizations.of(context).createCostGroup),
               ),
               SizedBox(height: spacing.section),
             ],

@@ -1,8 +1,11 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
+import 'package:go_router/go_router.dart';
+
 import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
+import '../routing/routes.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
@@ -66,6 +69,38 @@ class _OpenCostGroupDetailScreenState extends State<OpenCostGroupDetailScreen> {
   void initState() {
     super.initState();
     _load();
+  }
+
+Future<void> _delete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete cost group?'),
+        content: const Text(
+            'Linked items will be detached and remain as products.'),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _db.deleteCostPool(widget.poolId);
+      if (mounted) context.pop(true);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not delete: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _load() async {
@@ -294,7 +329,24 @@ class _OpenCostGroupDetailScreenState extends State<OpenCostGroupDetailScreen> {
                   ),
                 ],
               ),
-              SizedBox(height: spacing.xl),
+              SizedBox(height: spacing.sm),
+              Row(
+                children: <Widget>[
+                  TextButton.icon(
+                    onPressed: () => context.push(
+                      Routes.openCostGroupNew,
+                      extra: _pool,
+                    ),
+                    icon: const Icon(Icons.edit_outlined),
+                    label: const Text('Edit'),
+                  ),
+                  TextButton.icon(
+                    onPressed: _delete,
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Delete'),
+                  ),
+                ],
+              ),
               FilledButton.icon(
                 onPressed:
                     _products.isEmpty || _reloadingStock ? null : _reloadStock,

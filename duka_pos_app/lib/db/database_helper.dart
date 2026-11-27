@@ -11436,6 +11436,7 @@ $untilClause
       WHERE stock_qty <= reorder_level AND active = 1
         AND item_kind NOT IN ('service', 'fee')
         AND track_stock = 1
+        AND cost_pool_id IS NULL
     ''');
     return (rows.first['c'] as num?)?.toInt() ?? 0;
   }
@@ -12763,13 +12764,48 @@ $untilClause
     required int id,
     String? name,
     String? note,
+    String? poolType,
+    String? units,
+    Money? initialCost,
+    String? entryType,
+    String? paidFrom,
+    String? description,
   }) async {
     final values = <String, Object?>{};
     if (name != null && name.trim().isNotEmpty) values['name'] = name.trim();
-    if (note != null) values['note'] = note;
+    if (note != null) values['note'] = note.trim().isEmpty ? null : note.trim();
+    if (poolType != null && poolType.trim().isNotEmpty) {
+      values['pool_type'] = poolType.trim();
+    }
+    if (units != null) {
+      values['units'] = units.trim().isEmpty ? null : units.trim();
+    }
+    if (initialCost != null) {
+      values['invested_minor'] = initialCost.minorUnits.round();
+    }
+    if (entryType != null && entryType.trim().isNotEmpty) {
+      values['entry_type'] = entryType.trim();
+    }
+    if (paidFrom != null && paidFrom.trim().isNotEmpty) {
+      values['paid_from'] = paidFrom.trim();
+    }
+    if (description != null) {
+      values['description'] = description.trim().isEmpty ? null : description.trim();
+    }
     if (values.isEmpty) return;
     await (await database)
         .update('cost_pools', values, where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> deleteCostPool(int id) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.update('products', <String, Object?>{'cost_pool_id': null},
+          where: 'cost_pool_id = ?', whereArgs: <Object?>[id]);
+      await txn.delete('cost_pool_entries',
+          where: 'pool_id = ?', whereArgs: <Object?>[id]);
+      await txn.delete('cost_pools', where: 'id = ?', whereArgs: <Object?>[id]);
+    });
   }
 
   Future<int> reloadCostPoolStock({
