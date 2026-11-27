@@ -11,6 +11,7 @@ import { systemAdminMiddleware } from '../middleware/auth';
 import { log } from '../lib/observability';
 import { issueAdminWebSocketTicket } from '../services/admin_ws_tickets';
 import { recordAuthAuditEvent } from '../lib/auth_audit';
+import { createCloudflareEmailTransport } from '../lib/email_sender';
 import {
   adminPackagePermissions,
   adminPackages,
@@ -18,6 +19,15 @@ import {
   adminPermissionOptions,
   normalizeAdminPackages,
 } from '../lib/admin_access_catalog';
+
+function buildMailer() {
+  return createCloudflareEmailTransport({
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID ?? '',
+    apiToken: process.env.CLOUDFLARE_API_TOKEN ?? '',
+    from: process.env.CLOUDFLARE_EMAIL_FROM ?? 'security@nerva.co.ke',
+    appName: process.env.APP_NAME ?? 'SimpleSales',
+  });
+}
 
 const router = Router();
 const loginLimiter = simpleRateLimit('admin:login', { windowMs: 15 * 60 * 1000, limit: 8, standardHeaders: 'draft-7', legacyHeaders: false, skipSuccessfulRequests: true });
@@ -28,7 +38,7 @@ const loginSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
   masterToken: z.string().min(24).max(512).optional(),
   phone: z.string().trim().min(6).max(30).optional(),
-  key: z.string().min(24).max(128).optional(),
+  key: z.string().min(24).max(2000).optional(),
   rememberMe: z.boolean().default(false),
 }).strict();
 const mintSchema = z.object({
@@ -49,8 +59,19 @@ const keyUpdateSchema = z.object({
   permissions: z.array(z.enum(permissionOptions)).max(permissionOptions.length).optional(),
   canRecruit: z.boolean().optional(), canMintKeys: z.boolean().optional(), canAssignTasks: z.boolean().optional(),
   expiresInDays: z.number().int().min(1).max(365).optional(),
+  reactivate: z.boolean().optional(),
+  revokedAt: z.null().optional(),
 }).strict().refine((value) => Object.keys(value).length > 0);
 
+function normalizeAdminKey(input: string): string {
+  const compact = input.trim().replace(/\s+/g, '');
+  if (/^[A-Za-z0-9_-]+$/.test(compact)) return compact;
+  const matches = compact.match(/[A-Za-z0-9_-]{24,}/g);
+  if (matches?.length) {
+    return matches.reduce((longest, candidate) => (candidate.length > longest.length ? candidate : longest));
+  }
+  return compact;
+}
 function constantTimeEqual(a: string, b: string): boolean {
   const left = crypto.createHash('sha256').update(a).digest();
   const right = crypto.createHash('sha256').update(b).digest();
@@ -157,9 +178,9 @@ router.post('/login', loginLimiter, asyncHandler(async (req: Request, res: Respo
     return res.status(401).json({ error: 'Invalid administrator credentials' });
   }
   const now = new Date();
+  const hashedKey = crypto.createHash('sha256').update(normalizeAdminKey(input.key ?? '')).digest('hex');
   const key = await prisma.adminKey.findFirst({
-    where: { email: input.email, phone: input.phone, revokedAt: null, expiresAt: { gt: now } },
-    orderBy: { createdAt: 'desc' },
+    where: { email: input.email, phone: input.phone, keyHash: hashedKey, revokedAt: null, expiresAt: { gt: now } },
   });
   if (key?.lockedUntil && key.lockedUntil > now) {
     await recordAuthAuditEvent({ eventType: 'admin_login_locked', actorType: 'admin', actorId: `admin:${key.id}`, outcome: 'failure', reason: 'account_locked', email: input.email, ip: req.ip, requestId: req.requestId, userAgent: req.header('user-agent') || undefined });
@@ -341,6 +362,10 @@ router.post('/keys/mint', systemAdminMiddleware, asyncHandler(async (req: Reques
   };
   log('info', 'admin.key.minted', { keyId: key.id, createdBy: req.auth?.sub, department: key.department });
   await recordAuthAuditEvent({ eventType: 'admin_key_minted', actorType: 'admin', actorId: req.auth?.sub ?? undefined, outcome: 'success', email: key.email, ip: req.ip, requestId: req.requestId, userAgent: req.header('user-agent') || undefined });
+  const mailer = buildMailer();
+  if (mailer.configured) {
+    void mailer.send({ kind: 'admin_key', to: input.email, email: input.email, key: rawKey }).catch(() => undefined);
+  }
   res.status(201).json({ key: rawKey, id: key.id, email: key.email, phone: key.phone, department: key.department, role: key.role, packages: key.packages, permissions: key.permissions, canRecruit: key.canRecruit, canMintKeys: key.canMintKeys, canAssignTasks: key.canAssignTasks, expiresAt });
 }));
 
@@ -394,6 +419,10 @@ router.patch('/keys/:id', systemAdminMiddleware, asyncHandler(async (req: Reques
     changes.push('expires_at = ?');
     bindings.push(new Date(Date.now() + input.expiresInDays * 86400000).toISOString());
   }
+  if (input.reactivate || input.revokedAt === null) {
+    changes.push('revoked_at = ?');
+    bindings.push(null);
+  }
   const db = getD1DatabaseBinding();
   const results = await db.batch([
     db.prepare(`UPDATE admin_keys SET ${changes.join(', ')} WHERE id = ?`).bind(...bindings, target.id),
@@ -446,6 +475,61 @@ router.post('/keys/:id/revoke', systemAdminMiddleware, asyncHandler(async (req: 
   log('info', 'admin.key.revoked', { keyId: key.id, revokedBy: req.auth?.sub });
   await recordAuthAuditEvent({ eventType: 'admin_key_revoked', actorType: 'admin', actorId: req.auth?.sub ?? undefined, outcome: 'success', email: target.email, ip: req.ip, requestId: req.requestId, userAgent: req.header('user-agent') || undefined });
   res.json({ key });
+}));
+
+router.post(['/keys/:id/reactivate', '/keys/:id/restore', '/keys/:id/unrevoke', '/keys/:id/activate'], systemAdminMiddleware, asyncHandler(async (req: Request, res: Response) => {
+  const access = req.adminAccess;
+  const target = await prisma.adminKey.findUnique({ where: { id: req.params.id as string } });
+  if (!target) return res.status(404).json({ error: 'Administrator key not found' });
+  if (!access) return res.status(403).json({ error: 'Administrator access is unavailable' });
+  if (!access.isSuperAdmin) {
+    if (!(await isWithinAdminScope(target, access))) {
+      return res.status(403).json({ error: 'Key is outside your management scope' });
+    }
+  }
+  const db = getD1DatabaseBinding();
+  const results = await db.batch([
+    db.prepare(`UPDATE admin_keys SET revoked_at = NULL WHERE id = ?`).bind(target.id),
+    prepareAdminAudit({
+      adminId: req.auth?.sub ?? 'unknown',
+      action: 'admin_access_reactivated',
+      targetType: 'admin_key',
+      targetId: target.id,
+      onlyAfterSuccessfulWrite: true,
+    }, db),
+  ]);
+  if ((results[0]?.meta.changes ?? 0) < 1) throw new Error('Administrator key could not be reactivated');
+  const updated = await prisma.adminKey.findUnique({ where: { id: target.id }, select: { id: true, email: true, phone: true, department: true, role: true, packages: true, permissions: true, canRecruit: true, canMintKeys: true, canAssignTasks: true, parentKeyId: true, parent: { select: { id: true, email: true, department: true, role: true } }, createdBy: true, createdAt: true, usedAt: true, expiresAt: true, revokedAt: true } });
+  if (!updated) throw new Error('Reactivated administrator key could not be reloaded');
+  log('info', 'admin.key.reactivated', { keyId: updated.id, reactivatedBy: req.auth?.sub });
+  await recordAuthAuditEvent({ eventType: 'admin_key_reactivated', actorType: 'admin', actorId: req.auth?.sub ?? undefined, outcome: 'success', email: updated.email, ip: req.ip, requestId: req.requestId, userAgent: req.header('user-agent') || undefined });
+  const packages = normalizeAdminPackages(updated.packages, updated.department);
+  const storedPermissions = Array.isArray(updated.permissions) ? updated.permissions.filter((permission): permission is string => typeof permission === 'string') : [];
+  res.json({ key: { ...updated, packages, permissions: effectiveAdminPermissions(packages, storedPermissions), revokedAt: null } });
+}));
+
+router.post('/keys/:id/action', systemAdminMiddleware, asyncHandler(async (req: Request, res: Response) => {
+  const action = typeof req.body?.action === 'string' ? req.body.action : '';
+  if (!['reactivate', 'restore', 'unrevoke', 'activate'].includes(action)) {
+    return res.status(400).json({ error: 'Unsupported key action' });
+  }
+  const access = req.adminAccess;
+  const target = await prisma.adminKey.findUnique({ where: { id: req.params.id as string } });
+  if (!target) return res.status(404).json({ error: 'Administrator key not found' });
+  if (!access) return res.status(403).json({ error: 'Administrator access is unavailable' });
+  if (!access.isSuperAdmin && !(await isWithinAdminScope(target, access))) {
+    return res.status(403).json({ error: 'Key is outside your management scope' });
+  }
+  const db = getD1DatabaseBinding();
+  await db.batch([
+    db.prepare(`UPDATE admin_keys SET revoked_at = NULL WHERE id = ?`).bind(target.id),
+    prepareAdminAudit({ adminId: req.auth?.sub ?? 'unknown', action: 'admin_access_reactivated', targetType: 'admin_key', targetId: target.id, onlyAfterSuccessfulWrite: true }, db),
+  ]);
+  const updated = await prisma.adminKey.findUnique({ where: { id: target.id }, select: { id: true, email: true, phone: true, department: true, role: true, packages: true, permissions: true, canRecruit: true, canMintKeys: true, canAssignTasks: true, parentKeyId: true, parent: { select: { id: true, email: true, department: true, role: true } }, createdBy: true, createdAt: true, usedAt: true, expiresAt: true, revokedAt: true } });
+  if (!updated) throw new Error('Reactivated administrator key could not be reloaded');
+  const packages = normalizeAdminPackages(updated.packages, updated.department);
+  const storedPermissions = Array.isArray(updated.permissions) ? updated.permissions.filter((permission): permission is string => typeof permission === 'string') : [];
+  res.json({ key: { ...updated, packages, permissions: effectiveAdminPermissions(packages, storedPermissions), revokedAt: null } });
 }));
 
 router.delete('/keys/:id', systemAdminMiddleware, asyncHandler(async (req: Request, res: Response) => {

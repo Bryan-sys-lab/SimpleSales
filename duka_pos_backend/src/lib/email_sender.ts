@@ -27,7 +27,14 @@ export type AccessVoucherEmail = {
   discountPercent?: number;
 };
 
-export type EmailMessage = VerificationEmail | AccessVoucherEmail;
+export type AdminKeyEmail = {
+  kind: 'admin_key';
+  to: string;
+  key: string;
+  email: string;
+};
+
+export type EmailMessage = VerificationEmail | AccessVoucherEmail | AdminKeyEmail;
 
 export type EmailTransport = (message: EmailMessage) => Promise<void>;
 
@@ -103,6 +110,58 @@ export function createCloudflareEmailTransport(
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#39;");
     const safeAppName = escapeHtml(appName);
+    if (message.kind === 'admin_key') {
+      const safeKey = escapeHtml(message.key);
+      const subject = `${appName} — your administrator key`;
+      const text = [
+        appName,
+        '',
+        'Your administrator key is ready',
+        '',
+        `Account: ${message.email}`,
+        `Key: ${message.key}`,
+        '',
+        'Copy the key exactly. Spaces are not part of the key.',
+        'If you did not expect this message, contact SimpleSales support.',
+      ].join('\n');
+      const html = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f3f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#1b1d21;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f5f7;padding:32px 12px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border:1px solid #e5e7eb;border-radius:18px;padding:40px 36px;">
+        <tr><td align="center" style="padding-bottom:4px;">${logoHtml}</td></tr>
+        <tr><td style="font-size:24px;line-height:1.25;font-weight:750;color:#111;padding-bottom:16px;">Your administrator key is ready</td></tr>
+        <tr><td style="font-size:15px;line-height:1.6;color:#4b5563;padding-bottom:20px;">Account: ${escapeHtml(message.email)}</td></tr>
+        <tr><td align="center" style="padding:4px 0 20px;">
+          <div style="display:inline-block;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:12px;padding:18px 24px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:16px;line-height:1.2;font-weight:800;letter-spacing:1px;color:#111;word-break:break-all;">${safeKey}</div>
+        </td></tr>
+        <tr><td style="font-size:13px;line-height:1.6;color:#4b5563;">Copy the key exactly. Spaces are not part of the key.</td></tr>
+        <tr><td style="font-size:12px;line-height:1.5;color:#9ca3af;padding-top:24px;"><em>If you did not expect this message, contact SimpleSales support.</em></td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`.trim();
+      return {
+        to: [message.to],
+        from,
+        subject,
+        text,
+        html,
+        attachments: [
+          {
+            content: NERVA_LOGO_BASE64,
+            filename: NERVA_LOGO_FILENAME,
+            type: NERVA_LOGO_MIME_TYPE,
+            disposition: 'inline',
+            contentId: NERVA_LOGO_CONTENT_ID,
+          },
+        ],
+      };
+    }
+
     if (message.kind === "access_voucher") {
       const safeVoucher = escapeHtml(message.code);
       const duration = `${message.durationMonths} month${message.durationMonths === 1 ? "" : "s"}`;
