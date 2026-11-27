@@ -27,7 +27,6 @@ export const provisionSchema = z.object({
 export const settingsSchema = z.object({
   mpesaEnabled: z.boolean().optional(),
   etimsEnabled: z.boolean().optional(),
-  payheroChannelId: z.number().int().positive().max(2000000).nullable().optional(),
   businessProfile: z.enum(['drinks', 'duka', 'fashion', 'open']).optional(),
   risitiMerchantId: z.string().trim().min(1).max(50).optional(),
 }).strict();
@@ -217,6 +216,7 @@ export const paymentSchema = z.object({
   phone_number: z.string().trim().regex(/^\+?[0-9]{9,15}$/),
   staff_name: boundedName,
   staff_profile_id: remoteIdentifier.optional(),
+  operation_id: z.string().trim().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{7,127}$/).optional(),
   // Named by the till: whose cart this was, for the receipt. Free of charge,
   // free of a customer record — the account's owner is a later feature.
   customer_name: z.string().trim().max(120).optional(),

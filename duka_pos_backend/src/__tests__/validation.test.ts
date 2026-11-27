@@ -230,14 +230,12 @@ describe('request validation', () => {
     expect(parseBody(deletionSchema, {}).reason).toBeUndefined();
   });
 
-  it('accepts the PayHero channel field used by tenant settings', () => {
-    expect(parseBody(settingsSchema, {
-      mpesaEnabled: true,
-      payheroChannelId: 12345,
-    })).toEqual({ mpesaEnabled: true, payheroChannelId: 12345 });
+  it('does not accept client-owned PayHero channel IDs in tenant settings', () => {
+    expect(parseBody(settingsSchema, { mpesaEnabled: true }))
+      .toEqual({ mpesaEnabled: true });
     expect(() => parseBody(settingsSchema, {
       mpesaEnabled: true,
-      paymentChannelId: 12345,
+      payheroChannelId: 12345,
     })).toThrow();
   });
 

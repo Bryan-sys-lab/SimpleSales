@@ -22,6 +22,7 @@ vi.mock('../lib/prisma', () => ({
 }));
 vi.mock('../services/payhero', () => ({
   queryTransactionStatus: mocks.queryTransactionStatus,
+  payHeroSettlementContractConfirmed: () => true,
 }));
 vi.mock('../lib/observability', () => ({ log: vi.fn() }));
 
@@ -32,6 +33,7 @@ const salePayment = {
   staffName: 'Amina',
   reference: 'DUKA-00000000-0000-0000-0000-000000000001',
   status: 'PENDING',
+  amount: 10,
   saleId: null,
   cartSnapshot: [{
     product_id: 'product-1',
@@ -54,6 +56,8 @@ describe('PayHero D1 settlement batches', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.PAYHERO_CHANNEL_SETTLEMENT_CONFIRMED = 'true';
+    process.env.PAYHERO_AMOUNT_VERIFICATION_CONFIRMED = 'true';
     mocks.d1.statements.length = 0;
     mocks.d1.prepare.mockImplementation((sql: string) => ({
       bind: (...values: unknown[]) => {
@@ -70,23 +74,65 @@ describe('PayHero D1 settlement batches', () => {
       id: 'subscription-payment-1',
       tenantId: 'tenant-1',
       durationMonths: 1,
+      amountMinor: 10_000,
+      voucherApplied: false,
       status: 'PENDING',
+      checkoutRequestId: 'checkout-1',
+      providerReference: 'provider-ref-1',
     });
     mocks.queryTransactionStatus.mockResolvedValue({
       status: 'SUCCESS',
-      MpesaReceiptNumber: 'abc123',
     });
 
     const response = await supertest(app).post('/callback').send({
-      ExternalReference: 'SUBS-00000000-0000-0000-0000-000000000001',
+      status: true,
+      response: {
+        ExternalReference: 'SUBS-00000000-0000-0000-0000-000000000001',
+        Amount: 100,
+        CheckoutRequestID: 'checkout-1',
+        MerchantRequestID: 'merchant-request-1',
+        MpesaReceiptNumber: 'ABC123',
+        ResultCode: 0,
+        Status: 'Success',
+      },
     });
 
     expect(response.status).toBe(200);
+    expect(mocks.queryTransactionStatus).toHaveBeenCalledWith('provider-ref-1');
     expect(mocks.d1.batch).toHaveBeenCalledTimes(1);
     expect(mocks.d1.statements[0].sql).toContain("status <> 'SUCCESS'");
     expect(mocks.d1.statements[1].sql).toContain('WHERE changes() = 1');
     expect(mocks.d1.statements[1].sql).toContain('ON CONFLICT (tenant_id)');
     expect(mocks.d1.statements[0].values).toEqual(['ABC123', 'subscription-payment-1']);
+  });
+
+  it('does not trust a forged success callback when the provider is still queued', async () => {
+    mocks.prisma.payment.findUnique.mockResolvedValue({
+      ...salePayment,
+      checkoutRequestId: 'checkout-1',
+      providerReference: 'provider-ref-1',
+    });
+    mocks.queryTransactionStatus.mockResolvedValue({ status: 'QUEUED' });
+
+    const response = await supertest(app).post('/callback').send({
+      status: true,
+      response: {
+        ExternalReference: salePayment.reference,
+        Amount: 10,
+        CheckoutRequestID: 'checkout-1',
+        MerchantRequestID: 'merchant-request-1',
+        MpesaReceiptNumber: 'ABC123',
+        ResultCode: 0,
+        Status: 'Success',
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.queryTransactionStatus).toHaveBeenCalledWith('provider-ref-1');
+    expect(mocks.d1.batch).not.toHaveBeenCalled();
+    expect(mocks.prisma.payment.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: { status: 'REQUIRES_REVIEW', providerStatus: 'PROVIDER_STATUS_QUEUED' },
+    }));
   });
 
   it('finalizes sale, stock, items and payment in one D1 batch', async () => {

@@ -2,17 +2,61 @@ import { Request, Response } from 'express';
 import { getD1DatabaseBinding, prisma } from '../lib/prisma';
 import { activateSubscriptionPaymentAtomically } from '../lib/subscription_settlement';
 import { billingIntervalForMonths } from '../lib/subscription_pricing';
-import { queryTransactionStatus } from '../services/payhero';
+import { payHeroSettlementContractConfirmed, queryTransactionStatus } from '../services/payhero';
 import { log } from '../lib/observability';
+import { toMajorUnits, toMinorUnits, wholeShillingsFromMinor } from '../lib/money';
 
 export function payheroReferenceFromCallback(body: unknown): string | undefined {
   if (!body || typeof body !== 'object') return undefined;
   const root = body as Record<string, unknown>;
-  const nested = root.response && typeof root.response === 'object'
+  const nested = root.response && typeof root.response === 'object' && !Array.isArray(root.response)
     ? root.response as Record<string, unknown>
-    : root;
-  const reference = nested.ExternalReference ?? nested.external_reference ?? root.reference;
+    : null;
+  const reference = nested?.ExternalReference;
   return typeof reference === 'string' ? reference : undefined;
+}
+
+function successfulPayHeroCallback(
+  body: unknown,
+  expected: { reference: string; checkoutRequestId: string | null; amount: number },
+): { receiptCode: string } | null {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const root = body as Record<string, unknown>;
+  if (root.status !== true || !root.response || typeof root.response !== 'object' || Array.isArray(root.response)) {
+    return null;
+  }
+  const response = root.response as Record<string, unknown>;
+  const amount = response.Amount;
+  const checkoutRequestId = response.CheckoutRequestID;
+  const receiptCode = response.MpesaReceiptNumber;
+  if (
+    response.ExternalReference !== expected.reference ||
+    response.ResultCode !== 0 ||
+    typeof response.Status !== 'string' ||
+    response.Status.toLowerCase() !== 'success' ||
+    typeof amount !== 'number' ||
+    !Number.isSafeInteger(amount) ||
+    amount !== expected.amount ||
+    typeof checkoutRequestId !== 'string' ||
+    !checkoutRequestId.trim() ||
+    !expected.checkoutRequestId ||
+    checkoutRequestId !== expected.checkoutRequestId ||
+    typeof response.MerchantRequestID !== 'string' ||
+    !response.MerchantRequestID.trim() ||
+    typeof receiptCode !== 'string' ||
+    !/^[A-Z0-9]{6,20}$/i.test(receiptCode.trim())
+  ) {
+    return null;
+  }
+  return { receiptCode: receiptCode.trim().toUpperCase() };
+}
+
+function callbackCheckoutRequestId(body: unknown): string | undefined {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return undefined;
+  const root = body as Record<string, unknown>;
+  if (!root.response || typeof root.response !== 'object' || Array.isArray(root.response)) return undefined;
+  const value = (root.response as Record<string, unknown>).CheckoutRequestID;
+  return typeof value === 'string' ? value : undefined;
 }
 
 // PayHero webhook callback - no auth required
@@ -27,21 +71,58 @@ export const handlePayheroCallback = async (req: Request, res: Response) => {
     if (reference.startsWith('SUBS-')) {
       const payment = await prisma.subscriptionPayment.findUnique({ where: { reference } });
       if (!payment) return res.status(404).json({ error: 'Subscription payment not found' });
-      const status = await queryTransactionStatus(reference);
-      if (status.status === 'SUCCESS' && payment.status !== 'SUCCESS') {
-        const receiptCode = String(status.MpesaReceiptNumber ?? status.mpesa_receipt_number ?? status.receipt ?? '').trim().toUpperCase() || null;
-        await activateSubscriptionPaymentAtomically({
-          paymentId: payment.id,
-          tenantId: payment.tenantId,
-          durationMonths: payment.durationMonths,
-          billingInterval: billingIntervalForMonths(payment.durationMonths),
-          receiptCode,
-          voucherApplied: payment.voucherApplied,
+      if (
+        !payment.checkoutRequestId ||
+        callbackCheckoutRequestId(req.body) !== payment.checkoutRequestId
+      ) return res.status(400).json({ error: 'PayHero callback did not match the pending payment' });
+      if (!payment.providerReference) {
+        await prisma.subscriptionPayment.update({
+          where: { id: payment.id },
+          data: { status: 'REQUIRES_REVIEW', providerStatus: 'PROVIDER_REFERENCE_MISSING' },
         });
+        return res.status(202).json({ received: true, status: 'REQUIRES_REVIEW' });
+      }
+      const status = await queryTransactionStatus(payment.providerReference);
+      if (status.status === 'SUCCESS') {
+        if (!payHeroSettlementContractConfirmed()) {
+          await prisma.subscriptionPayment.updateMany({
+            where: { id: payment.id, status: { in: ['PENDING', 'REQUIRES_REVIEW'] } },
+            data: { status: 'REQUIRES_REVIEW', providerStatus: 'SETTLEMENT_CONTRACT_UNCONFIRMED' },
+          });
+          return res.status(202).json({ received: true, status: 'REQUIRES_REVIEW' });
+        }
+        const callback = successfulPayHeroCallback(req.body, {
+          reference,
+          checkoutRequestId: payment.checkoutRequestId,
+          amount: wholeShillingsFromMinor(payment.amountMinor),
+        });
+        if (!callback) {
+          await prisma.subscriptionPayment.updateMany({
+            where: { id: payment.id, status: { in: ['PENDING', 'REQUIRES_REVIEW'] } },
+            data: { status: 'REQUIRES_REVIEW', providerStatus: 'SUCCESS_CALLBACK_MISMATCH' },
+          });
+          return res.status(202).json({ received: true, status: 'REQUIRES_REVIEW' });
+        }
+        const receiptCode = callback.receiptCode;
+        if (payment.status !== 'SUCCESS') {
+          await activateSubscriptionPaymentAtomically({
+            paymentId: payment.id,
+            tenantId: payment.tenantId,
+            durationMonths: payment.durationMonths,
+            billingInterval: billingIntervalForMonths(payment.durationMonths),
+            receiptCode,
+            voucherApplied: payment.voucherApplied,
+          });
+        }
       } else if (status.status === 'FAILED') {
         await prisma.subscriptionPayment.updateMany({
-          where: { id: payment.id, status: { not: 'SUCCESS' } },
+          where: { id: payment.id, status: { in: ['PENDING', 'REQUIRES_REVIEW'] } },
           data: { status: 'FAILED', providerStatus: 'FAILED' },
+        });
+      } else {
+        await prisma.subscriptionPayment.updateMany({
+          where: { id: payment.id, status: { in: ['PENDING', 'REQUIRES_REVIEW'] } },
+          data: { status: 'REQUIRES_REVIEW', providerStatus: 'PROVIDER_STATUS_QUEUED' },
         });
       }
       return res.json({ received: true });
@@ -56,20 +137,56 @@ export const handlePayheroCallback = async (req: Request, res: Response) => {
     if (!payment) {
       return res.status(404).json({ error: 'Payment not found' });
     }
+    if (
+      !payment.checkoutRequestId ||
+      callbackCheckoutRequestId(req.body) !== payment.checkoutRequestId
+    ) return res.status(400).json({ error: 'PayHero callback did not match the pending payment' });
+    if (!payment.providerReference) {
+      await prisma.payment.updateMany({
+        where: { id: payment.id, status: { in: ['PENDING', 'QUEUED', 'REQUIRES_REVIEW'] }, saleId: null },
+        data: { status: 'REQUIRES_REVIEW', providerStatus: 'PROVIDER_REFERENCE_MISSING' },
+      });
+      return res.status(202).json({ received: true, status: 'REQUIRES_REVIEW' });
+    }
 
     // Verify status with PayHero (don't trust webhook body alone). The webhook
     // is an out-of-band signal, so it bypasses the poll cooldown — but the
-    // queried response is still bound to this exact reference, and an
+    // queried response is still bound to the provider reference returned by
+    // the original initiation request, and an
     // unverified or mismatched response is treated as inconclusive rather
     // than as proof that money arrived.
-    const status = await queryTransactionStatus(reference);
+    const status = await queryTransactionStatus(payment.providerReference);
 
-    if (status.status === 'SUCCESS') {
+    if (status.status === 'SUCCESS' && ['PENDING', 'REQUIRES_REVIEW'].includes(payment.status)) {
+      if (!payHeroSettlementContractConfirmed()) {
+        await prisma.payment.updateMany({
+          where: { id: payment.id, status: { in: ['PENDING', 'REQUIRES_REVIEW'] }, saleId: null },
+          data: { status: 'REQUIRES_REVIEW', providerStatus: 'SETTLEMENT_CONTRACT_UNCONFIRMED' },
+        });
+        return res.status(202).json({ received: true, status: 'REQUIRES_REVIEW' });
+      }
+      const callback = successfulPayHeroCallback(req.body, {
+        reference,
+        checkoutRequestId: payment.checkoutRequestId,
+        amount: Number(payment.amount),
+      });
+      if (!callback) {
+        await prisma.payment.updateMany({
+          where: { id: payment.id, status: { in: ['PENDING', 'REQUIRES_REVIEW'] }, saleId: null },
+          data: { status: 'REQUIRES_REVIEW', providerStatus: 'SUCCESS_CALLBACK_MISMATCH' },
+        });
+        return res.status(202).json({ received: true, status: 'REQUIRES_REVIEW' });
+      }
       await finalizeSale(payment.id);
     } else if (status.status === 'FAILED') {
       await prisma.payment.updateMany({
-        where: { id: payment.id, status: { not: 'SUCCESS' }, saleId: null },
+        where: { id: payment.id, status: { in: ['PENDING', 'QUEUED', 'REQUIRES_REVIEW'] }, saleId: null },
         data: { status: 'FAILED' }
+      });
+    } else {
+      await prisma.payment.updateMany({
+        where: { id: payment.id, status: { in: ['PENDING', 'QUEUED', 'REQUIRES_REVIEW'] }, saleId: null },
+        data: { status: 'REQUIRES_REVIEW', providerStatus: 'PROVIDER_STATUS_QUEUED' },
       });
     }
 
@@ -87,7 +204,8 @@ export async function finalizeSale(paymentId: string) {
     include: { tenant: true }
   });
 
-  if (!payment || payment.saleId) return payment?.saleId; // Already finalized
+  if (!payment || payment.saleId) return payment?.saleId;
+  if (!['PENDING', 'REQUIRES_REVIEW'].includes(payment.status)) return;
 
   const rawCartItems = payment.cartSnapshot as Array<{ product_id: string; product_name: string; qty: number; portion?: 'full' | 'half' | 'quarter'; portion_ml?: number; stock_units?: number; unit_price: number; unit_cost: number }>;
   if (!Array.isArray(rawCartItems) || rawCartItems.length === 0) throw new Error('Payment cart is invalid');
@@ -121,12 +239,29 @@ export async function finalizeSale(paymentId: string) {
     throw new Error(`Product unavailable: ${missing?.product_name ?? 'unknown product'}`);
   }
 
-  let total = 0;
-  let profit = 0;
+  let totalMinor = 0;
+  let profitMinor = 0;
   for (const item of cartItems) {
-    total += item.qty * item.unit_price;
-    profit += item.qty * (item.unit_price - item.unit_cost);
+    const itemPriceMinor = toMinorUnits(item.unit_price);
+    const itemCostMinor = toMinorUnits(item.unit_cost);
+    const lineTotalMinor = item.qty * itemPriceMinor;
+    const lineProfitMinor = item.qty * (itemPriceMinor - itemCostMinor);
+    if (!Number.isSafeInteger(lineTotalMinor) || !Number.isSafeInteger(lineProfitMinor)) {
+      throw new Error('Payment cart contains an inexact monetary amount');
+    }
+    totalMinor += lineTotalMinor;
+    profitMinor += lineProfitMinor;
   }
+  const expectedMinor = toMinorUnits(Number(payment.amount));
+  if (
+    !Number.isSafeInteger(totalMinor) ||
+    totalMinor !== expectedMinor ||
+    wholeShillingsFromMinor(totalMinor) !== Number(payment.amount)
+  ) {
+    throw new Error('Payment amount does not match the stored sale cart');
+  }
+  const total = toMajorUnits(totalMinor);
+  const profit = toMajorUnits(profitMinor);
 
   const saleId = globalThis.crypto.randomUUID();
   const stockPayload = JSON.stringify(productIds.map((id) => ({ id, qty: stockUnitsByProduct.get(id) })));

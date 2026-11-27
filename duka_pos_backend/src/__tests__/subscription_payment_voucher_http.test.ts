@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
     subscriptionPayment: { create: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
   },
   initiateStkPush: vi.fn(),
+  payHeroSettlementContractConfirmed: vi.fn(),
 }));
 
 vi.mock('../lib/prisma', () => ({
@@ -22,6 +23,8 @@ vi.mock('../services/payhero', () => ({
   registerPaymentChannel: vi.fn(),
   initiateStkPush: mocks.initiateStkPush,
   queryTransactionStatus: vi.fn(),
+  payHeroCallbackUrl: () => 'https://api.example.test/payhero/callback',
+  payHeroSettlementContractConfirmed: mocks.payHeroSettlementContractConfirmed,
 }));
 vi.mock('../middleware/auth', () => ({
   authMiddleware: (req: any, _res: any, next: () => void) => {
@@ -44,6 +47,7 @@ describe('subscription payment discount vouchers', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.payHeroSettlementContractConfirmed.mockReturnValue(true);
     mocks.prisma.tenantSubscription.findUnique.mockResolvedValue({
       tenantId: 'tenant-1',
       status: 'pending',
@@ -73,6 +77,18 @@ describe('subscription payment discount vouchers', () => {
     mocks.initiateStkPush.mockResolvedValue({
       checkoutRequestId: 'checkout-1',
     });
+  });
+
+  it('does not initiate subscription payments before settlement requirements are confirmed', async () => {
+    mocks.payHeroSettlementContractConfirmed.mockReturnValue(false);
+
+    const response = await supertest(app)
+      .post('/tenant/subscription/payment')
+      .send({ phoneNumber: '254700000000' });
+
+    expect(response.status).toBe(503);
+    expect(mocks.prisma.subscriptionPayment.create).not.toHaveBeenCalled();
+    expect(mocks.initiateStkPush).not.toHaveBeenCalled();
   });
 
   it('uses the administrator-set period and applies a matching voucher discount', async () => {

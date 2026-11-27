@@ -21,6 +21,18 @@ email API credentials are only needed if the binding is removed. Optional
 integrations: `PAYHERO_AUTH_TOKEN`, `PAYHERO_ACCOUNT_ID`, `MPESA_CALLBACK_KEY`,
 `R2_*`, `TAX_*`, `RISITI_*`.
 
+The central PayHero integration must not enable merchant channel registration
+or STK collection until PayHero confirms in writing that merchant-owned
+destinations registered under the SimpleSales account settle to those
+merchants, and confirms the callback/status evidence used to verify amount.
+The deployment config forwards these non-secret gates to the container:
+`PAYHERO_CHANNEL_SETTLEMENT_CONFIRMED` and
+`PAYHERO_AMOUNT_VERIFICATION_CONFIRMED`. Both default to `false`. Do not set
+either to `true` without the corresponding PayHero confirmation. The
+system-admin-only `GET /api/system/payhero/configuration` endpoint reports
+whether credentials/account identity and the gates are configured; it never
+returns credential values.
+
 The production Worker binds `BACKUP_BUCKET` to `duka-pos-backups` and
 `PROFILE_IMAGE_BUCKET` to `duka-pos-profile-photos`. The app's Cloudflare
 backup flow encrypts a snapshot of every local workspace table on-device,

@@ -23,7 +23,8 @@ import {
 } from '../lib/auth_v2_crypto';
 import { recordAuthAuditEvent } from '../lib/auth_audit';
 import { issueOfflineLease } from '../lib/auth_device_lease';
-import { registerPaymentChannel, initiateStkPush, queryTransactionStatus } from '../services/payhero';
+import { registerPaymentChannel, initiateStkPush, queryTransactionStatus, PayHeroError, payHeroCallbackUrl, payHeroSettlementContractConfirmed } from '../services/payhero';
+import { wholeShillingsFromMinor } from '../lib/money';
 import { taxReportingActivated, taxReportingStatus } from '../services/tax_reporting';
 import { encryptTaxSecret, lastFour } from '../services/tax_entity';
 import { activityTenantScope } from '../lib/activity_scope';
@@ -33,13 +34,11 @@ import { resolveActiveStaffSession } from '../lib/staff_session';
 import { broadcastTenantChange } from '../services/live_broker';
 import { tenantEntitlement } from '../lib/entitlements';
 import {
-  billingIntervalForMonths,
   billingIntervalMonths,
   calculateSubscriptionQuote,
   effectiveSubscriptionDiscountPercent,
 } from '../lib/subscription_pricing';
 import { isVerifiedEmailMatch } from '../lib/identity';
-import { activateSubscriptionPaymentAtomically } from '../lib/subscription_settlement';
 
 const router = Router();
 
@@ -427,6 +426,16 @@ router.post('/subscription/payment', asyncHandler(async (req, res) => {
   if (!billing.channelId || !billing.paymentMethod) {
     return res.status(503).json({ error: 'Subscription payment destination is not configured' });
   }
+  if (!payHeroSettlementContractConfirmed()) {
+    return res.status(503).json({ error: 'PayHero collection is disabled pending provider confirmation of merchant settlement and amount verification' });
+  }
+  const callbackUrl = payHeroCallbackUrl();
+  let amountShillings: number;
+  try {
+    amountShillings = wholeShillingsFromMinor(amountMinor);
+  } catch {
+    return res.status(409).json({ error: 'Subscription amount must be a positive whole-shilling total' });
+  }
   const paymentResponse = (payment: {
     reference: string;
     amountMinor: number;
@@ -451,7 +460,7 @@ router.post('/subscription/payment', asyncHandler(async (req, res) => {
       amountMinor,
       durationMonths,
       agreementId,
-      status: 'PENDING',
+      status: { in: ['PENDING', 'REQUIRES_REVIEW'] },
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -485,8 +494,8 @@ router.post('/subscription/payment', asyncHandler(async (req, res) => {
     throw error;
   }
   try {
-    const push = await initiateStkPush({ amount: amountMinor / 100, phoneNumber: input.phoneNumber, channelId: billing.channelId, externalReference: reference, customerName: req.user.name, callbackUrl: `${process.env.PUBLIC_API_URL}/webhooks/payhero-callback` });
-    await prisma.subscriptionPayment.update({ where: { id: payment.id }, data: { checkoutRequestId: push.checkoutRequestId } });
+    const push = await initiateStkPush({ amount: amountShillings, phoneNumber: input.phoneNumber, channelId: billing.channelId, externalReference: reference, customerName: req.user.name, callbackUrl });
+    await prisma.subscriptionPayment.update({ where: { id: payment.id }, data: { providerReference: push.providerReference, checkoutRequestId: push.checkoutRequestId } });
     return res.status(201).json(paymentResponse({
       reference,
       amountMinor,
@@ -495,7 +504,22 @@ router.post('/subscription/payment', asyncHandler(async (req, res) => {
       status: 'PENDING',
     }));
   } catch (error) {
-    await prisma.subscriptionPayment.update({ where: { id: payment.id }, data: { status: 'FAILED', providerStatus: error instanceof Error ? error.message : 'provider_error' } });
+    const ambiguous = !(error instanceof PayHeroError) || error.outcomeAmbiguous;
+    await prisma.subscriptionPayment.update({
+      where: { id: payment.id },
+      data: ambiguous
+        ? { status: 'REQUIRES_REVIEW', providerStatus: 'INITIATION_OUTCOME_UNKNOWN' }
+        : { status: 'FAILED', providerStatus: 'PROVIDER_REJECTED' },
+    });
+    if (ambiguous) {
+      return res.status(202).json({ ...paymentResponse({
+        reference,
+        amountMinor,
+        discountPercent,
+        durationMonths,
+        status: 'REQUIRES_REVIEW',
+      }), reconciliation_pending: true });
+    }
     throw error;
   }
 }));
@@ -505,12 +529,28 @@ router.get('/subscription/payment/:reference', asyncHandler(async (req, res) => 
   const reference = String(req.params.reference);
   const payment = await prisma.subscriptionPayment.findFirst({ where: { reference, tenantId: req.user.tenantId } });
   if (!payment) return res.status(404).json({ error: 'Subscription payment not found' });
-  if (payment.status === 'PENDING') {
-    const provider = await queryTransactionStatus(reference);
-    if (provider.status === 'SUCCESS') await activateSubscriptionPayment(payment.id);
-    else if (provider.status === 'FAILED') await prisma.subscriptionPayment.update({ where: { id: payment.id }, data: { status: 'FAILED', providerStatus: String(provider.status) } });
+  if (['PENDING', 'QUEUED', 'REQUIRES_REVIEW'].includes(payment.status)) {
+    if (!payment.providerReference) {
+      await prisma.subscriptionPayment.updateMany({
+        where: { id: payment.id, status: { in: ['PENDING', 'QUEUED', 'REQUIRES_REVIEW'] } },
+        data: { status: 'REQUIRES_REVIEW', providerStatus: 'PROVIDER_REFERENCE_MISSING' },
+      });
+    } else {
+      const provider = await queryTransactionStatus(payment.providerReference);
+      if (provider.status === 'SUCCESS') {
+        await prisma.subscriptionPayment.updateMany({
+          where: { id: payment.id, status: { in: ['PENDING', 'QUEUED', 'REQUIRES_REVIEW'] } },
+          data: { status: 'REQUIRES_REVIEW', providerStatus: 'SUCCESS_AWAITING_AMOUNT_CONFIRMATION' },
+        });
+      }
+      else if (provider.status === 'FAILED') await prisma.subscriptionPayment.updateMany({
+        where: { id: payment.id, status: { in: ['PENDING', 'QUEUED', 'REQUIRES_REVIEW'] } },
+        data: { status: 'FAILED', providerStatus: String(provider.status) },
+      });
+    }
   }
-  return res.json({ reference, status: (await prisma.subscriptionPayment.findUnique({ where: { id: payment.id } }))?.status ?? payment.status });
+  const refreshed = await prisma.subscriptionPayment.findUnique({ where: { id: payment.id } });
+  return res.json({ reference, status: refreshed?.status ?? payment.status });
 }));
 
 router.post('/subscription/payment/:reference/confirm-code', asyncHandler(async (req, res) => {
@@ -520,28 +560,23 @@ router.post('/subscription/payment/:reference/confirm-code', asyncHandler(async 
   if (!/^[A-Z0-9]{6,20}$/.test(code)) return res.status(400).json({ error: 'Enter the M-Pesa receipt code shown in the confirmation message' });
   const payment = await prisma.subscriptionPayment.findFirst({ where: { reference, tenantId: req.user.tenantId } });
   if (!payment) return res.status(404).json({ error: 'Subscription payment not found' });
-  const provider = await queryTransactionStatus(reference);
-  const providerReceipt = String(provider.MpesaReceiptNumber ?? provider.mpesa_receipt_number ?? provider.receipt ?? '').trim().toUpperCase();
+  if (!payment.providerReference) {
+    return res.status(409).json({ error: 'The PayHero transaction reference is unavailable for verification', code: 'PAYMENT_REQUIRES_REVIEW' });
+  }
+  const provider = await queryTransactionStatus(payment.providerReference);
+  const providerReceipt = String(provider.provider_reference ?? '').trim().toUpperCase();
   if (provider.status !== 'SUCCESS' || providerReceipt !== code) {
     return res.status(409).json({ error: 'The receipt code does not match a successful PayHero transaction yet', code: 'PAYMENT_NOT_VERIFIED' });
   }
-  await prisma.subscriptionPayment.update({ where: { id: payment.id }, data: { mpesaReceiptCode: code } });
-  await activateSubscriptionPayment(payment.id);
-  return res.json({ status: 'SUCCESS', reference });
-}));
-
-async function activateSubscriptionPayment(paymentId: string) {
-  const payment = await prisma.subscriptionPayment.findUnique({ where: { id: paymentId } });
-  if (!payment || payment.status === 'SUCCESS') return;
-  await activateSubscriptionPaymentAtomically({
-    paymentId: payment.id,
-    tenantId: payment.tenantId,
-    durationMonths: payment.durationMonths,
-    billingInterval: billingIntervalForMonths(payment.durationMonths),
-    receiptCode: payment.mpesaReceiptCode,
-    voucherApplied: payment.voucherApplied,
+  await prisma.subscriptionPayment.update({
+    where: { id: payment.id },
+    data: { status: 'REQUIRES_REVIEW', providerStatus: 'SUCCESS_AWAITING_AMOUNT_CONFIRMATION' },
   });
-}
+  return res.status(409).json({
+    error: 'PayHero status verification does not expose an authoritative amount; payment remains under review',
+    code: 'PAYMENT_AMOUNT_UNVERIFIED',
+  });
+}));
 
 router.post(
   '/mpesa/channel',
@@ -552,6 +587,7 @@ router.post(
     }
     const { channelType, shortCode, accountNumber, qrTransactionCode, qrCreditPartyIdentifier, description } = parseBody(mpesaChannelSchema, req.body);
     const channel = await registerPaymentChannel({
+      tenantId: user.tenantId,
       channelType,
       shortCode,
       accountNumber,
@@ -562,6 +598,9 @@ router.post(
       data: {
         mpesaEnabled: true,
         payheroChannelId: channel.id,
+        payheroChannelType: channelType,
+        payheroChannelShortCode: shortCode,
+        payheroChannelAccountNumber: accountNumber ?? null,
         // Safaricom Dynamic QR uses the merchant till/paybill directly. A
         // PayHero bank destination remains valid for STK but cannot be used
         // as a Dynamic QR CPI.
@@ -570,6 +609,53 @@ router.post(
       },
     });
     return res.json({ channelId: channel.id, channelType, shortCode });
+  }),
+);
+
+router.get(
+  '/mpesa/channel',
+  asyncHandler(async (req, res) => {
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: requireUser(req).tenantId },
+      select: {
+        mpesaEnabled: true,
+        payheroChannelId: true,
+        payheroChannelType: true,
+        payheroChannelShortCode: true,
+        payheroChannelAccountNumber: true,
+      },
+    });
+    if (!tenant) return res.status(404).json({ error: 'Shop not found' });
+    return res.json({
+      mpesaEnabled: tenant.mpesaEnabled,
+      channelId: tenant.payheroChannelId,
+      channelType: tenant.payheroChannelType,
+      shortCode: tenant.payheroChannelShortCode,
+      accountNumber: tenant.payheroChannelAccountNumber,
+    });
+  }),
+);
+
+router.delete(
+  '/mpesa/channel',
+  asyncHandler(async (req, res) => {
+    const user = requireUser(req);
+    if (user.role !== 'admin') {
+      return res.status(403).json({ error: 'Shop admin access required' });
+    }
+    await prisma.tenant.update({
+      where: { id: user.tenantId },
+      data: {
+        mpesaEnabled: false,
+        payheroChannelId: null,
+        payheroChannelType: null,
+        payheroChannelShortCode: null,
+        payheroChannelAccountNumber: null,
+        mpesaQrCpi: null,
+        mpesaQrTrxCode: null,
+      },
+    });
+    return res.json({ removed: true });
   }),
 );
 
@@ -701,7 +787,16 @@ router.patch(
     if (requireUser(req).role !== 'admin') {
       return res.status(403).json({ error: 'Shop admin access required' });
     }
-    const { mpesaEnabled, etimsEnabled, payheroChannelId, businessProfile, risitiMerchantId } = parseBody(settingsSchema, req.body);
+    const { mpesaEnabled, etimsEnabled, businessProfile, risitiMerchantId } = parseBody(settingsSchema, req.body);
+    if (mpesaEnabled === true) {
+      const channel = await prisma.tenant.findUnique({
+        where: { id: requireUser(req).tenantId },
+        select: { payheroChannelId: true },
+      });
+      if (!channel?.payheroChannelId) {
+        return res.status(409).json({ error: 'Configure a PayHero payment channel before enabling M-Pesa' });
+      }
+    }
     if (etimsEnabled === true && !taxReportingActivated()) {
       return res.status(409).json({
         error: 'Tax reporting is not activated yet',
@@ -717,7 +812,6 @@ router.patch(
         UPDATE tenants
         SET mpesa_enabled = CASE WHEN ? = 1 THEN ? ELSE mpesa_enabled END,
             etims_enabled = CASE WHEN ? = 1 THEN ? ELSE etims_enabled END,
-            payhero_channel_id = CASE WHEN ? = 1 THEN ? ELSE payhero_channel_id END,
             business_profile = CASE WHEN ? = 1 THEN ? ELSE business_profile END,
             risiti_merchant_id = CASE WHEN ? = 1 THEN ? ELSE risiti_merchant_id END,
             updated_at = ?
@@ -727,8 +821,6 @@ router.patch(
         mpesaEnabled ?? null,
         etimsEnabled !== undefined ? 1 : 0,
         etimsEnabled ?? null,
-        payheroChannelId !== undefined ? 1 : 0,
-        payheroChannelId ?? null,
         businessProfile !== undefined ? 1 : 0,
         businessProfile ?? null,
         risitiMerchantId !== undefined ? 1 : 0,
@@ -759,7 +851,6 @@ router.patch(
       metadata: {
         mpesaEnabled,
         etimsEnabled,
-        payheroChannelId: payheroChannelId !== undefined ? Boolean(payheroChannelId) : undefined,
         businessProfile,
         risitiMerchantId: risitiMerchantId !== undefined ? Boolean(risitiMerchantId) : undefined,
       },

@@ -3,6 +3,7 @@ import { getD1DatabaseBinding, prisma } from '../lib/prisma';
 import { asyncHandler } from '../lib/http';
 import { parseBody, settingsSchema } from '../lib/validation';
 import { taxReportingActivated } from '../services/tax_reporting';
+import { payHeroConfigurationStatus } from '../services/payhero';
 import { z } from 'zod';
 
 const router = Router();
@@ -13,6 +14,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 router.get('/access', (_req, res) => res.json({ systemAdmin: true }));
+
+router.get('/payhero/configuration', asyncHandler(async (_req, res) => {
+  res.json(await payHeroConfigurationStatus());
+}));
 
 router.get('/users', asyncHandler(async (_req: Request, res) => {
   const users = [];
@@ -128,10 +133,45 @@ router.patch('/tenants/:tenantId/settings', asyncHandler(async (req: Request, re
   const tenant = await prisma.tenant.update({ where: { id: tenantId }, data: {
     ...(input.mpesaEnabled !== undefined && { mpesaEnabled: input.mpesaEnabled }),
     ...(input.etimsEnabled !== undefined && { etimsEnabled: input.etimsEnabled }),
-    ...(input.payheroChannelId !== undefined && { payheroChannelId: input.payheroChannelId }),
   } });
   await prisma.adminAuditLog.create({ data: { adminId: (req as any).auth?.sub ?? 'unknown', action: 'update_tenant_settings', targetType: 'tenant', targetId: tenantId, tenantId } });
   res.json({ id: tenant.id, mpesaEnabled: tenant.mpesaEnabled, etimsEnabled: tenant.etimsEnabled });
+}));
+
+router.delete('/users/:profileId', asyncHandler(async (req: Request, res) => {
+  const profileId = req.params.profileId as string;
+  const profile = await prisma.profile.findUnique({ where: { id: profileId } });
+  if (!profile || profile.deletedAt) return res.status(404).json({ error: 'User not found' });
+  const now = new Date().toISOString();
+  const db = getD1DatabaseBinding();
+  const results = await db.batch([
+    db.prepare(`
+      UPDATE profiles
+      SET active = 0,
+          deleted_at = ?,
+          refresh_token_hash = NULL,
+          refresh_token_previous_hash = NULL
+      WHERE id = ? AND deleted_at IS NULL
+      RETURNING id, tenant_id
+    `).bind(now, profileId),
+    db.prepare(`
+      INSERT INTO admin_audit_logs (
+        id, admin_id, action, target_type, target_id, tenant_id, "at"
+      )
+      SELECT ?, ?, 'delete_system_user', 'profile', ?, ?, ?
+      WHERE changes() = 1
+    `).bind(
+      globalThis.crypto.randomUUID(),
+      req.auth?.sub ?? 'unknown',
+      profileId,
+      profile.tenantId,
+      now,
+    ),
+  ]);
+  if ((results[0]?.meta.changes ?? 0) !== 1) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+  return res.json({ deleted: true, profile_id: profileId });
 }));
 
 export default router;

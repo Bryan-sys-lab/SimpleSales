@@ -28,6 +28,9 @@ model Tenant {
   payheroChannelId Int? @map("payhero_channel_id")
 
   payheroCredentialId String? @map("payhero_credential_id")
+  payheroChannelType String? @map("payhero_channel_type")
+  payheroChannelShortCode String? @map("payhero_channel_short_code")
+  payheroChannelAccountNumber String? @map("payhero_channel_account_number")
 
   /// Safaricom Dynamic QR configuration. These are populated from the
   /// registered till/paybill channel; bank channels do not support this QR
@@ -49,6 +52,7 @@ model Tenant {
   saleItems              SaleItem[]
   stockAdjustments       StockAdjustment[]
   payments               Payment[]
+  payHeroChannelRegistrations PayHeroChannelRegistration[]
   deletionLedgers        DeletionLedger[]
   verificationChallenges VerificationChallenge[]
   appSessions            AppSession[]
@@ -491,7 +495,7 @@ model SyncRecord {
   createdAt DateTime @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, kind, deviceId, localId])
   @@index([tenantId, kind, createdAt])
@@ -653,6 +657,7 @@ model SubscriptionPayment {
   status            String   @default("PENDING")
   checkoutRequestId String?  @map("checkout_request_id")
   providerStatus    String?  @map("provider_status")
+  providerReference String?  @map("provider_reference")
   mpesaReceiptCode  String?  @map("mpesa_receipt_code")
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
@@ -970,7 +975,9 @@ model Payment {
   paymentMode      String  @default("stk") @map("payment_mode")
   qrCodeData       String? @map("qr_code_data")
   providerStatus    String? @map("provider_status")
+  providerReference String? @map("provider_reference")
   providerCheckedAt DateTime? @map("provider_checked_at")
+  operationId       String?  @unique @map("operation_id")
 
   saleId String? @map("sale_id")
 
@@ -982,6 +989,23 @@ model Payment {
   @@index([tenantId])
   @@index([reference])
   @@map("payments")
+}
+
+model PayHeroChannelRegistration {
+  fingerprint   String   @id
+  tenantId      String?  @map("tenant_id")
+  channelType   String   @map("channel_type")
+  shortCode     String   @map("short_code")
+  accountNumber String   @default("") @map("account_number")
+  status        String   @default("REGISTERING")
+  channelId     Int?     @unique @map("channel_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@map("payhero_channel_registrations")
 }
 
 model DeletionLedger {

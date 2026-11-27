@@ -87,6 +87,7 @@ app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : false }));
 
 // Full workspace backups are already encrypted client-side and can contain a
 // busy shop's history; the route still validates and caps the payload at 8 MB.
+app.use('/webhooks/payhero-callback', express.json({ limit: '16kb' }));
 app.use(express.json({ limit: '8mb' }));
 app.use(simpleRateLimit('global', {
   windowMs: 60000,

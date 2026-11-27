@@ -448,4 +448,33 @@ router.post('/keys/:id/revoke', systemAdminMiddleware, asyncHandler(async (req: 
   res.json({ key });
 }));
 
+router.delete('/keys/:id', systemAdminMiddleware, asyncHandler(async (req: Request, res: Response) => {
+  const access = req.adminAccess;
+  const target = await prisma.adminKey.findUnique({ where: { id: req.params.id as string } });
+  if (!target) return res.status(404).json({ error: 'Administrator key not found' });
+  if (!access) return res.status(403).json({ error: 'Administrator access is unavailable' });
+  if (!access.isSuperAdmin) {
+    if (!(await isWithinAdminScope(target, access))) {
+      return res.status(403).json({ error: 'Key is outside your management scope' });
+    }
+  }
+  const db = getD1DatabaseBinding();
+  const results = await db.batch([
+    db.prepare(`DELETE FROM admin_keys WHERE id = ?`).bind(target.id),
+    prepareAdminAudit({
+      adminId: req.auth?.sub ?? 'unknown',
+      action: 'admin_access_deleted',
+      targetType: 'admin_key',
+      targetId: target.id,
+      onlyAfterSuccessfulWrite: true,
+    }, db),
+  ]);
+  if ((results[0]?.meta.changes ?? 0) !== 1) {
+    return res.status(404).json({ error: 'Administrator key not found' });
+  }
+  log('info', 'admin.key.deleted', { keyId: target.id, deletedBy: req.auth?.sub });
+  await recordAuthAuditEvent({ eventType: 'admin_key_deleted', actorType: 'admin', actorId: req.auth?.sub ?? undefined, outcome: 'success', email: target.email, ip: req.ip, requestId: req.requestId, userAgent: req.header('user-agent') || undefined });
+  return res.json({ deleted: true, id: target.id, key_id: target.id });
+}));
+
 export default router;
