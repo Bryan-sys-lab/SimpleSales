@@ -30,7 +30,13 @@ function buildMailer() {
 }
 
 const router = Router();
-const loginLimiter = simpleRateLimit('admin:login', { windowMs: 15 * 60 * 1000, limit: 8, standardHeaders: 'draft-7', legacyHeaders: false, skipSuccessfulRequests: true });
+function adminLoginKey(req: Request): string {
+  const body = req.body as { email?: unknown };
+  const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
+  return `${req.ip || req.socket?.remoteAddress || 'unknown'}:${email}`;
+}
+
+const loginLimiter = simpleRateLimit('admin:login', { windowMs: 15 * 60 * 1000, limit: 8, standardHeaders: 'draft-7', legacyHeaders: false, skipSuccessfulRequests: true, keyGenerator: adminLoginKey });
 const refreshLimiter = simpleRateLimit('admin:refresh', { windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false });
 const permissionOptions = adminPermissionOptions;
 const packageId = z.string().refine((value) => adminPackages.some((item) => item.id === value));
