@@ -1907,7 +1907,7 @@ router.post(
       const parsed = parseBody(staffAuthenticateSchema, req.body);
       const rawUsername = typeof parsed.username === 'string' ? parsed.username : '';
       const username = rawUsername.trim().toLowerCase();
-      const pin = typeof parsed.pin === 'string' ? parsed.pin : '';
+      const pin = typeof parsed.pin === 'string' ? parsed.pin.trim() : '';
       console.info('[staff-auth] parsed request', {
         requestId,
         headerTenantId,
