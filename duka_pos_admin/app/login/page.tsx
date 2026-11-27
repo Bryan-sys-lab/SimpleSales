@@ -24,7 +24,7 @@ function LoginContent() {
       const response = await fetch('/api/admin/auth/login', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(departmentLogin ? { email, phone, key, rememberMe } : { email, masterToken, rememberMe }),
+        body: JSON.stringify(departmentLogin ? { email: email.trim(), phone: phone.trim(), key: key.trim().replace(/\s+/g, ''), rememberMe } : { email: email.trim(), masterToken: masterToken.trim(), rememberMe }),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? 'Sign in failed');
