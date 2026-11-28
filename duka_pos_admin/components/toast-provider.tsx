@@ -62,9 +62,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <>
       {children}
       <div
+        role="region"
+        aria-label="Notifications"
         className="pointer-events-none fixed inset-x-0 z-[2147483647] mx-auto flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-2 px-0 sm:inset-x-auto sm:right-4 sm:mx-0"
         style={{ top: 'max(1rem, env(safe-area-inset-top))' }}
-        aria-label="Notifications"
       >
         {toasts.map((toast) => (
           (() => {
@@ -90,7 +91,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             <div className="flex shrink-0 items-center gap-1">
               <button
                 type="button"
-                className="min-h-8 rounded px-2 text-xs font-semibold underline underline-offset-2"
+                className="min-h-11 rounded px-2 text-xs font-semibold underline underline-offset-2"
                 aria-label={isMinimized ? 'Expand notification' : 'Minimize notification'}
                 aria-expanded={!isMinimized}
                 onClick={() => toggleMinimized(toast.id)}
@@ -99,7 +100,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               </button>
               <button
                 type="button"
-                className="min-h-8 rounded px-2 text-xs font-semibold underline underline-offset-2"
+                className="min-h-11 rounded px-2 text-xs font-semibold underline underline-offset-2"
                 aria-label="Dismiss notification"
                 onClick={() => dismiss(toast.id)}
               >

@@ -70,7 +70,7 @@ export default function DataIntelligencePage() {
     <ShellLayout>
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-base-900">Data Intelligence</h2>
+          <h1 className="text-2xl font-semibold tracking-tight text-base-900">Data Intelligence</h1>
           <p className="text-sm text-base-500">Backend-authoritative overview, pipeline coverage and dataset snapshots.</p>
         </div>
         {loading && <div className="card p-5 text-sm text-base-500" role="status">Loading backend data…</div>}
@@ -94,12 +94,12 @@ export default function DataIntelligencePage() {
             </div>
             {meta.warnings.length > 0 && (
               <section className="card p-5" aria-label="Data warnings">
-                <h3 className="text-sm font-semibold text-base-900">Quality warnings</h3>
+                <h2 className="text-sm font-semibold text-base-900">Quality warnings</h2>
                 <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-base-700">{meta.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
               </section>
             )}
             <section className="card p-5" aria-label="Dataset snapshots">
-              <h3 className="text-sm font-semibold text-base-900">Dataset snapshots</h3>
+              <h2 className="text-sm font-semibold text-base-900">Dataset snapshots</h2>
               {datasets.length === 0
                 ? <p className="mt-2 text-sm text-base-500">No published dataset snapshots are registered.</p>
                 : <div className="mt-3 space-y-2">{datasets.map((dataset) => (
@@ -109,7 +109,7 @@ export default function DataIntelligencePage() {
                   ))}</div>}
             </section>
             <section className="card p-5" aria-label="Partner grants and credentials">
-              <h3 className="text-sm font-semibold text-base-900">Partner grants &amp; credentials</h3>
+              <h2 className="text-sm font-semibold text-base-900">Partner grants &amp; credentials</h2>
               {partners.length === 0
                 ? <p className="mt-2 text-sm text-base-500">No partner agreements or credentials are registered.</p>
                 : <div className="mt-3 space-y-3">{partners.map((partner) => (

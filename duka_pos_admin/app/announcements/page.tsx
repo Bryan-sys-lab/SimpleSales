@@ -58,6 +58,7 @@ export default function AnnouncementsPage() {
   };
 
   const clear = async () => {
+    if (!window.confirm('Clear the current announcement for all connected clients?')) return;
     setSaving(true);
     setMessage(null);
     setError(null);
@@ -78,28 +79,39 @@ export default function AnnouncementsPage() {
     <ShellLayout>
       <div className="space-y-6 max-w-3xl">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-base-900">Platform announcements</h2>
-          <p className="text-sm text-base-500">Broadcast a message to all connected clients in real time.</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-base-900">Platform announcements</h1>
+          <p className="mt-1 text-base text-base-600">Broadcast a message to all connected clients in real time.</p>
         </div>
-        {error && <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>}
-        {message && <div className="rounded-xl border border-accent-200 bg-accent-50 px-4 py-3 text-sm text-accent-800">{message}</div>}
+        {error && <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>}
+        {message && <div role="status" aria-live="polite" className="rounded-xl border border-accent-200 bg-accent-50 px-4 py-3 text-sm text-accent-800">{message}</div>}
         {announcement && (
           <div className="card p-5 space-y-2">
             <p className="text-xs uppercase tracking-wide text-base-500">Current announcement</p>
-            <h3 className="text-lg font-semibold text-base-900">{announcement.title}</h3>
+            <h2 className="text-lg font-semibold text-base-900">{announcement.title}</h2>
             <p className="text-sm text-base-700">{announcement.body}</p>
-            <button className="button-secondary" onClick={clear} disabled={saving}>Clear announcement</button>
+            <p className={`inline-flex w-fit rounded-full px-2.5 py-1 text-xs font-semibold ${announcement.active === false ? 'bg-base-100 text-base-700' : 'bg-sage-50 text-sage-800'}`}>
+              {announcement.active === false ? 'Inactive' : 'Active and broadcasting'}
+            </p>
+            <button type="button" className="button-secondary text-coral-800" onClick={clear} disabled={saving}>Clear announcement</button>
           </div>
         )}
         <form onSubmit={save} className="card space-y-4 p-5">
-          <h3 className="font-semibold">{announcement ? 'Update announcement' : 'New announcement'}</h3>
-          <input className="input" required placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
-          <textarea className="input" required rows={4} placeholder="Body" value={body} onChange={(e) => setBody(e.target.value)} />
-          <label className="flex items-center gap-2 text-sm text-base-700">
-            <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
-            Active (broadcast to clients)
-          </label>
-          <button className="button-primary" type="submit" disabled={saving}>{saving ? 'Publishing…' : 'Publish announcement'}</button>
+          <h2 className="font-semibold">{announcement ? 'Update announcement' : 'New announcement'}</h2>
+          <fieldset disabled={saving} className="min-w-0 space-y-4 border-0 p-0">
+            <div>
+              <label className="label" htmlFor="announcement-title">Title</label>
+              <input id="announcement-title" name="title" className="input" required value={title} onChange={(e) => setTitle(e.target.value)} />
+            </div>
+            <div>
+              <label className="label" htmlFor="announcement-body">Message</label>
+              <textarea id="announcement-body" name="body" className="input min-h-28" required rows={4} value={body} onChange={(e) => setBody(e.target.value)} />
+            </div>
+            <label className="flex min-h-11 items-center gap-3 text-sm text-base-700">
+              <input id="announcement-active" name="active" type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
+              Active (broadcast to clients)
+            </label>
+            <button className="button-primary w-full sm:w-auto" type="submit">{saving ? 'Publishing…' : 'Publish announcement'}</button>
+          </fieldset>
         </form>
       </div>
     </ShellLayout>

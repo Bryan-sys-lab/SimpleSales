@@ -51,7 +51,7 @@ export default function LaybysPage() {
       <div className="space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-semibold tracking-tight text-base-900">Fashion lay-bys</h2>
+            <h1 className="text-2xl font-semibold tracking-tight text-base-900">Fashion lay-bys</h1>
             <p className="text-sm text-base-500">Reservations and deposits across tenant shops.</p>
           </div>
           <button onClick={load} disabled={loading} className="btn btn-secondary disabled:opacity-50">
@@ -76,6 +76,7 @@ export default function LaybysPage() {
 
         {loading && data.length === 0 ? <div className="card p-8 text-sm text-base-500">Loading lay-bys…</div> : (
           <DataTable
+            caption="Fashion lay-bys"
             columns={[
               { key: 'createdAt', label: 'Created', sortable: true },
               { key: 'tenant', label: 'Shop' },

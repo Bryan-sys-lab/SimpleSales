@@ -23,8 +23,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [resolved, setResolved] = useState<'light' | 'dark'>('light');
 
   useEffect(() => {
-    const stored = (localStorage.getItem('theme') as Theme) || 'system';
-    setThemeState(stored);
+    const stored = localStorage.getItem('theme');
+    if (stored === 'light' || stored === 'dark' || stored === 'system') {
+      setThemeState(stored);
+    }
   }, []);
 
   useEffect(() => {
@@ -33,6 +35,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       const isDark = theme === 'dark' || (theme === 'system' && sysDark);
       setResolved(isDark ? 'dark' : 'light');
       document.documentElement.classList.toggle('dark', isDark);
+      document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+      const colorSchemeMeta = document.querySelector<HTMLMetaElement>('meta[name="color-scheme"]');
+      if (colorSchemeMeta) colorSchemeMeta.content = theme === 'system' ? 'light dark' : theme;
     };
     apply();
     const mq = window.matchMedia('(prefers-color-scheme: dark)');

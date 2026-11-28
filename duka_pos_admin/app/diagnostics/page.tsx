@@ -88,9 +88,9 @@ export default function DiagnosticsPage() {
     <ShellLayout>
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-base-900">
+          <h1 className="text-2xl font-semibold tracking-tight text-base-900">
             Device diagnostics
-          </h2>
+          </h1>
           <p className="text-sm text-base-500">
             Failure reports pushed from till phones. See what broke, on what
             phone, under what conditions. Reports appear only after a device is
@@ -105,9 +105,9 @@ export default function DiagnosticsPage() {
         )}
 
         <div className="card p-5">
-          <h3 className="text-sm font-semibold text-base-900 mb-4">
+          <h2 className="text-sm font-semibold text-base-900 mb-4">
             Reporting devices
-          </h3>
+          </h2>
           {loading ? (
             <p className="text-sm text-base-500">Loading…</p>
           ) : items.length === 0 ? (
@@ -115,6 +115,7 @@ export default function DiagnosticsPage() {
           ) : (
             <>
               <DataTable
+                caption="Device diagnostics"
                 columns={[
                   { key: 'deviceId', label: 'Device id', sortable: true },
                   { key: 'tenantName', label: 'Shop', sortable: true },
@@ -163,9 +164,9 @@ export default function DiagnosticsPage() {
         {selected && (
           <div className="card p-5">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-base-900">
+              <h2 className="text-sm font-semibold text-base-900">
                 Device {selected.deviceId}
-              </h3>
+              </h2>
               <button
                 onClick={() => setSelected(null)}
                 className="text-sm text-base-600 hover:text-base-900"

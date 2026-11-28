@@ -51,7 +51,7 @@ export default function SalesPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-semibold tracking-tight text-base-900">Sales</h2>
+            <h1 className="text-2xl font-semibold tracking-tight text-base-900">Sales</h1>
             <p className="text-sm text-base-500">Sales across all tenant shops.</p>
           </div>
         </div>
@@ -84,8 +84,10 @@ export default function SalesPage() {
         <div className="card p-5">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 mb-4">
             <div className="flex flex-col gap-2">
-              <label className="label">From</label>
+              <label className="label" htmlFor="sales-from">From</label>
               <input
+                id="sales-from"
+                name="from"
                 type="date"
                 value={filter.from}
                 onChange={(e) => setFilter({ ...filter, from: e.target.value })}
@@ -93,8 +95,10 @@ export default function SalesPage() {
               />
             </div>
             <div className="flex flex-col gap-2">
-              <label className="label">To</label>
+              <label className="label" htmlFor="sales-to">To</label>
               <input
+                id="sales-to"
+                name="to"
                 type="date"
                 value={filter.to}
                 onChange={(e) => setFilter({ ...filter, to: e.target.value })}
@@ -102,8 +106,10 @@ export default function SalesPage() {
               />
             </div>
             <div className="flex flex-col gap-2">
-              <label className="label">Tenant</label>
+              <label className="label" htmlFor="sales-tenant">Tenant</label>
               <input
+                id="sales-tenant"
+                name="tenant"
                 value={filter.tenantId}
                 onChange={(e) => setFilter({ ...filter, tenantId: e.target.value })}
                 placeholder="tenant ID"
@@ -114,6 +120,7 @@ export default function SalesPage() {
         </div>
 
         <DataTable
+          caption="Sales records"
           columns={[
             { key: 'createdAt', label: 'Date', sortable: true },
             { key: 'tenant.shopName', label: 'Shop' },

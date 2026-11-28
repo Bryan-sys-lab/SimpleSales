@@ -51,7 +51,7 @@ export default function ProductsPage() {
     <ShellLayout>
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-base-900">Products (aggregated)</h2>
+          <h1 className="text-2xl font-semibold tracking-tight text-base-900">Products (aggregated)</h1>
           <p className="text-sm text-base-500">Deduplicated catalog across all shops. Counts show how many shops stock each item.</p>
         </div>
         {error && <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>}
@@ -62,7 +62,7 @@ export default function ProductsPage() {
         </div>
         <section aria-labelledby="identity-coverage-heading" className="space-y-3">
           <div>
-            <h3 id="identity-coverage-heading" className="text-base font-semibold text-base-900">Identity and unit coverage</h3>
+            <h2 id="identity-coverage-heading" className="text-base font-semibold text-base-900">Identity and unit coverage</h2>
             <p className="text-sm text-base-500">Tenant-free counts across active catalogue records. Unmapped entries remain available for review.</p>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
@@ -73,6 +73,7 @@ export default function ProductsPage() {
           </div>
         </section>
         <DataTable
+          caption="Products across all shops"
           columns={[
             { key: 'name', label: 'Product', sortable: true },
             { key: 'category', label: 'Category', sortable: true },

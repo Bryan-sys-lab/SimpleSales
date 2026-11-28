@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { fetchJson } from '@/lib/api';
 import { ShellLayout } from '@/components/layout';
+import { DataTable } from '@/components/data-table';
 import { MetricCard } from '@/components/metric-card';
 import { EmptyState } from '@/components/empty-state';
 import { useAdminLiveRefresh } from '@/components/websocket-provider';
@@ -39,7 +40,7 @@ function BarChart({ title, data, color }: { title: string; data: { name: string;
   const max = Math.max(...data.map((d) => d.value), 1);
   return (
     <div className="card p-5">
-      <h3 className="text-sm font-semibold text-base-900 mb-4">{title}</h3>
+      <h2 className="text-sm font-semibold text-base-900 mb-4">{title}</h2>
       {data.length === 0 ? <EmptyState message="No data available" compact /> : <div className="space-y-3">
         {data.map((d) => (
           <div key={d.name}>
@@ -118,7 +119,7 @@ export default function FinancialsPage() {
     <ShellLayout>
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-base-900">Revenue & costs</h2>
+          <h1 className="text-2xl font-semibold tracking-tight text-base-900">Revenue & costs</h1>
           <p className="text-sm text-base-500">Current subscription values and expenses entered in the system.</p>
         </div>
         {error && <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>}
@@ -138,32 +139,26 @@ export default function FinancialsPage() {
           <BarChart title="Expenses by category" data={data?.expensesByCategory ?? []} color="bg-red-500" />
         </div>
         <div className="card p-5">
-          <h3 className="text-sm font-semibold text-base-900 mb-4">Expense ledger</h3>
-          <div className="overflow-x-auto">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Category</th>
-                  <th>Description</th>
-                  <th className="text-right">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(data?.expenseItems ?? []).map((e) => (
-                  <tr key={e.id}>
-                    <td className="text-sm text-base-500">{new Date(e.date).toLocaleDateString()}</td>
-                    <td><span className="badge badge-medium">{e.category}</span></td>
-                    <td className="text-base-900">{e.description}</td>
-                    <td className="text-right font-mono tabular-nums">{fmt(e.amount)}</td>
-                  </tr>
-                ))}
-                {(!data || data.expenseItems.length === 0) && (
-                  <tr><td colSpan={4}><EmptyState message="No expenses" compact /></td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <h2 className="text-sm font-semibold text-base-900 mb-4">Expense ledger</h2>
+          <DataTable
+            caption="Expense ledger"
+            columns={[
+              { key: 'date', label: 'Date', sortable: true },
+              { key: 'category', label: 'Category' },
+              { key: 'description', label: 'Description' },
+              { key: 'amount', label: 'Amount', sortable: true, align: 'right' },
+            ]}
+            data={data?.expenseItems ?? []}
+            rowKey={(expense) => expense.id}
+            renderCell={(expense, key) => {
+              if (key === 'date') return <span>{expense.date ? new Date(expense.date).toLocaleDateString() : '—'}</span>;
+              if (key === 'category') return <span className="badge badge-medium">{expense.category}</span>;
+              if (key === 'description') return <span>{expense.description}</span>;
+              if (key === 'amount') return <span>{fmt(expense.amount)}</span>;
+              return null;
+            }}
+            emptyMessage={loading ? 'Loading expenses…' : 'No expenses'}
+          />
         </div>
       </div>
     </ShellLayout>

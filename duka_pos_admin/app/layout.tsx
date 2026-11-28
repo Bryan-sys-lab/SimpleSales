@@ -24,6 +24,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
+  colorScheme: 'light dark',
   themeColor: '#07140e',
   width: 'device-width',
   initialScale: 1,
@@ -38,7 +39,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="font-sans">
+    <html lang="en" className="font-sans" data-scroll-behavior="smooth">
       <body className="antialiased"><ThemeProvider><ToastProvider><AppProviders>{children}</AppProviders></ToastProvider></ThemeProvider><ServiceWorkerRegistrar /></body>
     </html>
   );

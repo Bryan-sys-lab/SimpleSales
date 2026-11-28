@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useId, useMemo, useState } from 'react';
 import { EmptyState } from '@/components/empty-state';
 
 type SortDirection = 'asc' | 'desc';
+const textCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
 function getSortValue(row: unknown, key: string): unknown {
   let value = row;
@@ -15,7 +16,14 @@ function getSortValue(row: unknown, key: string): unknown {
 }
 
 export interface DataTableProps<T> {
-  columns: { key: string; label: string; sortable?: boolean; align?: 'left' | 'right' | 'center' }[];
+  caption: string;
+  columns: {
+    key: string;
+    label: string;
+    sortable?: boolean;
+    align?: 'left' | 'right' | 'center';
+    sortValue?: (row: T) => unknown;
+  }[];
   data: T[];
   rowKey: (row: T) => string | number;
   renderCell: (row: T, key: string) => React.ReactNode;
@@ -23,9 +31,11 @@ export interface DataTableProps<T> {
   className?: string;
   pageSize?: number;
   onRowClick?: (row: T) => void;
+  initialSort?: { key: string; direction: SortDirection };
 }
 
 export function DataTable<T>({
+  caption,
   columns,
   data,
   rowKey,
@@ -34,33 +44,32 @@ export function DataTable<T>({
   className,
   pageSize = 25,
   onRowClick,
+  initialSort,
 }: DataTableProps<T>) {
-  const [sortKey, setSortKey] = useState<string | null>(null);
-  const [sortDir, setSortDir] = useState<SortDirection>('asc');
+  const captionId = useId();
+  const [sortKey, setSortKey] = useState<string | null>(initialSort?.key ?? null);
+  const [sortDir, setSortDir] = useState<SortDirection>(initialSort?.direction ?? 'asc');
   const [page, setPage] = useState(1);
+  const [sortAnnouncement, setSortAnnouncement] = useState('');
 
-  const sortableColumns = columns.filter((c) => c.sortable);
+  const sortableColumns = useMemo(() => columns.filter((c) => c.sortable), [columns]);
+  const sortValue = sortableColumns.find((column) => column.key === sortKey)?.sortValue;
 
   const sorted = useMemo(() => {
     if (!sortKey) return data;
     const dir = sortDir === 'asc' ? 1 : -1;
-    return [...data].sort((a, b) => {
-      const av = getSortValue(a, sortKey);
-      const bv = getSortValue(b, sortKey);
+    return data.toSorted((a, b) => {
+      const av = sortValue ? sortValue(a) : getSortValue(a, sortKey);
+      const bv = sortValue ? sortValue(b) : getSortValue(b, sortKey);
       if (av === bv) return 0;
       if (av == null) return dir;
       if (bv == null) return -dir;
-      if (typeof av === 'string' && typeof bv === 'string') {
-        return av.localeCompare(bv, undefined, { numeric: true }) * dir;
+      if (typeof av === 'number' && typeof bv === 'number') {
+        return (av - bv) * dir;
       }
-      const an = Number(av);
-      const bn = Number(bv);
-      if (Number.isFinite(an) && Number.isFinite(bn)) {
-        return (an - bn) * dir;
-      }
-      return String(av).localeCompare(String(bv), undefined, { numeric: true }) * dir;
+      return textCollator.compare(String(av), String(bv)) * dir;
     });
-  }, [data, sortKey, sortDir]);
+  }, [data, sortKey, sortDir, sortValue]);
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const currentPage = Math.min(Math.max(page, 1), totalPages);
@@ -68,16 +77,14 @@ export function DataTable<T>({
   const pageData = sorted.slice(start, start + pageSize);
 
   const handleSort = useCallback(
-    (key: string) => {
-      if (sortKey === key) {
-        setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-      } else {
-        setSortKey(key);
-        setSortDir('asc');
-      }
+    (key: string, label: string) => {
+      const direction = sortKey === key && sortDir === 'asc' ? 'desc' : 'asc';
+      setSortKey(key);
+      setSortDir(direction);
       setPage(1);
+      setSortAnnouncement(`Sorted by ${label}, ${direction === 'asc' ? 'ascending' : 'descending'}, ${data.length} records.`);
     },
-    [sortKey],
+    [data.length, sortDir, sortKey],
   );
 
   const handlePage = useCallback((delta: number) => {
@@ -85,20 +92,61 @@ export function DataTable<T>({
   }, [totalPages]);
 
   return (
-    <div className={className}>
-      <div className="hidden md:block table-wrap">
-        <table className="table">
+    <div className={className ? `data-table-container ${className}` : 'data-table-container'}>
+      <p className="sr-only" role="status" aria-live="polite">{sortAnnouncement}</p>
+      {sortableColumns.length > 0 && (
+        <div className="data-table-mobile-controls mb-3 flex items-end gap-2">
+          <div className="min-w-0 flex-1">
+            <label className="label" htmlFor={`${captionId}-sort`}>Sort records</label>
+            <select
+              id={`${captionId}-sort`}
+              className="input"
+              value={sortKey ?? ''}
+              onChange={(event) => {
+                const key = event.target.value;
+                const column = sortableColumns.find((item) => item.key === key);
+                setSortKey(column?.key ?? null);
+                setSortDir('asc');
+                setPage(1);
+                setSortAnnouncement(column ? `Sorted by ${column.label}, ascending, ${data.length} records.` : '');
+              }}
+            >
+              <option value="">Default order</option>
+              {sortableColumns.map((column) => <option key={column.key} value={column.key}>{column.label}</option>)}
+            </select>
+          </div>
+          <button
+            type="button"
+            className="button-secondary min-h-11 shrink-0"
+            disabled={!sortKey}
+            aria-label={`Change sort order to ${sortDir === 'asc' ? 'descending' : 'ascending'}`}
+            onClick={() => {
+              const direction = sortDir === 'asc' ? 'desc' : 'asc';
+              const label = sortableColumns.find((column) => column.key === sortKey)?.label ?? sortKey;
+              setSortDir(direction);
+              setPage(1);
+              setSortAnnouncement(`Sorted by ${label}, ${direction === 'asc' ? 'ascending' : 'descending'}, ${data.length} records.`);
+            }}
+          >
+            {sortDir === 'asc' ? 'Ascending' : 'Descending'}
+          </button>
+        </div>
+      )}
+      <div className="table-wrap data-table-desktop" role="region" aria-labelledby={`${captionId}-caption`} tabIndex={0}>
+        <table className="table min-w-[48rem]">
+          <caption id={`${captionId}-caption`} className="sr-only">{caption}</caption>
           <thead>
             <tr>
               {columns.map((col) => (
                 <th
                   key={col.key}
+                  scope="col"
                   aria-sort={sortKey === col.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
                   className={`
                     ${col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left'}
                   `}
                 >
-                  {col.sortable ? <button type="button" className="inline-flex min-h-8 items-center gap-1.5 text-left" onClick={() => handleSort(col.key)}>
+                  {col.sortable ? <button type="button" className="inline-flex min-h-11 items-center gap-1.5 text-left" onClick={() => handleSort(col.key, col.label)}>
                     {col.label}
                     <span className="text-base-500" aria-hidden="true">{sortKey === col.key ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span>
                   </button> : col.label}
@@ -120,8 +168,17 @@ export function DataTable<T>({
                   className={`group ${onRowClick ? 'cursor-pointer hover:bg-base-100 transition-colors' : ''}`}
                   tabIndex={onRowClick ? 0 : undefined}
                   aria-label={onRowClick ? `Open record ${rowKey(row)}` : undefined}
-                  onClick={() => onRowClick?.(row)}
-                  onKeyDown={(event) => { if (onRowClick && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onRowClick(row); } }}
+                  onClick={(event) => {
+                    if (!onRowClick) return;
+                    if (event.target instanceof Element && event.target.closest('a, button, input, select, textarea')) return;
+                    onRowClick(row);
+                  }}
+                  onKeyDown={(event) => {
+                    if (onRowClick && event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+                      event.preventDefault();
+                      onRowClick(row);
+                    }
+                  }}
                 >
                   {columns.map((col) => (
                     <td
@@ -139,48 +196,59 @@ export function DataTable<T>({
           </tbody>
         </table>
       </div>
-      <div className="space-y-3 md:hidden" aria-label="Records">
+      <ul className="data-table-mobile-records space-y-3" role="list" aria-label={`${caption} records`}>
         {pageData.length === 0 ? (
-          <div className="rounded-xl border border-base-200 bg-white px-4">
+          <li className="rounded-xl border border-base-200 bg-white px-4">
             <EmptyState message={emptyMessage} compact />
-          </div>
+          </li>
         ) : pageData.map((row) => {
           const key = rowKey(row);
           const primary = columns.slice(0, Math.min(columns.length, 2));
           const details = columns.slice(primary.length);
           return (
-            <details key={key} className="mobile-record">
-              <summary onClick={() => onRowClick?.(row)}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1 space-y-2">
-                    {primary.map((col) => <div key={col.key} className="min-w-0">
-                      <span className="mb-0.5 block text-[11px] font-semibold uppercase tracking-wide text-base-500">{col.label}</span>
-                      <div className="truncate text-sm text-base-900">{renderCell(row, col.key)}</div>
-                    </div>)}
+            <li key={key}>
+              <details className="mobile-record">
+                <summary>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1 space-y-2">
+                      {primary.map((col) => <div key={col.key} className="min-w-0">
+                        <span className="mb-0.5 block text-xs font-semibold uppercase tracking-wide text-base-600">{col.label}</span>
+                        <div className="truncate text-sm text-base-900">{renderCell(row, col.key)}</div>
+                      </div>)}
+                    </div>
+                    <span className="mt-1 shrink-0 text-sm font-medium text-accent-800">Details <span className="mobile-record-chevron" aria-hidden="true">⌄</span></span>
                   </div>
-                  <span className="mt-1 shrink-0 text-sm font-medium text-accent-800">Details <span aria-hidden="true">⌄</span></span>
-                </div>
-              </summary>
-              {details.length > 0 && <dl className="mt-4 space-y-3 border-t border-base-200 pt-4">
-                {details.map((col) => <div key={col.key} className="grid grid-cols-[minmax(7rem,0.8fr)_minmax(0,1.2fr)] items-start gap-3">
-                  <dt className="text-xs font-medium text-base-500">{col.label}</dt>
-                  <dd className="min-w-0 text-right text-sm text-base-900">{renderCell(row, col.key)}</dd>
-                </div>)}
-              </dl>}
-            </details>
+                </summary>
+                {details.length > 0 && <dl className="mt-4 space-y-3 border-t border-base-200 pt-4">
+                  {details.map((col) => <div key={col.key} className="grid grid-cols-[minmax(7rem,0.8fr)_minmax(0,1.2fr)] items-start gap-3">
+                    <dt className="text-xs font-medium text-base-600">{col.label}</dt>
+                    <dd className="min-w-0 break-words text-right text-sm text-base-900">{renderCell(row, col.key)}</dd>
+                  </div>)}
+                </dl>}
+                {onRowClick && <button
+                  type="button"
+                  className="button-secondary mt-4 w-full"
+                  onClick={() => onRowClick(row)}
+                  aria-label={`Open record ${key}`}
+                >
+                  Open record
+                </button>}
+              </details>
+            </li>
           );
         })}
-      </div>
+      </ul>
       {sorted.length > pageSize && (
-        <div className="mt-4 flex items-center justify-between gap-2 text-sm text-base-600">
+        <div className="mt-4 flex items-center justify-between gap-2 text-sm text-base-700" role="group" aria-label={`${caption} pagination`}>
           <span>
             Showing {start + 1}–{Math.min(start + pageData.length, sorted.length)} of {sorted.length}
           </span>
           <div className="flex items-center gap-1">
             <button
+              type="button"
               onClick={() => handlePage(-1)}
               disabled={currentPage === 1}
-              className="rounded-md px-2.5 py-1.5 text-base-600 disabled:opacity-50 disabled:pointer-events-none hover:bg-base-100 focus:outline-none focus:ring-2 focus:ring-base-900"
+              className="min-h-11 min-w-11 rounded-md text-base-700 disabled:pointer-events-none disabled:opacity-50 hover:bg-base-100 focus:outline-none focus:ring-2 focus:ring-base-900"
               aria-label="Previous page"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -189,9 +257,10 @@ export function DataTable<T>({
             </button>
             <span className="px-2">{currentPage} / {totalPages}</span>
             <button
+              type="button"
               onClick={() => handlePage(1)}
               disabled={currentPage === totalPages}
-              className="rounded-md px-2.5 py-1.5 text-base-600 disabled:opacity-50 disabled:pointer-events-none hover:bg-base-100 focus:outline-none focus:ring-2 focus:ring-base-900"
+              className="min-h-11 min-w-11 rounded-md text-base-700 disabled:pointer-events-none disabled:opacity-50 hover:bg-base-100 focus:outline-none focus:ring-2 focus:ring-base-900"
               aria-label="Next page"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

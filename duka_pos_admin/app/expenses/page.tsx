@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { fetchJson } from '@/lib/api';
 import { ShellLayout } from '@/components/layout';
-import { EmptyState } from '@/components/empty-state';
+import { DataTable } from '@/components/data-table';
 import { useAdminLiveRefresh } from '@/components/websocket-provider';
 
 type ExpenseItem = { id: string; category: string; description: string; amount: number; date: string };
@@ -59,43 +59,48 @@ export default function ExpensesPage() {
     <ShellLayout>
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-base-900">Expenses settings</h2>
+          <h1 className="text-2xl font-semibold tracking-tight text-base-900">Expenses settings</h1>
           <p className="text-sm text-base-500">Track app costs and operational expenses. All changes are audit-logged.</p>
         </div>
-        {error && <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>}
-        {message && <div className="rounded-xl border border-accent-200 bg-accent-50 px-4 py-3 text-sm text-accent-800">{message}</div>}
-        <form onSubmit={add} className="card space-y-4 p-5 max-w-2xl">
-          <h3 className="font-semibold">Add expense</h3>
-          <input className="input" required placeholder="Category" value={category} onChange={(e) => setCategory(e.target.value)} />
-          <input className="input" required placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
-          <input className="input" required type="number" min="0" step="0.01" placeholder="Amount (KES)" value={amount} onChange={(e) => setAmount(e.target.value)} />
+        {error && <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>}
+        {message && <div role="status" className="rounded-xl border border-accent-200 bg-accent-50 px-4 py-3 text-sm text-accent-800">{message}</div>}
+        <form aria-labelledby="expense-form-heading" onSubmit={add} className="card max-w-2xl space-y-4 p-4 sm:p-5">
+          <h2 id="expense-form-heading" className="text-lg font-semibold">Add expense</h2>
+          <div>
+            <label className="label" htmlFor="expense-category">Category</label>
+            <input id="expense-category" name="category" className="input" required value={category} onChange={(e) => setCategory(e.target.value)} />
+          </div>
+          <div>
+            <label className="label" htmlFor="expense-description">Description</label>
+            <input id="expense-description" name="description" className="input" required value={description} onChange={(e) => setDescription(e.target.value)} />
+          </div>
+          <div>
+            <label className="label" htmlFor="expense-amount">Amount (KES)</label>
+            <input id="expense-amount" name="amount" className="input" required type="number" min="0" step="0.01" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          </div>
           <button className="button-primary" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Add expense'}</button>
         </form>
         <div className="card p-5">
-          <h3 className="text-sm font-semibold text-base-900 mb-4">Expense ledger</h3>
-          <div className="overflow-x-auto">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Category</th>
-                  <th>Description</th>
-                  <th className="text-right">Amount</th>
-                  <th>Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((e) => (
-                  <tr key={e.id}>
-                    <td><span className="badge badge-medium">{e.category}</span></td>
-                    <td className="text-base-900">{e.description}</td>
-                    <td className="text-right font-mono tabular-nums">{fmt(e.amount)}</td>
-                    <td className="text-sm text-base-500">{new Date(e.date).toLocaleDateString()}</td>
-                  </tr>
-                ))}
-                {items.length === 0 && !loading && <tr><td colSpan={4}><EmptyState message="No expenses" compact /></td></tr>}
-              </tbody>
-            </table>
-          </div>
+          <h2 className="mb-4 text-lg font-semibold text-base-900">Expense ledger</h2>
+          <DataTable
+            caption="Expense ledger"
+            columns={[
+              { key: 'category', label: 'Category' },
+              { key: 'description', label: 'Description' },
+              { key: 'amount', label: 'Amount', sortable: true, align: 'right' },
+              { key: 'date', label: 'Date', sortable: true },
+            ]}
+            data={items}
+            rowKey={(expense) => expense.id}
+            renderCell={(expense, key) => {
+              if (key === 'category') return <span className="badge badge-medium">{expense.category}</span>;
+              if (key === 'description') return <span>{expense.description}</span>;
+              if (key === 'amount') return <span>{fmt(expense.amount)}</span>;
+              if (key === 'date') return <span>{new Date(expense.date).toLocaleDateString()}</span>;
+              return null;
+            }}
+            emptyMessage={loading ? 'Loading expenses…' : 'No expenses'}
+          />
         </div>
       </div>
     </ShellLayout>

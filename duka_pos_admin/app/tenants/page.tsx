@@ -1,11 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { SyntheticEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { fetchJson } from '@/lib/api';
 import { Tenant } from '@/lib/types';
 import { ShellLayout, useAdminAccess } from '@/components/layout';
 import { DataTable } from '@/components/data-table';
 import Link from 'next/link';
+import { showToast } from '@/lib/toast';
 import { useAdminLiveRefresh } from '@/components/websocket-provider';
 
 export default function TenantsPage() {
@@ -13,6 +14,15 @@ export default function TenantsPage() {
   const [data, setData] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tenantToDelete, setTenantToDelete] = useState<Tenant | null>(null);
+  const [deletingTenantId, setDeletingTenantId] = useState<string | null>(null);
+  const deleteDialogRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    if (tenantToDelete && !deleteDialogRef.current?.open) {
+      deleteDialogRef.current?.showModal();
+    }
+  }, [tenantToDelete]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -43,11 +53,34 @@ export default function TenantsPage() {
     }
   };
 
+  const deleteTenant = async (tenant: Tenant) => {
+    setDeletingTenantId(tenant.id);
+    setError(null);
+    try {
+      await fetchJson(`/api/system/tenants/${encodeURIComponent(tenant.id)}`, { method: 'DELETE' });
+      showToast('success', `${tenant.shopName} was archived. Its sales and compliance history has been retained.`);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not archive tenant');
+    } finally {
+      setDeletingTenantId(null);
+    }
+  };
+
+  const handleDeleteDialogClose = (event: SyntheticEvent<HTMLDialogElement>) => {
+    const dialog = event.currentTarget;
+    const shouldDelete = dialog.returnValue === 'delete';
+    const tenant = tenantToDelete;
+    dialog.returnValue = '';
+    setTenantToDelete(null);
+    if (shouldDelete && tenant) void deleteTenant(tenant);
+  };
+
   return (
     <ShellLayout>
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-base-900">Tenants</h2>
+          <h1 className="text-2xl font-semibold tracking-tight text-base-900">Tenants</h1>
           <p className="text-sm text-base-500">Tenant directory with profile and sale counts. Actions are audit-logged.</p>
         </div>
 
@@ -58,6 +91,7 @@ export default function TenantsPage() {
         )}
 
         <DataTable
+          caption="Tenant directory"
           columns={[
             { key: 'shopName', label: 'Shop name' },
             { key: 'admin', label: 'Admin' },
@@ -83,6 +117,14 @@ export default function TenantsPage() {
                 <div className="flex flex-wrap gap-1">
                   <button className="button-secondary min-h-10 text-xs" onClick={(e) => { e.stopPropagation(); void act(row.id, 'mpesaEnabled', !(row as any).mpesaEnabled); }}>{(row as any).mpesaEnabled ? 'Turn M-Pesa off' : 'Turn M-Pesa on'}</button>
                   <button className="button-secondary min-h-10 text-xs" onClick={(e) => { e.stopPropagation(); void act(row.id, 'etimsEnabled', !(row as any).etimsEnabled); }}>{(row as any).etimsEnabled ? 'Turn eTIMS off' : 'Turn eTIMS on'}</button>
+                  <button
+                    className="button-secondary min-h-10 text-xs text-red-700"
+                    aria-label={`Archive ${row.shopName} tenant`}
+                    disabled={deletingTenantId === row.id}
+                    onClick={(e) => { e.stopPropagation(); setTenantToDelete(row); }}
+                  >
+                    {deletingTenantId === row.id ? 'Archiving…' : 'Archive tenant'}
+                  </button>
                 </div>
               );
             }
@@ -92,6 +134,34 @@ export default function TenantsPage() {
           emptyMessage={loading ? 'Loading tenants…' : 'No tenants'}
         />
       </div>
+      <dialog
+        ref={deleteDialogRef}
+        className="tenant-delete-dialog w-[calc(100%-2rem)] max-w-lg rounded-2xl border border-base-200 bg-white p-0 text-base-900 shadow-2xl backdrop:bg-base-950/60"
+        aria-labelledby="tenant-delete-title"
+        aria-describedby="tenant-delete-description"
+        onClose={handleDeleteDialogClose}
+      >
+        {tenantToDelete && (
+          <div className="space-y-4 p-5 sm:p-6">
+            <div>
+              <p className="text-sm font-semibold text-red-700">Remove tenant access</p>
+              <h1 id="tenant-delete-title" className="mt-1 text-xl font-semibold">Archive {tenantToDelete.shopName}?</h1>
+            </div>
+            <p id="tenant-delete-description" className="text-sm leading-6 text-base-600">
+              This archives the shop and disables all of its user profiles. Sales, payment, tax, and audit history are retained for compliance. A login account is removed only if it has no profile in another shop.
+            </p>
+            <p className="rounded-lg bg-base-50 p-3 text-sm text-base-700">
+              {tenantToDelete.activeProfiles ?? 0} active profiles will lose access. {tenantToDelete.salesCount ?? 0} sales records will remain in the system.
+            </p>
+            <form method="dialog" className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button type="submit" value="cancel" autoFocus className="button-secondary min-h-11">Cancel</button>
+              <button type="submit" value="delete" className="button-secondary min-h-11 border-red-300 text-red-700">
+                Archive tenant
+              </button>
+            </form>
+          </div>
+        )}
+      </dialog>
     </ShellLayout>
   );
 }

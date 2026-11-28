@@ -5,6 +5,7 @@ import { fetchJson } from '@/lib/api';
 import { ShellLayout, useAdminAccess } from '@/components/layout';
 import { DataTable } from '@/components/data-table';
 import { useAdminLiveRefresh } from '@/components/websocket-provider';
+import { showToast } from '@/lib/toast';
 
 type ShopUser = {
   id: string;
@@ -76,10 +77,17 @@ export default function UsersPage() {
 
   const selectedShop = shops.find((shop) => shop.tenantId === selectedTenantId) ?? null;
 
-  async function remove(profile: ShopUser) {
-    if (!window.confirm(`Delete ${profile.name}'s account? This cannot be undone.`)) return;
+  async function remove(profile: ShopUser, shop: ShopDirectory) {
+    const removesLastProfile = shop.profiles.length === 1;
+    const confirmation = removesLastProfile
+      ? `Delete ${profile.name}'s profile? This is the last profile for ${shop.shopName}, so the shop will be archived and all sign-in access disabled. Sales, tax, and audit history will be retained.`
+      : `Delete ${profile.name}'s profile? Only this profile's access will be removed; ${shop.shopName} and its other profiles will remain.`;
+    if (!window.confirm(confirmation)) return;
     try {
-      await fetchJson(`/api/system/users/${encodeURIComponent(profile.id)}`, { method: 'DELETE' });
+      const result = await fetchJson<{ tenant_archived?: boolean }>(`/api/system/users/${encodeURIComponent(profile.id)}`, { method: 'DELETE' });
+      if (result.tenant_archived) {
+        showToast('success', `${shop.shopName} was archived. Its sales and compliance history has been retained.`);
+      }
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not delete user');
@@ -100,7 +108,7 @@ export default function UsersPage() {
 
   return (
     <ShellLayout>
-      <main className="space-y-6 pb-24">
+      <div className="space-y-6">
         <header>
           <p className="text-sm font-semibold text-accent-800">Company directory</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">Shop users</h1>
@@ -110,6 +118,7 @@ export default function UsersPage() {
         </header>
         {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
         <DataTable
+          caption="Shop user records"
           columns={[
             { key: 'owner', label: 'Owner / account' },
             { key: 'shopName', label: 'Shop', sortable: true },
@@ -185,7 +194,7 @@ export default function UsersPage() {
                         </button>
                         <button
                           className="button-secondary min-h-10 text-xs text-red-700"
-                          onClick={() => void remove(profile)}
+                          onClick={() => void remove(profile, selectedShop)}
                         >
                           Delete
                         </button>
@@ -197,7 +206,7 @@ export default function UsersPage() {
             </ul>
           </section>
         )}
-      </main>
+      </div>
     </ShellLayout>
   );
 }

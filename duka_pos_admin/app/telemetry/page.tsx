@@ -77,7 +77,7 @@ export default function TelemetryPage() {
 
   return (
     <ShellLayout>
-      <main className="space-y-6 pb-24">
+      <div className="space-y-6">
         <header>
           <p className="text-sm font-semibold text-accent-800">Security and activity</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">App telemetry</h1>
@@ -124,6 +124,7 @@ export default function TelemetryPage() {
           ) : (
             <>
               <DataTable
+                caption="App telemetry events"
                 columns={[
                   { key: 'at', label: 'Occurred', sortable: true },
                   { key: 'shop', label: 'Shop', sortable: true },
@@ -156,7 +157,7 @@ export default function TelemetryPage() {
             </>
           )}
         </section>
-      </main>
+      </div>
     </ShellLayout>
   );
 }

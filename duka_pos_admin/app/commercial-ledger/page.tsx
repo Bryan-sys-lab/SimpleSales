@@ -94,7 +94,7 @@ export default function CommercialLedgerPage() {
     <ShellLayout>
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-base-900">Contribution Ledger</h2>
+          <h1 className="text-2xl font-semibold tracking-tight text-base-900">Contribution Ledger</h1>
           <p className="text-sm text-base-500">Sanitized Contributions (Restricted) — accepted minimized inputs and their provenance.</p>
         </div>
 
@@ -118,7 +118,7 @@ export default function CommercialLedgerPage() {
         <section className="card p-5" aria-label="Disclosure control summary">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h3 className="text-sm font-semibold text-base-900">Disclosure controls</h3>
+              <h2 className="text-sm font-semibold text-base-900">Disclosure controls</h2>
               <p className="mt-1 text-sm text-base-500">Suppression is applied after filters and before any aggregate output.</p>
             </div>
             <div className="text-right text-sm text-base-600">
@@ -134,6 +134,7 @@ export default function CommercialLedgerPage() {
         {loading && <div className="card p-5 text-sm text-base-500" role="status">Loading contribution ledger…</div>}
         {!loading && !error && (
           <DataTable
+            caption="Contribution ledger entries"
             columns={[
               { key: 'recordId', label: 'Record', sortable: true },
               { key: 'batchId', label: 'Batch' },

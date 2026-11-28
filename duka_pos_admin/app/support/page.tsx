@@ -53,17 +53,18 @@ export default function SupportPage() {
   return (
     <ShellLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 className="text-2xl font-semibold tracking-tight text-base-900">Support tickets</h2>
+            <h1 className="text-2xl font-semibold tracking-tight text-base-900">Support tickets</h1>
             <p className="text-sm text-base-500">Support tickets and requests across all tenants.</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-1 sm:w-56">
+            <label className="label" htmlFor="support-status-filter">Filter by status</label>
             <select
+              id="support-status-filter"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               className="input text-sm"
-              aria-label="Filter by status"
             >
               <option value="">All statuses</option>
               <option value="open">Open</option>
@@ -81,6 +82,7 @@ export default function SupportPage() {
         )}
 
         <DataTable
+          caption="Support tickets"
           columns={[
             { key: 'type', label: 'Type' },
             { key: 'title', label: 'Title' },

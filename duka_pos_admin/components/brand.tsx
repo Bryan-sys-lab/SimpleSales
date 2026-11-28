@@ -71,7 +71,7 @@ export function BrandLockup({
       />
       <BrandName
         animated={animatedName}
-        className={compact ? 'text-xs' : 'text-xl'}
+        className={compact ? 'app-shell-brand-name text-xs' : 'text-xl'}
       />
     </div>
   );

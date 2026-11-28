@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { fetchJson } from '@/lib/api';
 import { ChurnSnapshot } from '@/lib/types';
 import { ShellLayout } from '@/components/layout';
@@ -8,13 +8,12 @@ import { DataTable } from '@/components/data-table';
 import { useAdminLiveRefresh } from '@/components/websocket-provider';
 
 const RISK_ORDER: Record<string, number> = { none: 0, low: 1, medium: 2, high: 3 };
+const getRiskSortValue = (snapshot: ChurnSnapshot) => RISK_ORDER[snapshot.risk] ?? 0;
 
 export default function ChurnPage() {
   const [data, setData] = useState<ChurnSnapshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'risk', dir: 'desc' });
-
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -32,22 +31,6 @@ export default function ChurnPage() {
     load();
   }, [load]);
 
-  const sorted = useMemo(() => {
-    return [...data].sort((a, b) => {
-      let av: unknown = a[sort.key as keyof ChurnSnapshot];
-      let bv: unknown = b[sort.key as keyof ChurnSnapshot];
-      if (sort.key === 'risk') {
-        av = RISK_ORDER[String(av ?? '')] ?? 0;
-        bv = RISK_ORDER[String(bv ?? '')] ?? 0;
-      }
-      if (av == null && bv == null) return 0;
-      if (av == null) return sort.dir === 'asc' ? 1 : -1;
-      if (bv == null) return sort.dir === 'asc' ? -1 : 1;
-      const cmp = String(av).localeCompare(String(bv), undefined, { numeric: true });
-      return sort.dir === 'asc' ? cmp : -cmp;
-    });
-  }, [data, sort]);
-
   const riskBadge = (risk: string) => {
     const variants: Record<string, string> = {
       none: 'bg-sage-50 text-sage-800 border-sage-200',
@@ -63,7 +46,7 @@ export default function ChurnPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-semibold tracking-tight text-base-900">Churn risk</h2>
+            <h1 className="text-2xl font-semibold tracking-tight text-base-900">Churn risk</h1>
             <p className="text-sm text-base-500">Churn snapshots across all tenant shops.</p>
           </div>
         </div>
@@ -75,16 +58,18 @@ export default function ChurnPage() {
         )}
 
         <DataTable
+          caption="Churn risk records"
+          initialSort={{ key: 'risk', direction: 'desc' }}
           columns={[
             { key: 'tenant.shopName', label: 'Shop', sortable: true },
             { key: 'streakDays', label: 'Inactive streak (days)', sortable: true, align: 'right' },
             { key: 'daysSinceLastActive', label: 'Days since last active', sortable: true, align: 'right' },
-            { key: 'risk', label: 'Risk', sortable: true },
+            { key: 'risk', label: 'Risk', sortable: true, sortValue: getRiskSortValue },
             { key: 'score', label: 'Score', sortable: true, align: 'right' },
             { key: 'dropReason', label: 'Drop reason', sortable: true },
             { key: 'computedAt', label: 'Last computed', sortable: true },
           ]}
-          data={sorted}
+          data={data}
           rowKey={(r) => `${r.tenantId}-${r.computedAt}`}
           renderCell={(row, key) => {
             if (key === 'tenant.shopName') {

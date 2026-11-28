@@ -102,9 +102,9 @@ export const ICONS: Record<string, React.ReactNode> = {
   ),
 };
 
-export function Nav({ items, pathname, horizontal = false }: { items: NavItem[]; pathname: string; horizontal?: boolean }) {
+export function Nav({ items, pathname }: { items: NavItem[]; pathname: string }) {
   return (
-    <ul className={horizontal ? "flex items-center gap-0.5 overflow-x-auto" : "space-y-0.5"}>
+    <ul className="space-y-1">
       {items.map((item) => {
         const active = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href + '/'));
         const Icon = ICONS[item.icon];
@@ -112,15 +112,15 @@ export function Nav({ items, pathname, horizontal = false }: { items: NavItem[];
           <li key={item.href}>
             <Link
               href={item.href}
-              className={`flex items-center ${horizontal ? 'gap-2 px-3 py-1.5 whitespace-nowrap' : 'gap-3 px-3 py-2.5'} rounded-lg text-sm font-medium transition-colors active:scale-95 ${
+              className={`flex min-h-11 items-center gap-3 rounded-lg border-l-2 px-3 text-sm font-medium transition-colors ${
                 active
-                  ? (horizontal ? 'bg-accent-50 text-accent-700' : 'bg-accent-50 text-accent-700 border-r-2 border-accent-600')
-                  : 'text-base-600 hover:bg-base-100 hover:text-base-900'
+                  ? 'border-accent-700 bg-accent-50 text-accent-900 dark:border-electric-400 dark:bg-base-800 dark:text-electric-200'
+                  : 'border-transparent text-base-700 hover:bg-base-100 hover:text-base-900 dark:text-base-200 dark:hover:bg-base-800 dark:hover:text-base-100'
               }`}
               aria-current={active ? 'page' : undefined}
             >
-              <span className="shrink-0">{Icon}</span>
-              <span className="whitespace-nowrap">{item.label}</span>
+              <span className="shrink-0" aria-hidden="true">{Icon}</span>
+              <span>{item.label}</span>
             </Link>
           </li>
         );

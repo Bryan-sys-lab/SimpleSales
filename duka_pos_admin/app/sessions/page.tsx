@@ -27,10 +27,10 @@ export default function SessionsPage() {
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Replay is unavailable'); }
     finally { setReplayLoading(false); }
   }
-  return <ShellLayout><main className="space-y-6 pb-24">
+  return <ShellLayout><div className="space-y-6">
     <header><p className="text-sm font-semibold text-accent-800">Security and activity</p><h1 className="mt-1 text-2xl font-semibold tracking-tight">App activity sessions</h1><p className="mt-1 max-w-3xl text-sm text-base-600">These activity sessions are inferred from telemetry grouped by access-token ID; they are not a complete sign-in/logout history. Devices must be online and authenticated for events to reach the server. Browse individual events in <Link className="font-medium text-accent-800 underline" href="/telemetry">App telemetry</Link>. No form contents, PINs, or customer details are included.</p></header>
     {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
-    <DataTable columns={[{key:'tenant',label:'Shop'},{key:'deviceId',label:'Device'},{key:'eventCount',label:'Events',sortable:true},{key:'createdAt',label:'First event',sortable:true},{key:'lastActivityAt',label:'Last event',sortable:true},{key:'expiresAt',label:'Activity window'}]} data={data} rowKey={row=>row.id} onRowClick={row=>void openReplay(row.id)} renderCell={(row,key)=>{
+    <DataTable caption="Administrator activity sessions" columns={[{key:'tenant',label:'Shop'},{key:'deviceId',label:'Device'},{key:'eventCount',label:'Events',sortable:true},{key:'createdAt',label:'First event',sortable:true},{key:'lastActivityAt',label:'Last event',sortable:true},{key:'expiresAt',label:'Activity window'}]} data={data} rowKey={row=>row.id} onRowClick={row=>void openReplay(row.id)} renderCell={(row,key)=>{
       if(key==='tenant') return <span className="font-medium">{row.tenant?.shopName??row.tenantId}</span>;
       if(key==='deviceId') return <span className="font-mono text-xs">{row.deviceId??'Unknown device'}</span>;
       if(key==='eventCount') return <span>{row.eventCount} events</span>;
@@ -43,5 +43,5 @@ export default function SessionsPage() {
       <ol className="divide-y divide-base-100">{selected.events.map((event,index)=><li key={event.id} className="flex gap-4 p-4 sm:px-5"><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${event.kind?'bg-red-100 text-red-900':'bg-accent-100 text-accent-900'}`}>{index+1}</span><div className="min-w-0 flex-1"><p className={`font-medium ${event.kind?'text-red-800':'text-base-900'}`}>{event.name.replaceAll('_',' ')}</p>{event.message&&<p className="mt-1 break-words text-sm text-base-800">{event.message}</p>}<p className="mt-0.5 text-sm text-base-600">{event.route??'App activity'}{event.action?` · ${event.action}`:''}{event.actorName?` · ${event.actorName}`:''}</p>{event.diagnosticId&&<a className="mt-2 inline-block min-h-10 py-2 text-sm font-medium text-accent-800 underline" href="/diagnostics">Open device diagnostics</a>}</div><time className="shrink-0 text-right text-xs text-base-500">{new Date(event.at).toLocaleString()}</time></li>)}</ol>
       {selected.events.length===0&&<EmptyState message="No replay events available for this session." />}
     </section>}
-  </main></ShellLayout>;
+  </div></ShellLayout>;
 }

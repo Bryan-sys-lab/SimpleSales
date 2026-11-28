@@ -160,7 +160,7 @@ export default function MembershipPage() {
 
   return (
     <ShellLayout>
-      <main className="mx-auto max-w-6xl space-y-6 pb-24">
+      <div className="mx-auto max-w-6xl space-y-6">
         <header>
           <p className="text-sm font-semibold text-accent-800">Customer plans</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">Membership requests</h1>
@@ -271,7 +271,7 @@ export default function MembershipPage() {
             )}
           </section>
         </div>
-      </main>
+      </div>
     </ShellLayout>
   );
 }

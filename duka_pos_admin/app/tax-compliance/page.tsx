@@ -4,10 +4,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { fetchJson } from '@/lib/api';
 import { TaxComplianceReturn } from '@/lib/types';
 import { ShellLayout } from '@/components/layout';
-import { EmptyState } from '@/components/empty-state';
+import { DataTable } from '@/components/data-table';
 import { useAdminLiveRefresh } from '@/components/websocket-provider';
 
-const inputClass = 'rounded-md border border-base-300 bg-white px-3 py-2 text-sm text-base-900 shadow-sm focus:border-accent-600 focus:outline-none focus:ring-2 focus:ring-accent-100';
+const inputClass = 'input';
 
 function statusClass(status: string): string {
   if (status === 'accepted' || status === 'settled') return 'bg-sage-50 text-sage-800';
@@ -23,45 +23,31 @@ function period(row: TaxComplianceReturn): string {
   return `${new Date(row.period_start).toLocaleDateString()} – ${new Date(row.period_end).toLocaleDateString()}`;
 }
 
-function ComplianceTable({ rows }: { rows: TaxComplianceReturn[] }) {
+function ComplianceTable({ rows, caption }: { rows: TaxComplianceReturn[]; caption: string }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full text-left text-sm">
-        <caption className="sr-only">Tax compliance period evidence</caption>
-        <thead className="bg-base-50 text-xs uppercase tracking-wide text-base-500">
-          <tr>
-            <th scope="col" className="px-5 py-3">Taxpayer</th>
-            <th scope="col" className="px-5 py-3">Period</th>
-            <th scope="col" className="px-5 py-3">Evidence</th>
-            <th scope="col" className="px-5 py-3">Status</th>
-            <th scope="col" className="px-5 py-3">Updated</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-base-100">
-          {rows.map((row) => (
-            <tr key={`${row.tax_type}-${row.id}`}>
-              <td className="px-5 py-4">
-                <div className="font-medium text-base-900">{row.tax_entity.displayLabel}</div>
-                <div className="text-xs text-base-500">{row.tax_entity.legalForm}</div>
-              </td>
-              <td className="px-5 py-4 text-base-600">{period(row)}</td>
-              <td className="px-5 py-4 text-base-600">
-                {row.tax_type === 'vat'
-                  ? <span>Output {money(row.output_vat)} · Input {money(row.eligible_input_vat)} · Adjustments {money(row.adjustments)} · Net {money(row.net_payable)}</span>
-                  : <span>Gross {money(row.gross_sales)} · Estimate {money(row.estimate)}</span>}
-              </td>
-              <td className="px-5 py-4">
-                <span className={`rounded-full px-2 py-1 text-xs font-medium ${statusClass(row.status)}`}>{row.status}</span>
-                {row.rejection_reason && <div className="mt-1 max-w-xs text-xs text-red-700">{row.rejection_reason}</div>}
-                {!!row.status_events?.length && <div className="mt-1 text-xs text-base-500">{row.status_events.length} audited transition{row.status_events.length === 1 ? '' : 's'}</div>}
-              </td>
-              <td className="px-5 py-4 text-xs text-base-500">{new Date(row.updated_at).toLocaleString()}</td>
-            </tr>
-          ))}
-          {rows.length === 0 && <tr><td colSpan={5}><EmptyState message="No period evidence matches this filter." compact /></td></tr>}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      caption={caption}
+      columns={[
+        { key: 'taxpayer', label: 'Taxpayer' },
+        { key: 'period', label: 'Period', sortable: true },
+        { key: 'evidence', label: 'Evidence' },
+        { key: 'status', label: 'Status' },
+        { key: 'updated', label: 'Updated', sortable: true },
+      ]}
+      data={rows}
+      rowKey={(row) => `${row.tax_type}-${row.id}`}
+      renderCell={(row, key) => {
+        if (key === 'taxpayer') return <span><strong className="block font-medium">{row.tax_entity.displayLabel}</strong><span className="text-sm text-base-600">{row.tax_entity.legalForm}</span></span>;
+        if (key === 'period') return <span>{period(row)}</span>;
+        if (key === 'evidence') return row.tax_type === 'vat'
+          ? <span>Output {money(row.output_vat)} · Input {money(row.eligible_input_vat)} · Adjustments {money(row.adjustments)} · Net {money(row.net_payable)}</span>
+          : <span>Gross {money(row.gross_sales)} · Estimate {money(row.estimate)}</span>;
+        if (key === 'status') return <span><span className={`badge ${statusClass(row.status)}`}>{row.status}</span>{row.rejection_reason && <span className="mt-1 block text-sm text-red-700">{row.rejection_reason}</span>}{!!row.status_events?.length && <span className="mt-1 block text-sm text-base-600">{row.status_events.length} audited transition{row.status_events.length === 1 ? '' : 's'}</span>}</span>;
+        if (key === 'updated') return <span>{new Date(row.updated_at).toLocaleString()}</span>;
+        return null;
+      }}
+      emptyMessage="No period evidence matches this filter."
+    />
   );
 }
 
@@ -95,11 +81,11 @@ export default function TaxCompliancePage() {
       <div className="space-y-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-semibold tracking-tight text-base-900">Tax compliance evidence</h2>
+            <h1 className="text-2xl font-semibold tracking-tight text-base-900">Tax compliance evidence</h1>
             <p className="text-sm text-base-500">Cross-tenant review of prepared VAT/TOT evidence. These records are not KRA submissions.</p>
           </div>
-          <label className="text-sm text-base-700">Status
-            <select className={`${inputClass} ml-2`} value={status} onChange={(event) => setStatus(event.target.value)}>
+          <label className="text-sm text-base-700" htmlFor="compliance-status">Status
+            <select id="compliance-status" name="status" className={inputClass} value={status} onChange={(event) => setStatus(event.target.value)}>
               <option value="">All statuses</option>
               {['prepared', 'submitted', 'accepted', 'rejected', 'settled'].map((value) => <option key={value} value={value}>{value}</option>)}
             </select>
@@ -109,12 +95,12 @@ export default function TaxCompliancePage() {
         {loading && <div role="status" className="rounded-md border border-base-200 bg-white p-5 text-sm text-base-500">Loading compliance evidence…</div>}
         {!loading && !error && <>
           <section className="rounded-xl border border-base-200 bg-white shadow-sm">
-            <div className="border-b border-base-200 px-5 py-4"><h3 className="font-semibold text-base-900">VAT returns</h3></div>
-            <ComplianceTable rows={vatReturns} />
+            <div className="border-b border-base-200 px-5 py-4"><h2 className="font-semibold text-base-900">VAT returns</h2></div>
+            <div className="p-4 sm:p-5"><ComplianceTable caption="VAT return evidence" rows={vatReturns} /></div>
           </section>
           <section className="rounded-xl border border-base-200 bg-white shadow-sm">
-            <div className="border-b border-base-200 px-5 py-4"><h3 className="font-semibold text-base-900">TOT returns</h3></div>
-            <ComplianceTable rows={totReturns} />
+            <div className="border-b border-base-200 px-5 py-4"><h2 className="font-semibold text-base-900">TOT returns</h2></div>
+            <div className="p-4 sm:p-5"><ComplianceTable caption="Turnover tax return evidence" rows={totReturns} /></div>
           </section>
         </>}
       </div>

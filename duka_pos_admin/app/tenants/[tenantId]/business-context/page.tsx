@@ -52,7 +52,7 @@ export default function BusinessContextPage() {
 
   const context = data?.tenant.businessContext;
   return <ShellLayout>
-    <main className="mx-auto max-w-4xl space-y-5">
+    <div className="mx-auto max-w-4xl space-y-5">
       <Link href="/tenants" className="inline-flex min-h-11 items-center text-sm font-medium text-accent-800 underline">← Back to tenants</Link>
       {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">{error}</div>}
       {!data && !error && <div className="card"><EmptyState message="Loading business details…" /></div>}
@@ -93,6 +93,6 @@ export default function BusinessContextPage() {
           </details>
         </>}
       </>}
-    </main>
+    </div>
   </ShellLayout>;
 }

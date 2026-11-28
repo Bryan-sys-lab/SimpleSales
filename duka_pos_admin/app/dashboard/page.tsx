@@ -121,7 +121,7 @@ export default function DashboardPage() {
     <ShellLayout>
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-base-900">Overview</h2>
+          <h1 className="text-2xl font-semibold tracking-tight text-base-900">Overview</h1>
           <p className="text-sm text-base-500">Platform metrics across all tenant shops.</p>
         </div>
 
@@ -130,7 +130,7 @@ export default function DashboardPage() {
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-accent-800">Observability</p>
-                <h3 className="text-xl font-semibold tracking-tight">Live app health</h3>
+                <h2 className="text-xl font-semibold tracking-tight">Live app health</h2>
                 <p className="text-sm text-base-500">Sanitized telemetry and uploaded device failures. Cloudflare platform and GitHub Actions logs are not included.</p>
               </div>
               <div className="flex items-center gap-3">
@@ -156,7 +156,7 @@ export default function DashboardPage() {
             <div className="grid gap-4 xl:grid-cols-3">
               {canReadTelemetry && <div className="card p-5 xl:col-span-2">
                 <div className="mb-4 flex items-center justify-between">
-                  <h4 className="text-sm font-semibold">Event volume</h4>
+                  <h3 className="text-sm font-semibold">Event volume</h3>
                   <span className="text-xs text-base-500">{range === '24h' ? 'Hourly' : 'Daily'} · UTC window</span>
                 </div>
                 {telemetry ? <div className="flex h-40 items-end gap-1" role="img" aria-label={`App event volume for the last ${range}`}>
@@ -169,7 +169,7 @@ export default function DashboardPage() {
                 </div> : <p className="text-sm text-base-500">Loading event trend…</p>}
               </div>}
               {canReadTelemetry && <div className="card p-5">
-                <h4 className="mb-4 text-sm font-semibold">Top event types</h4>
+                <h3 className="mb-4 text-sm font-semibold">Top event types</h3>
                 <div className="space-y-3">
                   {(telemetry?.eventTypes ?? []).map((item) => <div key={item.name} className="flex items-center justify-between gap-3 text-sm">
                     <span className="truncate text-base-600">{item.name.replaceAll('_', ' ')}</span><span className="font-mono tabular-nums">{item.count}</span>
@@ -181,7 +181,7 @@ export default function DashboardPage() {
             </div>
             <div className="card overflow-hidden">
               <div className="flex items-center justify-between border-b border-base-200 p-4">
-                <h4 className="text-sm font-semibold">Live event stream</h4>
+                <h3 className="text-sm font-semibold">Live event stream</h3>
                 <span className="text-xs text-base-500">{activity.length} recent</span>
               </div>
               {activity.length === 0 ? <EmptyState message="Waiting for app telemetry or a device diagnostic upload." compact /> : (
@@ -215,7 +215,7 @@ export default function DashboardPage() {
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="card p-5">
-            <h3 className="text-sm font-semibold text-base-900 mb-4">Churn distribution</h3>
+            <h2 className="text-sm font-semibold text-base-900 mb-4">Churn distribution</h2>
             <div className="space-y-3">
               {Object.entries(stats?.churnByRisk ?? {}).map(([risk, count]) => (
                 <div key={risk} className="flex items-center justify-between text-sm">
@@ -230,9 +230,10 @@ export default function DashboardPage() {
           </div>
 
           <div className="card p-5">
-            <h3 className="text-sm font-semibold text-base-900">Shop activity</h3>
+            <h2 className="text-sm font-semibold text-base-900">Shop activity</h2>
             <p className="mb-4 mt-1 text-xs text-base-500">Sales recorded in the last 30 days; active profiles are current.</p>
             <DataTable
+              caption="Recent shop activity"
               columns={[
                 { key: 'shopName', label: 'Shop', sortable: true },
                 { key: 'activeProfiles', label: 'Active profiles', sortable: true, align: 'right' },
@@ -254,7 +255,7 @@ export default function DashboardPage() {
         </div>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="card p-5">
-            <h3 className="text-sm font-semibold text-base-900 mb-4">Sales by payment method</h3>
+            <h2 className="text-sm font-semibold text-base-900 mb-4">Sales by payment method</h2>
             <div className="space-y-3">
               {Object.entries(Object.values(sys?.byTenant ?? {}).reduce((acc: any, t: any) => {
                   Object.entries(t.byPaymentMethod ?? {}).forEach(([m, v]) => { acc[m] = (acc[m] ?? 0) + (v as number); });

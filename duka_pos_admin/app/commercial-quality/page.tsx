@@ -49,7 +49,7 @@ export default function CommercialQualityPage() {
     <ShellLayout>
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-base-900">Data quality &amp; reconciliation</h2>
+          <h1 className="text-2xl font-semibold tracking-tight text-base-900">Data quality &amp; reconciliation</h1>
           <p className="text-sm text-base-500">Restricted pipeline health for definitions, coverage, freshness, suppression and reproducibility.</p>
         </div>
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
@@ -73,13 +73,13 @@ export default function CommercialQualityPage() {
               <Metric label="Suppressed cohorts" value={report.suppression.suppressedCohortCount} detail={`Numerator suppressed ${report.suppression.suppressedCohortCount} · denominator ${report.suppression.cohortCount} · ${report.suppression.publishableCohortCount} publishable`} />
             </div>
             <section className="card p-5" aria-label="Canonical quality states">
-              <h3 className="text-sm font-semibold text-base-900">Canonical quality states</h3>
+              <h2 className="text-sm font-semibold text-base-900">Canonical quality states</h2>
               <div className="mt-3 flex flex-wrap gap-2">
                 {report.qualityStates.map((state) => <span key={state} className="rounded-full border border-base-200 px-3 py-1 text-xs text-base-700">{state}</span>)}
               </div>
             </section>
             <section className="card p-5" aria-label="Canonical metric definitions">
-              <h3 className="text-sm font-semibold text-base-900">Canonical metrics</h3>
+              <h2 className="text-sm font-semibold text-base-900">Canonical metrics</h2>
               <div className="mt-3 space-y-3">
                 {report.metricDefinitions.map((metric) => (
                   <div key={metric.key} className="rounded-md border border-base-200 p-3">
@@ -91,11 +91,11 @@ export default function CommercialQualityPage() {
               </div>
             </section>
             <section className="card p-5" aria-label="Quality notes">
-              <h3 className="text-sm font-semibold text-base-900">Quality notes</h3>
+              <h2 className="text-sm font-semibold text-base-900">Quality notes</h2>
               {report.qualityNotes.length === 0 ? <p className="mt-2 text-sm text-emerald-700">No discrepancies detected in the evaluated input.</p> : <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-base-700">{report.qualityNotes.map((note) => <li key={note}>{note}</li>)}</ul>}
             </section>
             <section className="card p-5" aria-label="Definitions and reproducibility">
-              <h3 className="text-sm font-semibold text-base-900">Definitions &amp; reproducibility</h3>
+              <h2 className="text-sm font-semibold text-base-900">Definitions &amp; reproducibility</h2>
               <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
                 {Object.entries(definitions).map(([key, value]) => <div key={key}><dt className="font-medium text-base-700">{key}</dt><dd className="text-base-500">{typeof value === 'object' ? JSON.stringify(value) : String(value)}</dd></div>)}
                 <div className="sm:col-span-2"><dt className="font-medium text-base-700">Input fingerprint</dt><dd className="break-all font-mono text-xs text-base-500">{report.reproducibilityFingerprint}</dd></div>
