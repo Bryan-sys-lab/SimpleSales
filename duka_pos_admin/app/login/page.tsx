@@ -63,15 +63,15 @@ function LoginContent() {
           {departmentLogin ? <>
             <div>
               <label className="label" htmlFor="phone">Phone</label>
-              <input id="phone" className="input" type="tel" autoComplete="tel" required value={phone} onChange={(e) => setPhone(e.target.value)} />
+              <input id="phone" name="admin-login-phone" className="input" type="tel" autoComplete="off" required value={phone} onChange={(e) => setPhone(e.target.value)} />
             </div>
             <div>
               <label className="label" htmlFor="key">Administrator key</label>
-              <input id="key" className="input" type="password" autoComplete="current-password" autoCapitalize="none" autoCorrect="off" spellCheck={false} required value={key} onChange={(e) => setKey(e.target.value)} />
+              <input id="key" name="admin-login-key" className="input" type="password" autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} required value={key} onChange={(e) => setKey(e.target.value)} />
             </div>
           </> : <div>
             <label className="label" htmlFor="master-token">System access token</label>
-            <input id="master-token" className="input" type="password" autoComplete="current-password" required value={masterToken} onChange={(e) => setMasterToken(e.target.value)} />
+            <input id="master-token" name="system-admin-token" className="input" type="password" autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} required value={masterToken} onChange={(e) => setMasterToken(e.target.value)} />
           </div>}
           <label className="flex items-start gap-3 text-sm text-base-700 dark:text-base-200">
             <input
